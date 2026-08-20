@@ -1,0 +1,12 @@
+.git
+.pio
+makelog-data
+storage/*
+!storage/.htaccess
+src
+include
+test
+docs
+platformio.ini
+README.md
+

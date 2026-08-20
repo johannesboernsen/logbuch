@@ -1,0 +1,7 @@
+.pio/
+.vscode/
+include/config.h
+.DS_Store
+.env
+makelog-data/
+node_modules/

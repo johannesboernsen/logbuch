@@ -1,0 +1,15 @@
+{
+  "name": "make-log",
+  "private": true,
+  "version": "0.2.0-dev",
+  "type": "module",
+  "scripts": {
+    "build:icons": "node tools/build-icons.mjs",
+    "test": "node --test test/php-server.test.mjs",
+    "test:docker-concurrency": "node test/docker-concurrency.mjs",
+    "test:legacy": "node --test test/security.test.mjs"
+  },
+  "devDependencies": {
+    "@iconify-json/lucide": "^1.2.124"
+  }
+}

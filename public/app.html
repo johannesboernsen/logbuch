@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#f6f7f9">
+  <title>Make:Log</title>
+  <link rel="icon" href="/favicon.svg?v=20260819-4" type="image/svg+xml">
+  <link rel="stylesheet" href="/styles.css?v=20260820-83">
+</head>
+<body>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <section id="login-view" class="login-shell">
+    <div class="login-copy">
+      <div>
+        <a class="brand login-brand" href="/" aria-label="Make:Log"><img src="/makelog-logo.svg" alt=""></a>
+        <p class="login-pitch">Erfasse Fortschritte, Materialien und die nächste gute Idee.</p>
+      </div>
+    </div>
+    <form id="login-form" class="login-card">
+      <div>
+        <h2>Anmelden</h2>
+      </div>
+      <label>Benutzername<input name="user" autocomplete="username" value="admin" required></label>
+      <label>Passwort<input name="password" type="password" autocomplete="current-password" required></label>
+      <p id="login-error" class="form-error"></p>
+      <button class="button primary login-submit" type="submit">einloggen</button>
+    </form>
+  </section>
+
+  <div id="app" class="app hidden">
+    <aside class="sidebar">
+      <a class="brand" href="/#/" aria-label="Make:Log"><img src="/makelog-logo.svg" alt=""></a>
+      <nav aria-label="Hauptnavigation">
+        <a class="nav-item active" href="/#/" data-route="home"><span aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="8.5"></circle><path d="m8.2 12.2 2.5 2.5 5.4-5.6"></path></svg></span> Übersicht</a>
+        <div class="projects-menu">
+          <button id="projects-toggle" class="nav-item bare" type="button" data-route="projects" aria-expanded="false" aria-controls="projects-subnav"><span data-project-nav-icon aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M12 3 20 7.5v9L12 21l-8-4.5v-9L12 3Z"></path><path d="m4 7.5 8 4.5 8-4.5M12 12v9"></path></svg></span><b>Projekte</b></button>
+          <div id="projects-subnav" class="settings-subnav projects-subnav" hidden>
+            <a href="/#/projects" data-projects-route="all"><span>Alle</span><small class="project-nav-count" data-project-count="all">0</small></a>
+            <a href="/#/projects?status=active" data-projects-route="active"><span>Aktiv</span><small class="project-nav-count" data-project-count="active">0</small></a>
+            <a href="/#/projects?status=paused" data-projects-route="paused"><span>Pausiert</span><small class="project-nav-count" data-project-count="paused">0</small></a>
+            <a href="/#/projects?status=completed" data-projects-route="completed"><span>Abgeschlossen</span><small class="project-nav-count" data-project-count="completed">0</small></a>
+            <span class="projects-subnav-divider" aria-hidden="true"></span>
+            <a href="/#/archive" data-projects-route="archived"><span>Archiviert</span><small class="project-nav-count" data-project-count="archived">0</small></a>
+            <a href="/#/trash" data-projects-route="trashed"><span>Papierkorb</span><small class="project-nav-count" data-project-count="trashed">0</small></a>
+          </div>
+        </div>
+        <div class="settings-menu">
+          <button id="settings-toggle" class="nav-item bare settings-toggle" type="button" data-route="settings" aria-expanded="false" aria-controls="settings-subnav"><span>⚙</span><b>Einstellungen</b></button>
+          <div id="settings-subnav" class="settings-subnav" hidden>
+            <a href="/#/settings/general" data-settings-route="general">Allgemein</a>
+            <a href="/#/settings/tags" data-settings-route="tags" data-admin-setting>Tags</a>
+            <a href="/#/settings/profile" data-settings-route="profile">Profil</a>
+            <a href="/#/settings/users" data-settings-route="users" data-admin-setting>Benutzerverwaltung</a>
+            <a href="/#/settings/data" data-settings-route="data" data-admin-setting>Backup</a>
+            <a href="/#/settings/server" data-settings-route="server" data-admin-setting>Server</a>
+            <a href="/#/settings/security" data-settings-route="security" data-admin-setting>Sicherheit</a>
+            <a href="/#/settings/system" data-settings-route="system" data-admin-setting>System</a>
+          </div>
+        </div>
+        <button id="logout" class="nav-item bare"><span>↪</span> Abmelden</button>
+      </nav>
+      <div class="sidebar-bottom">
+        <div class="device-state"><span class="pulse"></span><div><strong>Make:Log online</strong><small id="device-host">Server</small></div></div>
+      </div>
+    </aside>
+
+    <header class="mobile-header">
+      <a class="brand" href="/#/" aria-label="Make:Log"><img src="/makelog-logo.svg" alt=""></a>
+      <button id="menu-button" class="icon-button" aria-label="Menü öffnen">☰</button>
+    </header>
+
+    <main id="main" tabindex="-1"></main>
+  </div>
+
+  <dialog id="project-dialog">
+    <form id="project-form" method="dialog" novalidate>
+      <input type="hidden" name="projectId">
+      <input type="hidden" name="icon" value="box">
+      <input type="hidden" name="iconInherited" value="1">
+      <div class="dialog-head"><div><h2 id="project-dialog-title">Neues Projekt</h2></div><button class="icon-button" value="cancel" formmethod="dialog" formnovalidate aria-label="Schließen">×</button></div>
+      <label>Projektname<input name="title" maxlength="100" required></label>
+      <label>Beschreibung<textarea name="description" rows="4"></textarea></label>
+      <div class="project-compact-fields"><div class="icon-picker" data-icon-picker="project"></div><label>Startdatum<input name="createdAt" type="date" data-calendar-only required></label><label>Fälligkeit<input name="dueDate" type="date" data-calendar-only></label></div>
+      <div class="project-folder-picker"><label>Ordner<select name="folderId"></select></label><button class="icon-button" type="button" data-new-folder-from-project aria-label="Neuen Ordner anlegen" title="Neuen Ordner anlegen">+</button></div>
+      <div class="project-tag-picker"><div class="tag-picker-label-row"><label>Tags</label></div><div id="project-tag-options" class="tag-picker-options"></div></div>
+      <div class="dialog-actions"><button class="button secondary" value="cancel" formmethod="dialog" formnovalidate>Abbrechen</button><button class="button primary" id="project-submit" type="submit">Speichern</button></div>
+      <section id="project-link-zone" class="dialog-link-section" hidden><strong>Projektlink</strong><div class="dialog-link-row"><a id="project-dialog-link" href="#" target="_blank" rel="noopener"></a><button class="button secondary compact" id="project-dialog-copy" type="button">Kopieren</button></div></section>
+      <section id="project-delete-zone" class="dialog-danger" hidden><div><strong>Projekt löschen</strong><p>Das Projekt wird mit allen Inhalten in den Papierkorb verschoben. Dort kann es wiederhergestellt werden.</p></div><button class="button danger-button" id="project-dialog-delete" type="button">Projekt löschen</button></section>
+    </form>
+  </dialog>
+
+  <dialog id="folder-dialog">
+    <form id="folder-form" method="dialog" novalidate>
+      <input type="hidden" name="folderId">
+      <input type="hidden" name="selectAfterCreate">
+      <input type="hidden" name="icon" value="folder">
+      <div class="dialog-head"><div><h2 id="folder-dialog-title">Neuer Ordner</h2></div><button class="icon-button" type="button" value="cancel" aria-label="Schließen">×</button></div>
+      <label>Name<input name="name" maxlength="100" required></label>
+      <label>Beschreibung<textarea name="description" rows="3"></textarea></label>
+      <div class="icon-picker" data-icon-picker="folder"></div>
+      <label>Übergeordneter Ordner<select name="parentId"></select></label>
+      <div class="dialog-actions"><button class="button secondary" type="button" value="cancel">Abbrechen</button><button class="button primary" type="submit">Speichern</button></div>
+      <section id="folder-delete-zone" class="dialog-danger" hidden><div><strong>Ordner löschen</strong><p id="folder-delete-hint">Ein Ordner kann nur gelöscht werden, wenn er weder Projekte noch Unterordner enthält. Das Löschen kann nicht rückgängig gemacht werden.</p></div><button class="button danger-button" id="folder-dialog-delete" type="button" aria-describedby="folder-delete-hint">Ordner löschen</button></section>
+    </form>
+  </dialog>
+
+  <dialog id="entry-dialog">
+    <form id="entry-form" method="dialog">
+      <input type="hidden" name="projectId">
+      <input type="hidden" name="entryId">
+      <div class="dialog-head"><div><h2 id="entry-dialog-title">Fortschritt festhalten</h2></div><button class="icon-button" value="cancel" formmethod="dialog" formnovalidate aria-label="Schließen">×</button></div>
+      <label>Datum des Arbeitsschritts<input name="date" type="date" required></label>
+      <label>Titel <span class="optional">Optional</span><input name="title" maxlength="100" placeholder="z. B. Halterung montiert"></label>
+      <label><span>Was hast du gemacht? <span class="optional">Optional</span></span><textarea name="body" rows="5" placeholder="Beschreibe Änderungen, Entscheidungen und Ergebnisse …"></textarea></label>
+      <div class="dialog-actions"><button class="button secondary" value="cancel" formmethod="dialog" formnovalidate>Abbrechen</button><button class="button primary" id="entry-submit" type="submit">Arbeitsschritt speichern</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="item-dialog">
+    <form id="item-form" method="dialog">
+      <input type="hidden" name="projectId">
+      <input type="hidden" name="collection">
+      <input type="hidden" name="itemId">
+      <div class="dialog-head"><div><h2 id="item-dialog-title">Projektinhalt anlegen</h2></div><button class="icon-button" value="cancel" formmethod="dialog" formnovalidate aria-label="Schließen">×</button></div>
+      <div id="item-fields" class="item-fields"></div>
+      <div class="dialog-actions"><button class="button secondary" value="cancel" formmethod="dialog" formnovalidate>Abbrechen</button><button class="button primary" id="item-submit" type="submit">Speichern</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="user-dialog">
+    <form id="user-form" method="dialog">
+      <input type="hidden" name="userId">
+      <div class="dialog-head"><div><h2 id="user-dialog-title">Benutzer anlegen</h2></div><button class="icon-button" value="cancel" formmethod="dialog" formnovalidate aria-label="Schließen">×</button></div>
+      <label>Benutzername<input name="id" minlength="3" maxlength="32" pattern="[A-Za-z0-9_-]+" autocomplete="off" placeholder="z. B. mara" required></label>
+      <label>Rolle<select name="role"><option value="editor">Bearbeiter</option><option value="viewer">Leser</option><option value="admin">Administrator</option></select></label>
+      <label><span id="user-password-label">Startpasswort</span><input name="password" type="password" minlength="10" maxlength="128" autocomplete="new-password" required></label>
+      <label class="checkbox-line"><input name="mustChangePassword" type="checkbox" checked><span>Passwortänderung bei der nächsten Anmeldung erzwingen</span></label>
+      <label>Zugriffsmodus<select name="projectAccessMode"><option value="all">Alle Projekte freigeben (auch zukünftige)</option><option value="include">Ausgewählte Projekte freigeben</option><option value="exclude">Ausgewählte Projekte verbergen</option></select></label>
+      <fieldset class="project-access"><legend id="project-access-title">Freigegebene Projekte</legend><p id="project-access-description">Der Benutzer erhält Zugriff auf die ausgewählten Projekte. Administratoren haben immer Zugriff auf alle Projekte.</p><div id="user-projects" class="project-access-list"></div></fieldset>
+      <div class="dialog-actions"><button class="button secondary" value="cancel" formmethod="dialog" formnovalidate>Abbrechen</button><button class="button primary" id="user-submit" type="submit">Benutzer anlegen</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="password-dialog">
+    <form id="password-form" method="dialog">
+      <div class="dialog-head"><div><h2 id="password-dialog-title">Passwort ändern</h2></div><button class="icon-button password-cancel" value="cancel" formmethod="dialog" formnovalidate aria-label="Schließen">×</button></div>
+      <p id="password-dialog-copy" class="dialog-copy">Gib dein aktuelles und anschließend ein neues Passwort ein.</p>
+      <label>Aktuelles Passwort<input name="currentPassword" type="password" autocomplete="current-password" required></label>
+      <label>Neues Passwort<input name="newPassword" type="password" minlength="10" maxlength="128" autocomplete="new-password" required></label>
+      <label>Neues Passwort wiederholen<input name="confirmPassword" type="password" minlength="10" maxlength="128" autocomplete="new-password" required></label>
+      <p id="password-error" class="form-error"></p>
+      <div class="dialog-actions"><button class="button secondary password-cancel" value="cancel" formmethod="dialog" formnovalidate>Abbrechen</button><button class="button primary" type="submit">Passwort speichern</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="tag-dialog">
+    <form id="tag-form" method="dialog">
+      <input type="hidden" name="tagId">
+      <div class="dialog-head"><div><h2 id="tag-dialog-title">Tag anlegen</h2></div><button class="icon-button" value="cancel" formmethod="dialog" formnovalidate aria-label="Schließen">×</button></div>
+      <label>Name<input name="name" minlength="2" maxlength="40" placeholder="z. B. 3D-Druck" required></label>
+      <div class="dialog-actions"><button class="button secondary" value="cancel" formmethod="dialog" formnovalidate>Abbrechen</button><button class="button primary" id="tag-submit" type="submit">Tag anlegen</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="tag-merge-dialog">
+    <form id="tag-merge-form" method="dialog">
+      <input type="hidden" name="sourceId">
+      <div class="dialog-head"><div><h2>Tags zusammenführen</h2></div><button class="icon-button" value="cancel" formmethod="dialog" formnovalidate aria-label="Schließen">×</button></div>
+      <p id="tag-merge-copy" class="dialog-copy"></p>
+      <label>Ziel-Tag<select name="targetId" required></select></label>
+      <p class="dialog-copy">Der bisherige Tag wird an allen aktiven und archivierten Projekten durch den Ziel-Tag ersetzt und anschließend gelöscht.</p>
+      <div class="dialog-actions"><button class="button secondary" value="cancel" formmethod="dialog" formnovalidate>Abbrechen</button><button class="button primary" type="submit">Zusammenführen</button></div>
+    </form>
+  </dialog>
+
+  <script src="/app.js?v=20260820-101" defer></script>
+</body>
+</html>

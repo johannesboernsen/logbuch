@@ -1,0 +1,32 @@
+:root { --brand-red:#e5322c; --contrast-red:#c72c27; font-family:Inter,ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; color:#17191c; background:#f3f4f6; font-synthesis:none; }
+* { box-sizing:border-box; }
+body { margin:0; min-height:100vh; }
+.install-shell { width:min(680px,calc(100% - 32px)); margin:0 auto; padding:72px 0; }
+.brand { display:inline-flex; line-height:0; }
+.brand img { display:block; width:auto; height:clamp(3rem,10vw,5.5rem); }
+.install-shell > header p { margin:18px 0 34px; color:#626873; font-size:1.05rem; }
+.install-card { padding:32px; border:1px solid #dfe2e7; border-radius:18px; background:#fff; box-shadow:0 18px 45px rgba(20,23,28,.08); }
+.step { display:flex; gap:14px; align-items:center; }
+.step > span { display:grid; width:32px; height:32px; flex:0 0 32px; place-items:center; border-radius:50%; background:var(--brand-red); color:#fff; font-weight:750; }
+.step strong,.step small { display:block; }
+.step strong { font-size:1.08rem; }
+.step small,label small { margin-top:3px; color:#727985; font-weight:400; }
+.requirements { margin:18px 0 30px 46px; padding:14px 16px; border-radius:10px; background:#f5f6f8; }
+.requirements p { margin:5px 0; color:#555d68; }
+.requirements .ok { color:#247347; }
+.requirements .fail { color:#b42323; }
+.account { margin-top:30px; }
+form { display:grid; gap:18px; margin-top:26px; }
+label { display:grid; gap:7px; font-size:.9rem; font-weight:650; }
+input,select { width:100%; border:1px solid #cdd2d9; border-radius:9px; background:#fff; padding:11px 12px; color:inherit; font:inherit; }
+input:focus,select:focus { outline:3px solid rgba(199,44,39,.13); border-color:var(--contrast-red); }
+button { justify-self:end; border:0; border-radius:9px; background:var(--brand-red); color:#fff; padding:12px 18px; font:700 .95rem inherit; cursor:pointer; }
+button:hover { background:var(--contrast-red); }
+button:disabled { opacity:.55; cursor:wait; }
+.error { min-height:1.2em; margin:0; color:#b42323; font-size:.9rem; }
+@media(max-width:540px) {
+  .install-shell { padding:38px 0; }
+  .install-card { padding:22px; }
+  .requirements { margin-left:0; }
+  .step { align-items:flex-start; }
+}

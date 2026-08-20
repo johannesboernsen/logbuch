@@ -1,0 +1,13 @@
+services:
+  makelog:
+    build: .
+    container_name: makelog
+    restart: unless-stopped
+    ports:
+      - "${MAKELOG_PORT:-8080}:80"
+    volumes:
+      - ./makelog-data:/var/www/html/storage
+    environment:
+      TZ: ${MAKELOG_TIMEZONE:-Europe/Berlin}
+      MAKELOG_PLATFORM: docker
+
