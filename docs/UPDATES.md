@@ -2,7 +2,7 @@
 
 ## Sicherheitsmodell
 
-Make:Log installiert niemals einen Git-Branch. Der Quellcode liegt im privaten Repository `johannesboernsen/make-log`; öffentlich erreichbar sind ausschließlich die für automatische Updates benötigten, signierten Artefakte im Repository `johannesboernsen/make-log-releases`. Das Release-Manifest wird mit RSA/SHA-256 signiert; erst danach werden Version, PHP-Anforderung, Dateihashes, Webpaket und Docker-Digest ausgewertet.
+Make:Log installiert niemals einen Git-Branch. Quellcode und Release-Artefakte liegen standardmäßig in den privaten Repositorys `johannesboernsen/make-log` und `johannesboernsen/make-log-releases`. Für einen Update-Test wird ausschließlich das Release-Repository vorübergehend öffentlich geschaltet. Das Release-Manifest wird mit RSA/SHA-256 signiert; erst danach werden Version, PHP-Anforderung, Dateihashes, Webpaket und Docker-Digest ausgewertet.
 
 Die Trennung hält Commit-Historie, Branches, Issues und Entwicklung intern. Das ausgelieferte Webpaket enthält zwangsläufig den ausführbaren PHP-Code und ist daher kein Schutz vor Einsicht in die veröffentlichte Programmversion.
 
@@ -13,14 +13,16 @@ Der öffentliche Schlüssel liegt in `config/update-public-key.pem`. Der zugehö
 1. `VERSION` auf die gewünschte semantische Version setzen.
 2. Bei einer Schemaänderung `SCHEMA_VERSION` erhöhen und für jede neue Zahl eine Datei wie `database/migrations/007.sql` hinzufügen. Migrationen dürfen keine eigenen Transaktionsbefehle, `ATTACH`, `DETACH` oder `VACUUM` enthalten.
 3. Änderungen committen und einen passenden Tag pushen, beispielsweise `v0.3.0`.
-4. `.github/workflows/release.yml` führt Tests aus, baut das Web-TAR und ein Multi-Arch-Image, signiert das Manifest, erstellt Attestierungen und veröffentlicht den GitHub Release im öffentlichen Download-Repository.
+4. `.github/workflows/release.yml` führt Tests aus, baut das Web-TAR und ein Multi-Arch-Image, signiert das Manifest, erstellt Attestierungen und veröffentlicht den GitHub Release im separaten Release-Repository.
 
 Dafür benötigt das private Quellcode-Repository zwei Actions-Secrets:
 
 - `UPDATE_SIGNING_PRIVATE_KEY`: privater Signaturschlüssel.
 - `RELEASE_REPOSITORY_TOKEN`: fein abgestuftes GitHub-Token mit Zugriff ausschließlich auf `make-log-releases` und der Repository-Berechtigung **Contents: Read and write**.
 
-Das automatisch bereitgestellte `GITHUB_TOKEN` bleibt auf das private Quellcode-Repository begrenzt und wird nur zum Veröffentlichen des Container-Images und der Attestierungen verwendet. Nach der ersten Veröffentlichung muss das GHCR-Paket `ghcr.io/johannesboernsen/make-log` einmalig auf **Public** gestellt werden, damit Docker-Installationen ohne Registry-Zugangsdaten aktualisieren können. Die Umstellung eines Pakets auf öffentlich ist bei GitHub nicht ohne Weiteres rückgängig zu machen.
+Das automatisch bereitgestellte `GITHUB_TOKEN` bleibt auf das private Quellcode-Repository begrenzt und wird nur zum Veröffentlichen des Container-Images und der Attestierungen verwendet. Solange `make-log-releases` privat ist, erhalten Installationen ohne GitHub-Zugangsdaten bei der Updateprüfung erwartungsgemäß keinen Zugriff. Für einen Webhosting-Test wird das Repository kurzfristig auf **Public** und danach wieder auf **Private** gestellt.
+
+Für einen Docker-Test muss zusätzlich das GHCR-Paket `ghcr.io/johannesboernsen/make-log` anonym abrufbar sein. Anders als die Repository-Sichtbarkeit lässt sich die Umstellung eines GHCR-Pakets auf **Public** bei GitHub nicht einfach wieder auf **Private** zurücksetzen. Dieser Schritt darf deshalb nicht als kurzfristiger Testschalter verwendet werden und erfordert vorab eine bewusste Entscheidung.
 
 Das Webpaket enthält nur Programmdateien. `storage/`, `.env`, Git-Dateien und lokale Update-Sicherungen werden nicht veröffentlicht.
 
