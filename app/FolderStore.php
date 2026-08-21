@@ -59,6 +59,55 @@ final class FolderStore
         return $folder;
     }
 
+    public function saveImported(array $input, string $actor): array
+    {
+        $id = (string) ($input['id'] ?? '');
+        if (!validId($id)) throw new HttpError(422, 'Ungültige Ordnerdaten im Beispieldatensatz.');
+        $name = $this->validName($input['name'] ?? '');
+        $parentId = $this->validParent($input['parentId'] ?? null);
+        if ($parentId === $id || ($parentId !== null && $this->isDescendant($parentId, $id))) {
+            throw new HttpError(422, 'Ein Ordner kann nicht in sich selbst verschoben werden.');
+        }
+        $this->assertUniqueName($name, $parentId, $id);
+        $folder = [
+            'id' => $id,
+            'parentId' => $parentId,
+            'name' => $name,
+            'description' => mb_substr(trim((string) ($input['description'] ?? '')), 0, 1000),
+            'priority' => $this->validPriority($input['priority'] ?? 'Mittel'),
+            'flagged' => $this->validFlag($input['flagged'] ?? false),
+            'icon' => $this->validIcon($input['icon'] ?? 'folder'),
+            'tagIds' => $this->validTagIds($input['tagIds'] ?? []),
+            'createdBy' => $actor,
+            'createdAt' => (string) ($input['createdAt'] ?? nowIso()),
+            'updatedAt' => nowIso(),
+        ];
+        $statement = $this->db->prepare('INSERT INTO folders (id, parent_id, name, description, priority, flagged, icon, tag_ids_json, created_by, created_at, updated_at) VALUES (:id, :parent, :name, :description, :priority, :flagged, :icon, :tags, :actor, :created, :updated) ON CONFLICT(id) DO UPDATE SET parent_id = excluded.parent_id, name = excluded.name, description = excluded.description, priority = excluded.priority, flagged = excluded.flagged, icon = excluded.icon, tag_ids_json = excluded.tag_ids_json, updated_at = excluded.updated_at');
+        $statement->execute(['id' => $id, 'parent' => $parentId, 'name' => $name, 'description' => $folder['description'], 'priority' => $folder['priority'], 'flagged' => (int) $folder['flagged'], 'icon' => $folder['icon'], 'tags' => json_encode($folder['tagIds']), 'actor' => $actor, 'created' => $folder['createdAt'], 'updated' => $folder['updatedAt']]);
+        return $folder;
+    }
+
+    public function removeEmptyByIds(array $ids, array $projects): array
+    {
+        $ids = array_values(array_unique(array_filter($ids, static fn(mixed $id): bool => is_string($id) && validId($id))));
+        $removed = 0;
+        $retained = 0;
+        $hasChild = $this->db->prepare('SELECT 1 FROM folders WHERE parent_id = :id LIMIT 1');
+        $delete = $this->db->prepare('DELETE FROM folders WHERE id = :id');
+        foreach ($ids as $id) {
+            if (!$this->exists($id)) continue;
+            $hasProject = array_filter($projects, static fn(array $project): bool => ($project['folderId'] ?? null) === $id);
+            $hasChild->execute(['id' => $id]);
+            if ($hasProject || $hasChild->fetchColumn()) {
+                ++$retained;
+                continue;
+            }
+            $delete->execute(['id' => $id]);
+            $removed += $delete->rowCount();
+        }
+        return ['removed' => $removed, 'retained' => $retained];
+    }
+
     public function update(string $id, array $input): array
     {
         $folder = $this->get($id);

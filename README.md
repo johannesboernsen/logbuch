@@ -21,7 +21,7 @@ Die Installation ist für klassisches Shared Hosting ausgelegt:
 2. Die Subdomain im Hosting-Menü so einstellen, dass ihr Dokumentenstamm auf `makelog/public/` zeigt.
 3. Sicherstellen, dass PHP 8.2 oder neuer gewählt ist und `storage/` für PHP beschreibbar ist.
 4. Die Subdomain per HTTPS öffnen.
-5. Im Einrichtungsassistenten Instanzname, Zeitzone und Administratorkonto festlegen.
+5. Im Einrichtungsassistenten Instanzname, Zeitzone und Administratorkonto festlegen. Optional können elf Maker-Beispielprojekte mit installiert werden.
 
 Die Datenbank und alle benötigten Ordner werden automatisch angelegt. Der Ordner `storage/` liegt bewusst außerhalb des öffentlichen Dokumentenstamms.
 
@@ -54,7 +54,9 @@ storage/
         ├── materials/
         ├── contacts/
         ├── links/
-        └── ideas/
+        ├── ideas/
+        ├── learnings/
+        └── notes/
 ```
 
 IDs werden beim Umbenennen nicht geändert. Projekt- und Eintragslinks bleiben dadurch stabil. Links in der Oberfläche verwenden relative Pfade; bei einem Serverumzug muss daher nur die Domain beziehungsweise Subdomain weiter auf Make:Log zeigen.
@@ -68,6 +70,8 @@ IDs werden beim Umbenennen nicht geändert. Projekt- und Eintragslinks bleiben d
 - Rollen und Projektfreigaben werden bei jedem API-Aufruf serverseitig geprüft.
 - Sicherheitsheader sperren fremde Frames, externe Skripte und unnötige Browserberechtigungen.
 - Daten werden atomar über temporäre Dateien geschrieben.
+- Release-Manifeste werden kryptografisch geprüft; Webupdates ersetzen ausschließlich einzeln gehashte Programmdateien.
+- Docker-Updates werden vom Host ausgeführt, ohne den Docker-Socket in den Make:Log-Container einzubinden.
 
 Für öffentlich erreichbare Installationen ist HTTPS verpflichtend. PHP, Docker-Image und Make:Log müssen regelmäßig aktualisiert werden. Projekt- und Benutzerbackups sollten außerhalb des Servers aufbewahrt werden.
 
@@ -87,11 +91,18 @@ npm test
 
 Die Tests verwenden einen temporären Datenspeicher und prüfen Installer, Sitzungsschutz, CSRF, Projekt- und Logabläufe, Markdown-Dateien, Papierkorb und Änderungsprotokoll.
 
-## Stand der Migration
+## Funktionsumfang
 
-Der neue PHP-Kern, Installer, Webhosting-Einstieg, Docker-Paket und die zentralen Daten- und Sicherheitsabläufe sind vorhanden. Der reale SMTP-Versand und zeitgesteuerte Backup-Job sind noch nicht angeschlossen; die Oberfläche kennzeichnet diese Funktionen weiterhin als noch nicht ausführbar.
+Der PHP-Kern, Installer, Webhosting-Einstieg, Docker-Paket sowie die zentralen Daten- und Sicherheitsabläufe sind enthalten. Projekt- und Benutzerbackups werden manuell im Browser heruntergeladen und wieder eingespielt. Automatischer E-Mail-Versand gehört nicht zum Funktionsumfang.
 
-Die frühere ESP32-Implementierung bleibt während der Migration als Referenz in `src/`, `include/` und `platformio.ini` erhalten. Sie gehört nicht mehr zur Zielplattform und wird entfernt, sobald alle noch relevanten Alt-Funktionen im neuen Kern abgedeckt sind.
+Der mitgelieferte Beispieldatensatz enthält vier aktive, zwei pausierte, drei abgeschlossene, ein archiviertes und ein gelöschtes Maker-Projekt sowie zwei thematische Projektordner. Administratoren können ihn unter **Einstellungen → System** jederzeit einspielen, zurücksetzen oder vollständig entfernen. Eigene Projekte und Ordner werden dabei nicht gelöscht. Ein Demo-Ordner bleibt erhalten, solange eigene Projekte oder Unterordner darin liegen; ein leerer Demo-Ordner wird entfernt. Inhalte, die nachträglich innerhalb eines Demo-Projekts angelegt wurden, gehören hingegen zu diesem Projekt und werden beim Entfernen der Beispieldaten mitgelöscht.
+
+Sicherheitsprobleme bitte nicht öffentlich diskutieren, sondern gemäß [SECURITY.md](SECURITY.md) vertraulich melden.
 
 Details stehen in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
+## Updates
+
+Administratoren sehen verfügbare Releases unter **Einstellungen → System**. Auf Webhosting kann Make:Log ein signiertes Release nach Passwortbestätigung selbst sichern und installieren. Bei Docker wird eine Update-Anforderung für den optionalen Host-Helfer angelegt; persistente Daten bleiben im Volume.
+
+Releaseprozess, Signierschlüssel, Migrationen und Docker-Helfer sind in [docs/UPDATES.md](docs/UPDATES.md) beschrieben.

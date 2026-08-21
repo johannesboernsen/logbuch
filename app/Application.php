@@ -8,10 +8,13 @@ use PDO;
 
 final class Application
 {
+    private const MAX_JSON_BYTES = 31_457_280;
+
     private readonly PDO $db;
     private readonly Auth $auth;
     private readonly ProjectStore $projects;
     private readonly FolderStore $folders;
+    private readonly UpdateService $updates;
 
     public function __construct(private readonly string $storagePath)
     {
@@ -20,6 +23,7 @@ final class Application
         $this->auth = new Auth($this->db);
         $this->projects = new ProjectStore($storagePath . '/projects');
         $this->folders = new FolderStore($this->db);
+        $this->updates = new UpdateService($storagePath, \makelog_root_path(), $this->db, (string) (getenv('MAKELOG_PLATFORM') ?: 'webhosting'));
     }
 
     public function installed(): bool
@@ -29,9 +33,6 @@ final class Application
 
     public function install(array $input): array
     {
-        if ($this->installed()) {
-            throw new HttpError(409, 'Make:Log ist bereits eingerichtet.');
-        }
         $siteName = trim((string) ($input['siteName'] ?? 'Make:Log'));
         if (mb_strlen($siteName) < 2 || mb_strlen($siteName) > 80) {
             throw new HttpError(422, 'Der Name muss 2–80 Zeichen lang sein.');
@@ -40,11 +41,26 @@ final class Application
         if (!in_array($timezone, timezone_identifiers_list(), true)) {
             throw new HttpError(422, 'Ungültige Zeitzone.');
         }
-        $this->auth->createAdmin((string) ($input['adminUser'] ?? ''), (string) ($input['adminPassword'] ?? ''));
-        $this->setSetting('general', ['siteName' => $siteName, 'timezone' => $timezone, 'baseUrl' => $this->detectedBaseUrl()]);
-        $this->setSetting('smtp', ['host' => '', 'port' => 587, 'security' => 'starttls', 'username' => '', 'password' => '', 'senderName' => $siteName, 'senderEmail' => '', 'testRecipient' => '']);
-        $this->setSetting('backup', ['enabled' => false, 'recipient' => '', 'scope' => 'projects', 'intervalDays' => 7, 'nextRunAt' => 0, 'lastSentAt' => 0, 'lastStatus' => 'Noch nicht ausgeführt']);
-        $this->audit((string) $input['adminUser'], 'system.installed', $siteName);
+        $withDemoData = ($input['demoData'] ?? false) === true;
+        $demo = $withDemoData ? $this->demoManifest() : null;
+        $this->db->exec('BEGIN IMMEDIATE');
+        try {
+            if ($this->installed()) {
+                throw new HttpError(409, 'Make:Log ist bereits eingerichtet.');
+            }
+            $this->auth->createAdmin((string) ($input['adminUser'] ?? ''), (string) ($input['adminPassword'] ?? ''));
+            $this->setSetting('general', ['siteName' => $siteName, 'timezone' => $timezone, 'baseUrl' => $this->detectedBaseUrl()]);
+            if ($demo !== null) {
+                $this->installDemoData((string) $input['adminUser'], $demo);
+            }
+            $this->audit((string) $input['adminUser'], 'system.installed', $siteName);
+            $this->db->commit();
+        } catch (\Throwable $error) {
+            if ($this->db->inTransaction()) {
+                $this->db->rollBack();
+            }
+            throw $error;
+        }
         return ['installed' => true, 'loginUrl' => '/'];
     }
 
@@ -95,6 +111,21 @@ final class Application
             if ($path === '/api/system' && $method === 'GET') {
                 $this->json(200, $this->systemStatus());
             }
+            if ($path === '/api/update/status' && $method === 'GET') {
+                $this->requireAdmin($user);
+                $this->json(200, $this->updates->status(false));
+            }
+            if ($path === '/api/update/check' && $method === 'POST') {
+                $this->requireAdmin($user);
+                $this->json(200, $this->updates->status(true));
+            }
+            if ($path === '/api/update/install' && $method === 'POST') {
+                $this->requireAdmin($user);
+                $this->auth->verifyPassword($user, (string) ($input['password'] ?? ''));
+                $result = $this->updates->install($user['id']);
+                $this->audit($user['id'], 'system.update_requested', (string) ($result['version'] ?? ''), 'platform=' . ($result['platform'] ?? ''));
+                $this->json(202, $result);
+            }
 
             if ($path === '/api/projects' && $method === 'GET') {
                 $visible = array_values(array_filter($this->projects->list(), fn(array $project): bool => $this->canAccess($user, $project['id'])));
@@ -102,7 +133,7 @@ final class Application
             }
             if ($path === '/api/project-browser' && $method === 'GET') {
                 $visible = array_values(array_filter($this->projects->list(), fn(array $project): bool => $this->canAccess($user, $project['id'])));
-                $this->json(200, ['projects' => $visible, 'tags' => $this->tagsFor($user, $visible), 'folders' => $this->folders->list()]);
+                $this->json(200, ['projects' => $visible, 'tags' => $this->tagsFor($user, $visible), 'folders' => $this->visibleFolders($user, $visible)]);
             }
             if ($path === '/api/overview' && $method === 'GET') {
                 $visible = array_values(array_filter($this->projects->overview(), fn(array $project): bool => $this->canAccess($user, $project['id'])));
@@ -111,7 +142,7 @@ final class Application
             }
             if ($path === '/api/projects' && $method === 'POST') {
                 $this->requireEditor($user);
-                $this->assertFolderInput($input);
+                $this->assertFolderInput($user, $input);
                 $project = $this->projects->create($input, $user['id']);
                 if (!$user['admin'] && $user['projectAccessMode'] === 'include') {
                     $this->setUserProject($user['id'], $project['id'], true);
@@ -121,10 +152,12 @@ final class Application
             }
 
             if ($path === '/api/folders' && $method === 'GET') {
-                $this->json(200, ['folders' => $this->folders->list()]);
+                $visible = array_values(array_filter($this->projects->list(), fn(array $project): bool => $this->canAccess($user, $project['id'])));
+                $this->json(200, ['folders' => $this->visibleFolders($user, $visible)]);
             }
             if ($path === '/api/folders' && $method === 'POST') {
                 $this->requireEditor($user);
+                $this->assertParentFolderAccess($user, $input);
                 $folder = $this->folders->create($input, $user['id']);
                 $this->audit($user['id'], 'folder.created', $folder['id']);
                 $this->json(201, $folder);
@@ -132,7 +165,9 @@ final class Application
             if (preg_match('#^/api/folders/([^/]+)$#', $path, $match)) {
                 $this->requireEditor($user);
                 $folderId = rawurldecode($match[1]);
+                $this->requireFolderAccess($user, $folderId);
                 if ($method === 'PATCH') {
+                    $this->assertParentFolderAccess($user, $input);
                     $folder = $this->folders->update($folderId, $input);
                     $this->audit($user['id'], 'folder.updated', $folderId);
                     $this->json(200, $folder);
@@ -155,7 +190,8 @@ final class Application
                 $this->requireProjectAccess($user, $projectId);
                 $project = $this->projects->get($projectId);
                 $project['accessUsers'] = $this->projectUsers($projectId);
-                $this->json(200, ['project' => $project, 'tags' => $this->tagDefinitions(), 'folders' => $this->folders->list()]);
+                $visible = array_values(array_filter($this->projects->list(), fn(array $candidate): bool => $this->canAccess($user, $candidate['id'])));
+                $this->json(200, ['project' => $project, 'tags' => $this->tagsFor($user, $visible), 'folders' => $this->visibleFolders($user, $visible)]);
             }
 
             if (preg_match('#^/api/projects/([^/]+)/permanent$#', $path, $match) && $method === 'DELETE') {
@@ -175,7 +211,7 @@ final class Application
                 }
                 $this->requireProjectEdit($user, $projectId);
                 if ($method === 'PATCH') {
-                    $this->assertFolderInput($input);
+                    $this->assertFolderInput($user, $input);
                     $project = $this->projects->update($projectId, $input);
                     $this->audit($user['id'], 'project.updated', $projectId);
                     $this->json(200, $project);
@@ -310,31 +346,6 @@ final class Application
                 $this->requireAdmin($user);
                 $this->json(200, $this->updateServerSettings($user, $input));
             }
-            if ($path === '/api/settings/smtp' && $method === 'GET') {
-                $this->requireAdmin($user);
-                $this->json(200, $this->publicSmtpSettings());
-            }
-            if ($path === '/api/settings/smtp' && $method === 'PATCH') {
-                $this->requireAdmin($user);
-                $this->json(200, $this->updateSmtpSettings($user, $input));
-            }
-            if ($path === '/api/settings/smtp/test' && $method === 'POST') {
-                $this->requireAdmin($user);
-                $this->json(501, ['error' => 'Der echte SMTP-Versand wird im nächsten Migrationsschritt angebunden.']);
-            }
-            if ($path === '/api/settings/backup' && $method === 'GET') {
-                $this->requireAdmin($user);
-                $this->json(200, $this->getSetting('backup', []));
-            }
-            if ($path === '/api/settings/backup' && $method === 'PATCH') {
-                $this->requireAdmin($user);
-                $this->json(200, $this->updateBackupSettings($user, $input));
-            }
-            if ($path === '/api/settings/backup/send' && $method === 'POST') {
-                $this->requireAdmin($user);
-                $this->json(501, ['error' => 'Der automatische Mailversand wird im nächsten Migrationsschritt angebunden.']);
-            }
-
             if ($path === '/api/backup/users' && $method === 'GET') {
                 $this->requireAdmin($user);
                 $this->json(200, ['accounts' => $this->exportUsers()]);
@@ -354,6 +365,14 @@ final class Application
                 }
                 $this->audit($user['id'], 'data.project_imported', $result['id']);
                 $this->json($result['skipped'] ? 200 : 201, $result);
+            }
+            if ($path === '/api/demo' && $method === 'POST') {
+                $this->requireAdmin($user);
+                $this->json(200, $this->installDemoData($user['id']));
+            }
+            if ($path === '/api/demo' && $method === 'DELETE') {
+                $this->requireAdmin($user);
+                $this->json(200, $this->removeDemoData($user['id']));
             }
             if ($path === '/api/system/content' && $method === 'DELETE') {
                 $this->requireAdmin($user);
@@ -395,9 +414,16 @@ final class Application
 
     private function jsonBody(): array
     {
+        $declaredLength = filter_var($_SERVER['CONTENT_LENGTH'] ?? null, FILTER_VALIDATE_INT);
+        if ($declaredLength !== false && $declaredLength > self::MAX_JSON_BYTES) {
+            throw new HttpError(413, 'Die Anfrage ist zu groß.');
+        }
         $content = file_get_contents('php://input');
         if ($content === false || trim($content) === '') {
             return [];
+        }
+        if (strlen($content) > self::MAX_JSON_BYTES) {
+            throw new HttpError(413, 'Die Anfrage ist zu groß.');
         }
         $decoded = json_decode($content, true);
         if (!is_array($decoded)) {
@@ -406,11 +432,27 @@ final class Application
         return $decoded;
     }
 
-    private function assertFolderInput(array $input): void
+    private function assertFolderInput(array $user, array $input): void
     {
         if (!array_key_exists('folderId', $input) || $input['folderId'] === null || trim((string) $input['folderId']) === '') return;
-        if (!$this->folders->exists((string) $input['folderId'])) {
+        $folderId = (string) $input['folderId'];
+        if (!$this->folders->exists($folderId)) {
             throw new HttpError(422, 'Der ausgewählte Projektordner wurde nicht gefunden.');
+        }
+        $this->requireFolderAccess($user, $folderId);
+    }
+
+    private function assertParentFolderAccess(array $user, array $input): void
+    {
+        $parentId = trim((string) ($input['parentId'] ?? ''));
+        if ($parentId !== '') $this->requireFolderAccess($user, $parentId);
+    }
+
+    private function requireFolderAccess(array $user, string $folderId): void
+    {
+        $projects = array_values(array_filter($this->projects->list(), fn(array $project): bool => $this->canAccess($user, $project['id'])));
+        if (!in_array($folderId, array_column($this->visibleFolders($user, $projects), 'id'), true)) {
+            throw new HttpError(403, 'Kein Zugriff auf diesen Projektordner.');
         }
     }
 
@@ -491,6 +533,33 @@ final class Application
         $this->requireEditor($user);
     }
 
+    private function visibleFolders(array $user, array $projects): array
+    {
+        $folders = $this->folders->list();
+        if ($user['admin'] || $user['projectAccessMode'] === 'all') {
+            return $folders;
+        }
+        $byId = array_column($folders, null, 'id');
+        $visibleIds = [];
+        foreach ($folders as $folder) {
+            if (($folder['createdBy'] ?? '') === $user['id']) {
+                $folderId = (string) $folder['id'];
+                while ($folderId !== '' && isset($byId[$folderId]) && !isset($visibleIds[$folderId])) {
+                    $visibleIds[$folderId] = true;
+                    $folderId = (string) ($byId[$folderId]['parentId'] ?? '');
+                }
+            }
+        }
+        foreach ($projects as $project) {
+            $folderId = (string) ($project['folderId'] ?? '');
+            while ($folderId !== '' && isset($byId[$folderId]) && !isset($visibleIds[$folderId])) {
+                $visibleIds[$folderId] = true;
+                $folderId = (string) ($byId[$folderId]['parentId'] ?? '');
+            }
+        }
+        return array_values(array_filter($folders, static fn(array $folder): bool => isset($visibleIds[$folder['id']])));
+    }
+
     private function updatePreferences(array $user, array $input): array
     {
         $allowed = ['home', 'projects', 'archive'];
@@ -508,18 +577,18 @@ final class Application
         if (isset($input['defaultProjectIcon']) && (!is_string($input['defaultProjectIcon']) || !preg_match('/^[a-z0-9][a-z0-9-]{0,63}$/', $input['defaultProjectIcon']))) {
             throw new HttpError(422, 'Ungültiges Standard-Projektsymbol.');
         }
-        foreach (['showOverviewSummary', 'showOverviewRecent', 'showOverviewNext', 'showOverviewRecentlyEdited', 'showOverviewDueSoon', 'showOverviewHighPriority', 'showOverviewActivity', 'showOverviewTimeline'] as $flag) {
+        foreach (['showOverviewSummary', 'showOverviewRecent', 'showOverviewNext', 'showOverviewRecentlyEdited', 'showOverviewMarked', 'showOverviewDueSoon', 'showOverviewHighPriority', 'showOverviewActivity', 'showOverviewTimeline'] as $flag) {
             if (array_key_exists($flag, $input) && !is_bool($input[$flag])) {
                 throw new HttpError(422, 'Ungültige Übersichts-Einstellung.');
             }
         }
-        foreach (['overviewRecentRows', 'overviewNextRows', 'overviewRecentlyEditedRows', 'overviewDueSoonRows', 'overviewHighPriorityRows'] as $rowSetting) {
+        foreach (['overviewRecentRows', 'overviewNextRows', 'overviewRecentlyEditedRows', 'overviewMarkedRows', 'overviewDueSoonRows', 'overviewHighPriorityRows'] as $rowSetting) {
             if (isset($input[$rowSetting]) && (!is_int($input[$rowSetting]) || $input[$rowSetting] < 1 || $input[$rowSetting] > 6)) {
                 throw new HttpError(422, 'Es können 1–6 Zeilen angezeigt werden.');
             }
         }
         if (array_key_exists('overviewOrder', $input)) {
-            $allowedSections = ['summary', 'recentlyEdited', 'dueSoon', 'highPriority', 'next', 'recent', 'activity', 'timeline'];
+            $allowedSections = ['summary', 'recentlyEdited', 'marked', 'dueSoon', 'highPriority', 'next', 'recent', 'activity', 'timeline'];
             $order = $input['overviewOrder'];
             if (!is_array($order) || count($order) !== count($allowedSections) || count(array_filter($order, 'is_string')) !== count($allowedSections) || count(array_unique($order)) !== count($allowedSections) || array_diff($order, $allowedSections)) {
                 throw new HttpError(422, 'Ungültige Reihenfolge der Übersichtsbereiche.');
@@ -541,14 +610,21 @@ final class Application
     {
         $general = $this->getSetting('general', []);
         $projects = $this->projects->list();
+        $demoManifest = $this->demoManifest();
+        $demoIds = array_column($demoManifest['projects'], 'id');
+        $demoProjectCount = count(array_filter($projects, static fn(array $project): bool => in_array($project['id'], $demoIds, true)));
+        $demoFolderIds = array_column($demoManifest['folders'], 'id');
+        $demoFolderCount = count(array_filter($this->folders->list(), static fn(array $folder): bool => in_array($folder['id'], $demoFolderIds, true)));
         $totalBytes = $this->directorySize($this->storagePath);
         return [
             'hostname' => parse_url($this->detectedBaseUrl(), PHP_URL_HOST) ?: ($_SERVER['HTTP_HOST'] ?? 'localhost'),
             'baseUrl' => $general['baseUrl'] ?? $this->detectedBaseUrl(),
             'platform' => getenv('MAKELOG_PLATFORM') ?: 'webhosting',
-            'version' => '0.2.0-dev',
+            'version' => \makelog_version(),
             'phpVersion' => PHP_VERSION,
             'projectCount' => count($projects),
+            'demoProjectCount' => $demoProjectCount,
+            'demoFolderCount' => $demoFolderCount,
             'storageBytes' => $totalBytes,
             'storageFreeBytes' => @disk_free_space($this->storagePath) ?: 0,
             'database' => 'SQLite ' . ($this->db->query('SELECT sqlite_version()')->fetchColumn() ?: ''),
@@ -767,7 +843,7 @@ final class Application
                 ++$usageByTag[$tagId][$key];
             }
         }
-        foreach ($this->folders->list() as $folder) {
+        foreach ($this->visibleFolders($user, $projects) as $folder) {
             foreach ($folder['tagIds'] ?? [] as $tagId) {
                 $usageByTag[$tagId] ??= ['activeProjectCount' => 0, 'archivedProjectCount' => 0, 'folderCount' => 0];
                 $usageByTag[$tagId]['folderCount'] = ($usageByTag[$tagId]['folderCount'] ?? 0) + 1;
@@ -775,21 +851,14 @@ final class Application
         }
         $tags = [];
         foreach ($this->db->query('SELECT * FROM tags ORDER BY name COLLATE NOCASE')->fetchAll() as $row) {
+            if (!$user['admin'] && !isset($usageByTag[$row['id']])) {
+                continue;
+            }
             $usage = $usageByTag[$row['id']] ?? ['activeProjectCount' => 0, 'archivedProjectCount' => 0, 'folderCount' => 0];
             $usage['folderCount'] ??= 0;
             $tags[] = ['id' => $row['id'], 'name' => $row['name'], 'normalizedName' => $row['normalized_name'], 'createdAt' => $row['created_at'], ...$usage];
         }
         return $tags;
-    }
-
-    private function tagDefinitions(): array
-    {
-        return array_map(static fn(array $row): array => [
-            'id' => $row['id'],
-            'name' => $row['name'],
-            'normalizedName' => $row['normalized_name'],
-            'createdAt' => $row['created_at'],
-        ], $this->db->query('SELECT * FROM tags ORDER BY name COLLATE NOCASE')->fetchAll());
     }
 
     private function createTag(array $actor, string $name): array
@@ -802,12 +871,16 @@ final class Application
         $existing = $this->db->prepare('SELECT id FROM tags WHERE normalized_name = :name');
         $existing->execute(['name' => $normalized]);
         if ($id = $existing->fetchColumn()) {
-            return array_values(array_filter($this->tagsFor($actor), static fn(array $tag): bool => $tag['id'] === $id))[0];
+            $row = $this->db->prepare('SELECT id, name, normalized_name, created_at FROM tags WHERE id = :id');
+            $row->execute(['id' => $id]);
+            $tag = $row->fetch();
+            return ['id' => $tag['id'], 'name' => $tag['name'], 'normalizedName' => $tag['normalized_name'], 'createdAt' => $tag['created_at'], 'activeProjectCount' => 0, 'archivedProjectCount' => 0, 'folderCount' => 0];
         }
         $id = 'tag-' . slug($name) . '-' . bin2hex(random_bytes(2));
-        $this->db->prepare('INSERT INTO tags (id, name, normalized_name, active, created_at) VALUES (:id, :name, :normalized, 1, :created)')->execute(['id' => $id, 'name' => $name, 'normalized' => $normalized, 'created' => nowIso()]);
+        $createdAt = nowIso();
+        $this->db->prepare('INSERT INTO tags (id, name, normalized_name, active, created_at) VALUES (:id, :name, :normalized, 1, :created)')->execute(['id' => $id, 'name' => $name, 'normalized' => $normalized, 'created' => $createdAt]);
         $this->audit($actor['id'], 'tag.created', $name);
-        return array_values(array_filter($this->tagsFor($actor), static fn(array $tag): bool => $tag['id'] === $id))[0];
+        return ['id' => $id, 'name' => $name, 'normalizedName' => $normalized, 'createdAt' => $createdAt, 'activeProjectCount' => 0, 'archivedProjectCount' => 0, 'folderCount' => 0];
     }
 
     private function updateTag(array $actor, string $id, array $input): array
@@ -914,65 +987,6 @@ final class Application
         return ['saved' => true, ...$this->serverSettings()];
     }
 
-    private function publicSmtpSettings(): array
-    {
-        $smtp = $this->getSetting('smtp', []);
-        return [
-            'host' => $smtp['host'] ?? '',
-            'port' => $smtp['port'] ?? 587,
-            'security' => $smtp['security'] ?? 'starttls',
-            'username' => $smtp['username'] ?? '',
-            'passwordSet' => !empty($smtp['password']),
-            'senderName' => $smtp['senderName'] ?? 'Make:Log',
-            'senderEmail' => $smtp['senderEmail'] ?? '',
-            'testRecipient' => $smtp['testRecipient'] ?? '',
-            'rootCa' => '',
-            'configured' => !empty($smtp['host']) && !empty($smtp['password']) && !empty($smtp['senderEmail']),
-        ];
-    }
-
-    private function updateSmtpSettings(array $actor, array $input): array
-    {
-        $current = $this->getSetting('smtp', []);
-        $host = trim((string) ($input['host'] ?? ''));
-        $port = (int) ($input['port'] ?? 587);
-        $security = (string) ($input['security'] ?? 'starttls');
-        $senderEmail = trim((string) ($input['senderEmail'] ?? ''));
-        $testRecipient = trim((string) ($input['testRecipient'] ?? ''));
-        if ($host === '' || $port < 1 || $port > 65535 || !in_array($security, ['tls', 'starttls'], true) || !filter_var($senderEmail, FILTER_VALIDATE_EMAIL) || !filter_var($testRecipient, FILTER_VALIDATE_EMAIL)) {
-            throw new HttpError(422, 'Die SMTP-Konfiguration ist unvollständig.');
-        }
-        $smtp = [
-            'host' => $host,
-            'port' => $port,
-            'security' => $security,
-            'username' => trim((string) ($input['username'] ?? '')),
-            'password' => (string) ($input['password'] ?? '') ?: ($current['password'] ?? ''),
-            'senderName' => trim((string) ($input['senderName'] ?? 'Make:Log')),
-            'senderEmail' => $senderEmail,
-            'testRecipient' => $testRecipient,
-        ];
-        $this->setSetting('smtp', $smtp);
-        $this->audit($actor['id'], 'smtp.settings_updated', $host);
-        return ['saved' => true, 'configured' => $smtp['password'] !== ''];
-    }
-
-    private function updateBackupSettings(array $actor, array $input): array
-    {
-        $recipient = trim((string) ($input['recipient'] ?? ''));
-        $scope = (string) ($input['scope'] ?? 'projects');
-        $days = (int) ($input['intervalDays'] ?? 7);
-        if (!filter_var($recipient, FILTER_VALIDATE_EMAIL) || !in_array($scope, ['projects', 'users', 'both'], true) || $days < 1 || $days > 365) {
-            throw new HttpError(422, 'Ungültiger Backup-Zeitplan.');
-        }
-        $current = $this->getSetting('backup', []);
-        $enabled = (bool) ($input['enabled'] ?? false);
-        $settings = array_replace($current, ['enabled' => $enabled, 'recipient' => $recipient, 'scope' => $scope, 'intervalDays' => $days, 'nextRunAt' => $enabled ? time() + $days * 86400 : 0]);
-        $this->setSetting('backup', $settings);
-        $this->audit($actor['id'], 'backup.schedule_updated', $enabled ? 'aktiv' : 'inaktiv');
-        return ['saved' => true, 'nextRunAt' => $settings['nextRunAt']];
-    }
-
     private function exportUsers(): array
     {
         $accounts = [];
@@ -997,13 +1011,17 @@ final class Application
     private function importUsers(array $actor, array $input): array
     {
         $accounts = $input['accounts'] ?? null;
-        if (!is_array($accounts) || !$accounts) {
+        if (!is_array($accounts) || !$accounts || count($accounts) > 500) {
             throw new HttpError(422, 'Ungültige Benutzerkonten im Backup.');
         }
         $imported = 0;
         $skipped = 0;
         foreach ($accounts as $account) {
-            if (!is_array($account) || !preg_match('/^[A-Za-z0-9._-]{3,40}$/', (string) ($account['id'] ?? '')) || !in_array(($account['role'] ?? ''), ['admin', 'editor', 'viewer'], true) || !password_get_info((string) ($account['passwordHash'] ?? ''))['algo']) {
+            if (!is_array($account)) {
+                throw new HttpError(422, 'Ungültige Benutzerkonten im Backup.');
+            }
+            $passwordInfo = password_get_info((string) ($account['passwordHash'] ?? ''));
+            if (!preg_match('/^[A-Za-z0-9._-]{3,40}$/', (string) ($account['id'] ?? '')) || !in_array(($account['role'] ?? ''), ['admin', 'editor', 'viewer'], true) || !in_array(($account['projectAccessMode'] ?? ''), ['include', 'exclude', 'all'], true) || ($passwordInfo['algoName'] ?? 'unknown') !== 'argon2id') {
                 throw new HttpError(422, 'Ungültige Benutzerkonten im Backup.');
             }
             $id = $account['id'];
@@ -1037,6 +1055,102 @@ final class Application
             }
             $this->db->prepare('INSERT OR IGNORE INTO tags (id, name, normalized_name, active, created_at) VALUES (:id, :name, :normalized, 1, :created)')->execute(['id' => $tag['id'], 'name' => $name, 'normalized' => normalizeName($name), 'created' => $tag['createdAt'] ?? nowIso()]);
         }
+    }
+
+    private function demoManifest(): array
+    {
+        $path = dirname(__DIR__) . '/public/demo-data.json';
+        $demo = readJsonFile($path);
+        if (($demo['format'] ?? '') !== 'make-log-demo' || ($demo['version'] ?? null) !== 1 || !is_array($demo['tags'] ?? null) || !is_array($demo['folders'] ?? null) || !is_array($demo['projects'] ?? null)) {
+            throw new \RuntimeException('Der mitgelieferte Beispieldatensatz ist ungültig.');
+        }
+        $folderIds = [];
+        foreach ($demo['folders'] as $folder) {
+            $id = is_array($folder) ? (string) ($folder['id'] ?? '') : '';
+            if (!str_starts_with($id, 'demo-folder-') || !validId($id) || isset($folderIds[$id])) {
+                throw new \RuntimeException('Der mitgelieferte Beispieldatensatz enthält ungültige Ordner.');
+            }
+            $folderIds[$id] = true;
+        }
+        if (count($folderIds) !== 2) {
+            throw new \RuntimeException('Der mitgelieferte Beispieldatensatz hat einen unerwarteten Ordnerumfang.');
+        }
+        $statusCounts = array_fill_keys(['active', 'paused', 'completed', 'archived', 'trashed'], 0);
+        $ids = [];
+        foreach ($demo['projects'] as $project) {
+            $id = is_array($project) ? (string) ($project['id'] ?? '') : '';
+            $status = is_array($project) ? (string) ($project['status'] ?? '') : '';
+            if (!str_starts_with($id, 'demo-') || !validId($id) || isset($ids[$id]) || !array_key_exists($status, $statusCounts)) {
+                throw new \RuntimeException('Der mitgelieferte Beispieldatensatz ist ungültig.');
+            }
+            foreach (ProjectStore::COLLECTIONS as $collection) {
+                if (!is_array($project[$collection] ?? null)) {
+                    throw new \RuntimeException('Der mitgelieferte Beispieldatensatz ist unvollständig.');
+                }
+            }
+            $folderId = $project['folderId'] ?? null;
+            if ($folderId !== null && !isset($folderIds[$folderId])) {
+                throw new \RuntimeException('Der mitgelieferte Beispieldatensatz verweist auf einen unbekannten Ordner.');
+            }
+            $ids[$id] = true;
+            ++$statusCounts[$status];
+        }
+        if (count($ids) !== 11 || $statusCounts !== ['active' => 4, 'paused' => 2, 'completed' => 3, 'archived' => 1, 'trashed' => 1]) {
+            throw new \RuntimeException('Der mitgelieferte Beispieldatensatz hat einen unerwarteten Umfang.');
+        }
+        return $demo;
+    }
+
+    private function installDemoData(string $actorId, ?array $demo = null): array
+    {
+        $demo ??= $this->demoManifest();
+        $this->importTagDefinitions($demo['tags']);
+        $tagIds = [];
+        $findTag = $this->db->prepare('SELECT id FROM tags WHERE normalized_name = :name');
+        foreach ($demo['tags'] as $tag) {
+            $findTag->execute(['name' => normalizeName((string) $tag['name'])]);
+            $tagIds[(string) $tag['id']] = (string) ($findTag->fetchColumn() ?: $tag['id']);
+        }
+        foreach ($demo['folders'] as $folder) {
+            $folder['tagIds'] = array_values(array_unique(array_map(static fn(string $id): string => $tagIds[$id] ?? $id, (array) ($folder['tagIds'] ?? []))));
+            $this->folders->saveImported($folder, $actorId);
+        }
+        foreach ($demo['projects'] as $project) {
+            $project['tagIds'] = array_values(array_unique(array_map(static fn(string $id): string => $tagIds[$id] ?? $id, (array) ($project['tagIds'] ?? []))));
+            $this->projects->saveImported($project, true);
+        }
+        $count = count($demo['projects']);
+        $this->audit($actorId, 'demo.installed', (string) $count);
+        return ['installed' => $count, 'folders' => count($demo['folders'])];
+    }
+
+    private function removeDemoData(string $actorId): array
+    {
+        $demo = $this->demoManifest();
+        $projectIds = array_column($demo['projects'], 'id');
+        $folderIds = array_column($demo['folders'], 'id');
+        $removed = $this->projects->removeByIds($projectIds);
+        if ($projectIds) {
+            $placeholders = implode(',', array_fill(0, count($projectIds), '?'));
+            $this->db->prepare("DELETE FROM user_projects WHERE project_id IN ($placeholders)")->execute($projectIds);
+        }
+        $folderResult = $this->folders->removeEmptyByIds($folderIds, $this->projects->list());
+
+        $usedTagIds = [];
+        foreach ([...$this->projects->list(), ...$this->folders->list()] as $item) {
+            foreach ((array) ($item['tagIds'] ?? []) as $tagId) {
+                $usedTagIds[$tagId] = true;
+            }
+        }
+        $deleteTag = $this->db->prepare('DELETE FROM tags WHERE id = :id');
+        foreach ($demo['tags'] as $tag) {
+            $tagId = (string) ($tag['id'] ?? '');
+            if (validId($tagId) && !isset($usedTagIds[$tagId])) {
+                $deleteTag->execute(['id' => $tagId]);
+            }
+        }
+        $this->audit($actorId, 'demo.removed', (string) $removed);
+        return ['removed' => $removed, 'foldersRemoved' => $folderResult['removed'], 'foldersRetained' => $folderResult['retained']];
     }
 
     private function clearUsersExcept(string $id): int

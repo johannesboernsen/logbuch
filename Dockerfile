@@ -1,4 +1,4 @@
-FROM php:8.4-apache
+FROM php:8.4-apache@sha256:5f8050825b2f3de4efb0d81149c86643a9ee9c0a74ed4595ca2ad69ebfeb35fb
 
 RUN a2enmod headers rewrite \
     && printf 'ServerName localhost\n' > /etc/apache2/conf-available/servername.conf \
@@ -12,6 +12,9 @@ COPY docker/apache-vhost.conf /etc/apache2/sites-available/000-default.conf
 COPY docker/entrypoint.sh /usr/local/bin/makelog-entrypoint
 COPY app /var/www/html/app
 COPY public /var/www/html/public
+COPY config /var/www/html/config
+COPY database /var/www/html/database
+COPY VERSION SCHEMA_VERSION /var/www/html/
 COPY storage/.htaccess /var/www/html/storage/.htaccess
 
 RUN chmod +x /usr/local/bin/makelog-entrypoint \

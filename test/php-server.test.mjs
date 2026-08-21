@@ -51,7 +51,7 @@ test('Installer prüft die Umgebung und legt genau einen Admin an', async () => 
   assert.equal(status.data.ready, true);
   assert.equal(status.data.installed, false);
 
-  const installed = await request('/api/install', { method: 'POST', body: JSON.stringify({ siteName: 'Make:Log Test', timezone: 'Europe/Berlin', adminUser: 'admin', adminPassword: 'ein-langes-Testpasswort' }) });
+  const installed = await request('/api/install', { method: 'POST', body: JSON.stringify({ siteName: 'Make:Log Test', timezone: 'Europe/Berlin', adminUser: 'admin', adminPassword: 'ein-langes-Testpasswort', demoData: false }) });
   assert.equal(installed.response.status, 201);
   const repeated = await request('/api/install', { method: 'POST', body: JSON.stringify({ siteName: 'Zweites Make:Log', timezone: 'UTC', adminUser: 'other', adminPassword: 'ein-anderes-Testpasswort' }) });
   assert.equal(repeated.response.status, 409);
@@ -77,6 +77,69 @@ test('Schreibzugriffe werden ohne korrektes CSRF-Token abgewiesen', async () => 
   assert.equal(invalid.response.status, 403);
 });
 
+test('Beispieldaten lassen sich unabhängig von eigenen Projekten verwalten', async () => {
+  const existingTag = await request('/api/tags', { method: 'POST', body: JSON.stringify({ name: 'Elektronik' }) });
+  assert.equal(existingTag.response.status, 201);
+
+  const ownProject = await request('/api/projects', { method: 'POST', body: JSON.stringify({ title: 'Mein eigenes Netzteil', createdAt: '2026-08-20', tagIds: [existingTag.data.id] }) });
+  assert.equal(ownProject.response.status, 201);
+
+  const installed = await request('/api/demo', { method: 'POST' });
+  assert.equal(installed.response.status, 200);
+  assert.equal(installed.data.installed, 11);
+  assert.equal(installed.data.folders, 2);
+
+  const list = await request('/api/projects');
+  const demoProjects = list.data.projects.filter(project => project.id.startsWith('demo-'));
+  assert.equal(demoProjects.length, 11);
+  assert.deepEqual(Object.fromEntries(['active', 'paused', 'completed', 'archived', 'trashed'].map(status => [status, demoProjects.filter(project => project.status === status).length])), { active: 4, paused: 2, completed: 3, archived: 1, trashed: 1 });
+  const regularDemoProjects = demoProjects.filter(project => ['active', 'paused', 'completed'].includes(project.status));
+  assert.equal(regularDemoProjects.filter(project => project.folderId === null).length, 4);
+  assert.equal(regularDemoProjects.filter(project => project.folderId === 'demo-folder-elektronik').length, 3);
+  assert.equal(regularDemoProjects.filter(project => project.folderId === 'demo-folder-werkstatt').length, 2);
+
+  const demoProject = await request('/api/projects/demo-loetstation-absaugung');
+  assert.equal(demoProject.response.status, 200);
+  assert.ok(demoProject.data.tasks.length >= 2);
+  assert.ok(demoProject.data.materials.length >= 1);
+  assert.ok(demoProject.data.tagIds.includes(existingTag.data.id));
+  assert.equal(demoProject.data.folderId, 'demo-folder-elektronik');
+
+  const demoFolders = await request('/api/folders');
+  assert.equal(demoFolders.data.folders.filter(folder => folder.id.startsWith('demo-folder-')).length, 2);
+  assert.deepEqual(demoFolders.data.folders.filter(folder => folder.id.startsWith('demo-folder-')).map(folder => folder.name).sort(), ['Elektronik', 'Holzwerken']);
+
+  const ownChildFolder = await request('/api/folders', { method: 'POST', body: JSON.stringify({ name: 'Mein Unterordner', description: 'Soll erhalten bleiben.', parentId: 'demo-folder-elektronik' }) });
+  assert.equal(ownChildFolder.response.status, 201);
+  const ownProjectInDemoFolder = await request(`/api/projects/${ownProject.data.id}`, { method: 'PATCH', body: JSON.stringify({ folderId: 'demo-folder-elektronik' }) });
+  assert.equal(ownProjectInDemoFolder.data.folderId, 'demo-folder-elektronik');
+
+  const extraNote = await request('/api/projects/demo-loetstation-absaugung/notes', { method: 'POST', body: JSON.stringify({ title: 'Eigene Ergänzung', description: 'Soll mit dem Demo-Projekt verschwinden.' }) });
+  assert.equal(extraNote.response.status, 201);
+
+  const removed = await request('/api/demo', { method: 'DELETE' });
+  assert.equal(removed.response.status, 200);
+  assert.equal(removed.data.removed, 11);
+  assert.equal(removed.data.foldersRemoved, 1);
+  assert.equal(removed.data.foldersRetained, 1);
+  assert.equal((await request('/api/projects/demo-loetstation-absaugung')).response.status, 404);
+  assert.equal((await request(`/api/projects/${ownProject.data.id}`)).data.folderId, 'demo-folder-elektronik');
+  const foldersAfterRemoval = (await request('/api/folders')).data.folders;
+  assert.equal(foldersAfterRemoval.find(folder => folder.id === ownChildFolder.data.id)?.parentId, 'demo-folder-elektronik');
+  assert.ok(foldersAfterRemoval.some(folder => folder.id === 'demo-folder-elektronik'));
+  assert.ok(!foldersAfterRemoval.some(folder => folder.id === 'demo-folder-werkstatt'));
+  assert.ok((await request('/api/project-browser')).data.tags.some(tag => tag.id === existingTag.data.id));
+  assert.equal((await request('/api/system')).data.demoProjectCount, 0);
+  assert.equal((await request('/api/system')).data.demoFolderCount, 1);
+
+  await request(`/api/projects/${ownProject.data.id}`, { method: 'PATCH', body: JSON.stringify({ folderId: null }) });
+  assert.equal((await request(`/api/folders/${ownChildFolder.data.id}`, { method: 'DELETE' })).response.status, 204);
+  const removedEmptyFolder = await request('/api/demo', { method: 'DELETE' });
+  assert.equal(removedEmptyFolder.data.foldersRemoved, 1);
+  assert.equal(removedEmptyFolder.data.foldersRetained, 0);
+  assert.equal((await request('/api/system')).data.demoFolderCount, 0);
+});
+
 test('Übersichtsbereiche werden in Zeilen konfiguriert', async () => {
   const invalid = await request('/api/account/preferences', { method: 'PATCH', body: JSON.stringify({ overviewNextRows: 7 }) });
   assert.equal(invalid.response.status, 422);
@@ -85,13 +148,14 @@ test('Übersichtsbereiche werden in Zeilen konfiguriert', async () => {
   const invalidSort = await request('/api/account/preferences', { method: 'PATCH', body: JSON.stringify({ projectSort: 'zufall:asc' }) });
   assert.equal(invalidSort.response.status, 422);
 
-  const overviewOrder = ['recentlyEdited', 'dueSoon', 'highPriority', 'summary', 'next', 'recent', 'activity', 'timeline'];
-  const updated = await request('/api/account/preferences', { method: 'PATCH', body: JSON.stringify({ projectSort:'dueDate:asc', archiveSort:'title:asc', defaultProjectIcon:'rocket', showOverviewNext: true, showOverviewRecentlyEdited: true, showOverviewDueSoon: true, showOverviewHighPriority: true, overviewRecentRows: 3, overviewNextRows: 2, overviewRecentlyEditedRows: 1, overviewDueSoonRows: 2, overviewHighPriorityRows: 1, overviewOrder }) });
+  const overviewOrder = ['recentlyEdited', 'marked', 'dueSoon', 'highPriority', 'summary', 'next', 'recent', 'activity', 'timeline'];
+  const updated = await request('/api/account/preferences', { method: 'PATCH', body: JSON.stringify({ projectSort:'dueDate:asc', archiveSort:'title:asc', defaultProjectIcon:'rocket', showOverviewNext: true, showOverviewRecentlyEdited: true, showOverviewMarked: true, showOverviewDueSoon: true, showOverviewHighPriority: true, overviewRecentRows: 3, overviewNextRows: 2, overviewRecentlyEditedRows: 1, overviewMarkedRows: 1, overviewDueSoonRows: 2, overviewHighPriorityRows: 1, overviewOrder }) });
   assert.equal(updated.response.status, 200);
   assert.equal(updated.data.showOverviewNext, true);
   assert.equal(updated.data.overviewRecentRows, 3);
   assert.equal(updated.data.overviewNextRows, 2);
   assert.equal(updated.data.overviewRecentlyEditedRows, 1);
+  assert.equal(updated.data.overviewMarkedRows, 1);
   assert.equal(updated.data.overviewDueSoonRows, 2);
   assert.equal(updated.data.overviewHighPriorityRows, 1);
   assert.equal(updated.data.projectSort, 'dueDate:asc');
@@ -137,15 +201,27 @@ test('Projekt, Aufgabe und Log werden per API und als offene Dateien gespeichert
   assert.equal(project.data.dueDate, '2026-09-30');
   projectId = project.data.id;
 
-  const task = await request(`/api/projects/${projectId}/tasks`, { method: 'POST', body: JSON.stringify({ title: 'Beine montieren', description: 'Mit M8 verschrauben' }) });
+  const task = await request(`/api/projects/${projectId}/tasks`, { method: 'POST', body: JSON.stringify({ title: 'Beine montieren', description: 'Mit M8 verschrauben', flagged: true }) });
   assert.equal(task.response.status, 201);
   assert.match(task.data.id, /^task-/);
+  assert.equal(task.data.flagged, true);
 
-  const updatedTask = await request(`/api/projects/${projectId}/tasks/${task.data.id}`, { method: 'PATCH', body: JSON.stringify({ status: 'In Arbeit', priority: 'Niedrig', dueDate: '' }) });
+  const protectedFields = await request(`/api/projects/${projectId}/materials`, { method: 'POST', body: JSON.stringify({ id:task.data.id, name:'Schrauben', author:'gefälscht', createdAt:'2000-01-01', unexpected:'nicht speichern' }) });
+  assert.equal(protectedFields.response.status, 201);
+  assert.match(protectedFields.data.id, /^material-/);
+  assert.notEqual(protectedFields.data.id, task.data.id);
+  assert.equal(protectedFields.data.author, 'admin');
+  assert.notEqual(protectedFields.data.createdAt, '2000-01-01');
+  assert.equal('unexpected' in protectedFields.data, false);
+
+  const updatedTask = await request(`/api/projects/${projectId}/tasks/${task.data.id}`, { method: 'PATCH', body: JSON.stringify({ status: 'In Arbeit', priority: 'Niedrig', dueDate: '', flagged: false }) });
   assert.equal(updatedTask.response.status, 200);
   assert.equal(updatedTask.data.status, 'In Arbeit');
   assert.equal(updatedTask.data.priority, 'Niedrig');
   assert.equal(updatedTask.data.dueDate, '');
+  assert.equal(updatedTask.data.flagged, false);
+  const invalidTaskFlag = await request(`/api/projects/${projectId}/tasks/${task.data.id}`, { method: 'PATCH', body: JSON.stringify({ flagged: 'ja' }) });
+  assert.equal(invalidTaskFlag.response.status, 422);
   const invalidTaskPriority = await request(`/api/projects/${projectId}/tasks/${task.data.id}`, { method: 'PATCH', body: JSON.stringify({ priority: 'Sofort' }) });
   assert.equal(invalidTaskPriority.response.status, 422);
 
@@ -276,6 +352,9 @@ test('Logs erscheinen im administrativen Protokoll', async () => {
 });
 
 test('Rollen und Positivlisten werden auch bei direktem API-Zugriff erzwungen', async () => {
+  const privateTag = await request('/api/tags', { method: 'POST', body: JSON.stringify({ name: 'Nur intern' }) });
+  const privateFolder = await request('/api/folders', { method: 'POST', body: JSON.stringify({ name: 'Interner Ordner', description: 'Vertrauliche Struktur', tagIds:[privateTag.data.id] }) });
+  await request(`/api/projects/${projectId}`, { method: 'PATCH', body: JSON.stringify({ folderId:privateFolder.data.id, tagIds:[privateTag.data.id] }) });
   const created = await request('/api/users', { method: 'POST', body: JSON.stringify({ id: 'leser', role: 'viewer', password: 'langes-leser-passwort', mustChangePassword: false, projectAccessMode: 'include', projectIds: [] }) });
   assert.equal(created.response.status, 201);
 
@@ -291,6 +370,8 @@ test('Rollen und Positivlisten werden auch bei direktem API-Zugriff erzwungen', 
   assert.deepEqual(overview.data.projects, []);
   const browserData = await request('/api/project-browser');
   assert.deepEqual(browserData.data.projects, []);
+  assert.deepEqual(browserData.data.folders, []);
+  assert.deepEqual(browserData.data.tags, []);
   const direct = await request(`/api/projects/${projectId}`);
   assert.equal(direct.response.status, 403);
   assert.equal((await request(`/api/project-view/${projectId}`)).response.status, 403);

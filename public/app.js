@@ -1,5 +1,5 @@
 const $ = (selector, root = document) => root.querySelector(selector);
-const state = { user: null, users: [], sessions: [], audit: [], tags: [], folders: [], iconLibrary:null, currentFolderId:null, projectStatusFilter:'all', server: null, system: null, smtp: null, backupSchedule: null, projects: [], current: null, activeTab: 'entries', activeSettings:'general', activityObserver:null, timelineObserver:null, overviewGridObservers:[], projectSort: { field:'status', direction:'asc' }, archiveSort: { field:'createdAt', direction:'desc' }, projectSearch: { active:'', archived:'' }, projectTagFilter:{ active:{ ids:[], mode:'all' }, archived:{ ids:[], mode:'all' } }, projectDialogTagIds:[], projectTagDraftOpen:false, projectTagSearchOpen:false, collapsedLogSections:{ tasks:false, entries:false } };
+const state = { user: null, users: [], sessions: [], audit: [], tags: [], folders: [], iconLibrary:null, currentFolderId:null, projectStatusFilter:'all', server: null, system: null, update:null, projects: [], current: null, activeTab: 'entries', activeSettings:'general', activityObserver:null, timelineObserver:null, overviewGridObservers:[], projectSort: { field:'status', direction:'asc' }, archiveSort: { field:'createdAt', direction:'desc' }, projectSearch: { active:'', archived:'' }, projectTagFilter:{ active:{ ids:[], mode:'all' }, archived:{ ids:[], mode:'all' } }, projectDialogTagIds:[], projectTagDraftOpen:false, projectTagSearchOpen:false, collapsedLogSections:{ tasks:false, entries:false } };
 let iconLibraryPromise = null;
 const api = async (path, options = {}) => {
   const method = (options.method || 'GET').toUpperCase();
@@ -183,6 +183,9 @@ const projectFlagControl = project => mayEditProjects()
 const folderFlagControl = folder => mayEditProjects()
   ? `<button class="project-flag-toggle${folder.flagged === true ? ' active' : ''}" type="button" data-folder-flag="${escapeHtml(folder.id)}" data-flagged="${folder.flagged === true}" aria-pressed="${folder.flagged === true}" aria-label="${folder.flagged === true ? 'Fähnchen entfernen' : 'Fähnchen setzen'}" title="${folder.flagged === true ? 'Fähnchen entfernen' : 'Fähnchen setzen'}">${projectFlagIcon()}</button>`
   : folder.flagged === true ? `<span class="project-flag-indicator" aria-label="Ordner ist markiert" title="Ordner ist markiert">${projectFlagIcon()}</span>` : '';
+const taskFlagControl = task => mayEditProjects()
+  ? `<button class="project-flag-toggle${task.flagged === true ? ' active' : ''}" type="button" data-task-flag="${escapeHtml(task.id)}" data-flagged="${task.flagged === true}" aria-pressed="${task.flagged === true}" aria-label="${task.flagged === true ? 'Markierung des Arbeitsschritts entfernen' : 'Arbeitsschritt markieren'}" title="${task.flagged === true ? 'Markierung entfernen' : 'Arbeitsschritt markieren'}">${projectFlagIcon()}</button>`
+  : task.flagged === true ? `<span class="project-flag-indicator" aria-label="Arbeitsschritt ist markiert" title="Arbeitsschritt ist markiert">${projectFlagIcon()}</span>` : '';
 const safeUrl = value => { try { const url = new URL(value); return ['http:','https:'].includes(url.protocol) ? url.href : '#'; } catch { return '#'; } };
 const mayEditProjects = () => state.user?.admin || state.user?.role === 'editor';
 const sections = {
@@ -239,6 +242,7 @@ function showApp(afterLogin = false) {
   $('#app').classList.remove('hidden');
   $('#device-host').textContent = location.host;
   document.querySelectorAll('[data-admin-setting]').forEach(node => node.hidden = !state.user.admin);
+  if (state.user.admin && !state.user.mustChangePassword) loadUpdateStatus().catch(() => {});
   if (state.user.mustChangePassword) {
     history.replaceState(null, '', '/#/settings/profile');
     route().then(() => openPasswordDialog(true));
@@ -608,45 +612,64 @@ function recentEntryCard(project) {
 }
 
 function nextTaskCard({ project, task }) {
-  const description = task.description || 'Keine zusätzliche Beschreibung.';
-  const meta = task.dueDate ? `Fällig am: ${formatDate(task.dueDate)}` : `Priorität: ${escapeHtml(task.priority || 'Normal')}`;
-  return `<a class="project-card" data-overview-card href="/#/projects/${encodeURIComponent(project.id)}">
-    <h3>${escapeHtml(project.title)}</h3>
-    <p><strong class="recent-entry-title">${escapeHtml(task.title || 'Arbeitsschritt')}</strong><span>${escapeHtml(description)}</span></p>
-    <div class="project-meta">${meta}</div>
-  </a>`;
+  return overviewTaskCard(project, task);
 }
 
 function recentlyEditedProjectCard(project) {
   return `<a class="project-card overview-project-card" data-overview-card href="/#/projects/${encodeURIComponent(project.id)}">
     <span class="overview-card-kicker">Projekt</span>
-    <h3>${escapeHtml(project.title)}</h3>
-    <p>${escapeHtml(project.description || 'Noch keine Beschreibung hinterlegt.')}</p>
+    <div class="overview-project-heading"><span class="project-entity-icon overview-project-icon" aria-hidden="true">${iconSvg(projectIconName(project))}</span><h3>${escapeHtml(project.title)}</h3></div>
+    <p class="overview-project-description">${escapeHtml(project.description || 'Noch keine Beschreibung hinterlegt.')}</p>
     <div class="project-meta">Zuletzt bearbeitet: ${escapeHtml(formatDateTime(project.lastActivityAt || project.updatedAt || project.createdAt))}</div>
   </a>`;
 }
 
+function overviewCompleteButton(project, task) {
+  return `<button class="status-action complete-action overview-complete-action" type="button" data-overview-complete-task="${escapeHtml(task.id)}" data-overview-project="${escapeHtml(project.id)}" aria-label="${escapeHtml(task.title || 'Arbeitsschritt')} als erledigt loggen" title="Als erledigt loggen"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="m4.5 10.5 3.4 3.4 7.6-8"></path></svg></button>`;
+}
+
+async function finishCompletionTransition(cards, startedAt) {
+  const remaining = Math.max(0, 1000 - (Date.now() - startedAt));
+  if (remaining) await new Promise(resolve => setTimeout(resolve, remaining));
+  cards.forEach(card => card.classList.add('completion-removing'));
+  await new Promise(resolve => setTimeout(resolve, 180));
+}
+
+function overviewTaskCard(project, task, extraClass = '', marked = false) {
+  const title = task.title || 'Arbeitsschritt';
+  const priority = task.priority || 'Normal';
+  const priorityClass = priority.toLocaleLowerCase('de');
+  const dueLabel = task.dueDate ? `Fällig am: ${formatDate(task.dueDate)}` : 'Fällig am: ohne';
+  const projectUrl = `/#/projects/${encodeURIComponent(project.id)}`;
+  const complete = mayEditProjects() ? overviewCompleteButton(project, task) : '';
+  const marker = marked ? `<span class="project-flag-indicator overview-marked-flag" aria-label="Arbeitsschritt ist markiert" title="Arbeitsschritt ist markiert">${projectFlagIcon()}</span>` : '';
+  return `<article class="project-card overview-task-card ${escapeHtml(extraClass)}${marked ? ' overview-marked-card' : ''}" data-overview-card>
+    <div class="overview-card-topline"><span class="overview-card-kicker">Arbeitsschritt</span>${marker}</div>
+    <a class="overview-project-heading overview-task-project" href="${projectUrl}"><span class="project-entity-icon overview-project-icon" aria-hidden="true">${iconSvg(projectIconName(project))}</span><h3>${escapeHtml(project.title)}</h3></a>
+    <div class="overview-task-step">${complete}<a class="overview-task-copy" href="${projectUrl}"><span class="overview-task-meta"><small>${escapeHtml(dueLabel)}</small>${marked ? '' : `<span class="project-priority task-priority ${escapeHtml(priorityClass)}">${escapeHtml(priority)}</span>`}</span><strong>${escapeHtml(title)}</strong></a></div>
+  </article>`;
+}
+
 function dueBadge(date) {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date || '')) return '';
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date || '')) return '<span class="overview-due upcoming">Ohne Fälligkeit</span>';
   const days = Math.round((new Date(`${date}T12:00:00`) - new Date(`${today()}T12:00:00`)) / 86400000);
   const stateClass = days < 0 ? 'overdue' : days <= 7 ? 'soon' : 'upcoming';
   const prefix = days < 0 ? 'Überfällig' : days === 0 ? 'Heute fällig' : days === 1 ? 'Morgen fällig' : 'Fällig';
   return `<span class="overview-due ${stateClass}">${prefix}${days > 1 || days < 0 ? `: ${formatDate(date)}` : ''}</span>`;
 }
 
-function overviewFocusCard({ project, task = null }) {
+function overviewFocusCard({ project, task = null }, marked = false) {
   const isTask = Boolean(task);
-  const title = isTask ? task.title || 'Arbeitsschritt' : project.title;
-  const description = isTask ? task.description || `Arbeitsschritt in „${project.title}“` : project.description || 'Projekt ohne Beschreibung';
-  const priority = isTask ? task.priority || 'Normal' : projectPriority(project);
+  if (isTask) return overviewTaskCard(project, task, 'overview-focus-card', marked);
+  const title = project.title;
+  const description = project.description || 'Projekt ohne Beschreibung';
+  const priority = projectPriority(project);
   const priorityClass = priority.toLocaleLowerCase('de');
-  const dueDate = isTask ? task.dueDate : project.dueDate;
-  return `<a class="project-card overview-focus-card" data-overview-card href="/#/projects/${encodeURIComponent(project.id)}">
-    <span class="overview-card-kicker">${isTask ? `Arbeitsschritt · ${escapeHtml(project.title)}` : 'Projekt'}</span>
-    <h3>${escapeHtml(title)}</h3>
-    <p>${escapeHtml(description)}</p>
-    <div class="overview-card-badges"><span class="project-priority${isTask ? ' task-priority' : ''} ${escapeHtml(priorityClass)}">${escapeHtml(priority)}</span>${dueBadge(dueDate)}</div>
-  </a>`;
+  const marker = marked ? `<span class="project-flag-indicator overview-marked-flag" aria-label="Projekt ist markiert" title="Projekt ist markiert">${projectFlagIcon()}</span>` : '';
+  const content = `<div class="overview-card-topline"><span class="overview-card-kicker">Projekt</span><span class="overview-card-top-meta">${dueBadge(project.dueDate)}${marked ? '' : `<span class="project-priority ${escapeHtml(priorityClass)}">${escapeHtml(priority)}</span>`}${marker}</span></div>
+      <div class="overview-project-heading"><span class="project-entity-icon overview-project-icon" aria-hidden="true">${iconSvg(projectIconName(project))}</span><h3>${escapeHtml(title)}</h3></div>
+      <p class="overview-project-description">${escapeHtml(description)}</p>`;
+  return `<a class="project-card overview-focus-card${marked ? ' overview-marked-card' : ''}" data-overview-card href="/#/projects/${encodeURIComponent(project.id)}">${content}</a>`;
 }
 
 function activityView(entries) {
@@ -824,10 +847,11 @@ function bindProjectTimeline() {
   requestAnimationFrame(update);
 }
 
-const defaultOverviewOrder = ['summary','recentlyEdited','dueSoon','highPriority','next','recent','activity','timeline'];
+const defaultOverviewOrder = ['summary','recentlyEdited','marked','dueSoon','highPriority','next','recent','activity','timeline'];
 const overviewSectionConfig = {
   summary:{ label:'Statistik', flag:'showOverviewSummary' },
   recentlyEdited:{ label:'Zuletzt bearbeitete Projekte', flag:'showOverviewRecentlyEdited', rows:'overviewRecentlyEditedRows', fallbackRows:1 },
+  marked:{ label:'Markiert', flag:'showOverviewMarked', rows:'overviewMarkedRows', fallbackRows:1 },
   dueSoon:{ label:'Demnächst fällig', flag:'showOverviewDueSoon', rows:'overviewDueSoonRows', fallbackRows:2 },
   highPriority:{ label:'Hohe Priorität', flag:'showOverviewHighPriority', rows:'overviewHighPriorityRows', fallbackRows:2 },
   next:{ label:'Nächste Arbeitsschritte', flag:'showOverviewNext', rows:'overviewNextRows', fallbackRows:2 },
@@ -843,10 +867,10 @@ const overviewOrderHandle = label => `<button class="drag-handle overview-order-
 
 function overviewMenuContent() {
   const checked = key => state.user[key] !== false ? ' checked' : '';
-  const rowOptions = selected => Array.from({ length:6 }, (_, index) => index + 1).map(rows => `<option value="${rows}"${rows === selected ? ' selected' : ''}>${rows} ${rows === 1 ? 'Zeile' : 'Zeilen'}</option>`).join('');
+  const rowControl = (setting, label, selected) => `<details class="overview-row-select"><summary aria-label="Zeilen ${escapeHtml(label)}">${selected} ${selected === 1 ? 'Zeile' : 'Zeilen'}</summary><div class="overview-row-options" role="menu" aria-label="Zeilen ${escapeHtml(label)}">${Array.from({ length:6 }, (_, index) => index + 1).map(rows => `<button type="button" role="menuitemradio" aria-checked="${rows === selected ? 'true' : 'false'}" data-overview-row-setting="${setting}" data-overview-row-value="${rows}">${rows} ${rows === 1 ? 'Zeile' : 'Zeilen'}</button>`).join('')}</div></details>`;
   const rows = currentOverviewOrder().map(section => {
     const config = overviewSectionConfig[section];
-    const select = config.rows ? `<select data-overview-setting="${config.rows}" aria-label="Zeilen ${escapeHtml(config.label)}" ${state.user[config.flag] === false ? 'disabled' : ''}>${rowOptions(Math.min(6, Math.max(1, Number(state.user[config.rows]) || config.fallbackRows)))}</select>` : '';
+    const select = config.rows ? rowControl(config.rows, config.label, Math.min(6, Math.max(1, Number(state.user[config.rows]) || config.fallbackRows))) : '';
     return `<div class="overview-config-row" data-reorder-card data-reorder-id="${section}"><label><input type="checkbox" data-overview-setting="${config.flag}"${checked(config.flag)}><span>${escapeHtml(config.label)}</span></label>${select}${overviewOrderHandle(config.label)}</div>`;
   }).join('');
   return `<details class="action-menu overview-config-menu"><summary aria-label="Übersicht konfigurieren" title="Übersicht konfigurieren">☰</summary><div class="action-menu-panel overview-config-panel"><strong>Übersicht konfigurieren</strong><div class="overview-config-list" data-reorder-list="overview">${rows}</div></div></details>`;
@@ -866,6 +890,13 @@ function bindOverviewPreferenceControls() {
     const key = event.currentTarget.dataset.overviewSetting;
     const value = event.currentTarget.type === 'checkbox' ? event.currentTarget.checked : Number(event.currentTarget.value);
     savePreference(event.currentTarget, { [key]:value });
+  });
+  document.querySelectorAll('.overview-row-select').forEach(control => control.ontoggle = () => {
+    if (!control.open) return;
+    document.querySelectorAll('.overview-row-select[open]').forEach(other => { if (other !== control) other.open = false; });
+  });
+  document.querySelectorAll('[data-overview-row-setting]').forEach(button => button.onclick = () => {
+    savePreference(button, { [button.dataset.overviewRowSetting]:Number(button.dataset.overviewRowValue) });
   });
 }
 
@@ -898,19 +929,24 @@ function bindOverviewGridRows() {
 function overviewStats(activeProjects, completedProjects) {
   const todayValue = today();
   const todayDate = new Date(`${todayValue}T12:00:00`);
-  const thirtyDaysAgo = new Date(todayDate); thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 29);
-  const sixtyDaysAgo = new Date(thirtyDaysAgo); sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 30);
+  const fourWeeksAgo = new Date(todayDate); fourWeeksAgo.setDate(fourWeeksAgo.getDate() - 27);
+  const eightWeeksAgo = new Date(fourWeeksAgo); eightWeeksAgo.setDate(eightWeeksAgo.getDate() - 28);
   const yearAgo = new Date(todayDate); yearAgo.setFullYear(yearAgo.getFullYear() - 1);
   const twoYearsAgo = new Date(yearAgo); twoYearsAgo.setFullYear(twoYearsAgo.getFullYear() - 1);
   const iso = date => date.toISOString().slice(0, 10);
   const completionDate = project => String(project.completedAt || '').slice(0, 10);
   const trend = (current, previous, enoughData = current + previous >= 2) => enoughData ? (current > previous ? 'up' : current < previous ? 'down' : 'steady') : null;
-  const completed30Days = completedProjects.filter(project => completionDate(project) >= iso(thirtyDaysAgo) && completionDate(project) <= todayValue).length;
-  const completedYear = completedProjects.filter(project => completionDate(project) >= iso(yearAgo) && completionDate(project) <= todayValue).length;
-  const completedPreviousYear = completedProjects.filter(project => completionDate(project) >= iso(twoYearsAgo) && completionDate(project) < iso(yearAgo)).length;
+  const completed4Weeks = completedProjects.filter(project => completionDate(project) >= iso(fourWeeksAgo) && completionDate(project) <= todayValue).length;
+  const completedPrevious4Weeks = completedProjects.filter(project => completionDate(project) >= iso(eightWeeksAgo) && completionDate(project) < iso(fourWeeksAgo)).length;
   const allEntries = activeProjects.flatMap(project => project.entries || []);
-  const entries30Days = allEntries.filter(entry => entry.date >= iso(thirtyDaysAgo) && entry.date <= todayValue).length;
-  const entriesPrevious30Days = allEntries.filter(entry => entry.date >= iso(sixtyDaysAgo) && entry.date < iso(thirtyDaysAgo)).length;
+  const allTasks = activeProjects.flatMap(project => project.tasks || []);
+  const openTasks = allTasks.filter(task => task.status !== 'Erledigt');
+  const overdueTasks = openTasks.filter(task => /^\d{4}-\d{2}-\d{2}$/.test(task.dueDate || '') && task.dueDate < todayValue);
+  const completedTasks = allTasks.filter(task => task.status === 'Erledigt');
+  const taskCompletionRate = allTasks.length ? Math.round(completedTasks.length / allTasks.length * 100) : null;
+  const inactiveProjects = activeProjects.filter(project => String(project.lastActivityAt || project.latestEntryDate || project.createdAt || '').slice(0, 10) < iso(fourWeeksAgo));
+  const entries4Weeks = allEntries.filter(entry => entry.date >= iso(fourWeeksAgo) && entry.date <= todayValue).length;
+  const entriesPrevious4Weeks = allEntries.filter(entry => entry.date >= iso(eightWeeksAgo) && entry.date < iso(fourWeeksAgo)).length;
   const activeDays = new Set(allEntries.map(entry => entry.date).filter(date => date >= iso(yearAgo) && date <= todayValue)).size;
   const activeDaysPreviousYear = new Set(allEntries.map(entry => entry.date).filter(date => date >= iso(twoYearsAgo) && date < iso(yearAgo))).size;
   const weekKey = value => {
@@ -935,11 +971,13 @@ function overviewStats(activeProjects, completedProjects) {
   const averageDays = durations.length ? Math.round(durations.reduce((sum, days) => sum + days, 0) / durations.length) : null;
   const currentAverageDays = currentDurations.length ? Math.round(currentDurations.reduce((sum, days) => sum + days, 0) / currentDurations.length) : null;
   const previousAverageDays = previousDurations.length ? Math.round(previousDurations.reduce((sum, days) => sum + days, 0) / previousDurations.length) : null;
-  const durationText = averageDays === null ? '–' : averageDays === 0 ? '0 Tage' : averageDays === 1 ? '1 Tag' : averageDays < 60 ? `${averageDays} Tage` : averageDays < 730 ? `${Math.round(averageDays / 30)} Mon.` : `${(averageDays / 365).toLocaleString('de-DE', { maximumFractionDigits:1 })} J.`;
+  const durationText = averageDays === null ? '–' : averageDays === 0 ? '0 Wochen' : averageDays < 7 ? '< 1 Woche' : `${Math.round(averageDays / 7)} Wochen`;
   return {
-    completed30Days, completedYear, allEntries, activeDays, weekStreak, averageDays, durationText, durationCount:durations.length,
-    completedTrend:trend(completedYear, completedPreviousYear),
-    entriesTrend:trend(entries30Days, entriesPrevious30Days),
+    completed4Weeks, entries4Weeks, allEntries, activeDays, weekStreak, averageDays, durationText, durationCount:durations.length,
+    openTaskCount:openTasks.length, overdueTaskCount:overdueTasks.length, completedTaskCount:completedTasks.length,
+    totalTaskCount:allTasks.length, taskCompletionRate, inactiveProjectCount:inactiveProjects.length,
+    completedTrend:trend(completed4Weeks, completedPrevious4Weeks),
+    entriesTrend:trend(entries4Weeks, entriesPrevious4Weeks),
     activeDaysTrend:trend(activeDays, activeDaysPreviousYear),
     durationTrend:currentAverageDays !== null && previousAverageDays !== null ? trend(currentAverageDays, previousAverageDays, currentDurations.length >= 2 && previousDurations.length >= 2) : null
   };
@@ -952,10 +990,16 @@ function trendMarkup(direction, comparison) {
   return `<span class="stat-trend ${direction}" role="img" aria-label="${escapeHtml(label)}" title="${escapeHtml(label)}">${details[0]}</span>`;
 }
 
+function statCard(id, title, value, subtitle, description, trend = '') {
+  const tooltipId = `stat-info-${id}`;
+  return `<div class="stat"><div class="stat-head"><span>${escapeHtml(title)}</span><span class="stat-info"><button type="button" aria-label="${escapeHtml(title)} erklären" aria-describedby="${tooltipId}">?</button><span class="stat-info-tooltip" id="${tooltipId}" role="tooltip">${escapeHtml(description)}</span></span></div><div class="stat-value"><b>${escapeHtml(value)}</b>${trend}</div><small>${escapeHtml(subtitle)}</small></div>`;
+}
+
 async function renderHome(keepMenuOpen = false) {
   const overview = await api('/overview');
   const showSummary = state.user.showOverviewSummary !== false;
   const showRecentlyEdited = state.user.showOverviewRecentlyEdited !== false;
+  const showMarked = state.user.showOverviewMarked !== false;
   const showDueSoon = state.user.showOverviewDueSoon !== false;
   const showHighPriority = state.user.showOverviewHighPriority !== false;
   const showNext = state.user.showOverviewNext !== false;
@@ -965,6 +1009,7 @@ async function renderHome(keepMenuOpen = false) {
   const recentRows = Math.min(6, Math.max(1, Number(state.user.overviewRecentRows) || 2));
   const nextRows = Math.min(6, Math.max(1, Number(state.user.overviewNextRows) || 2));
   const recentlyEditedRows = Math.min(6, Math.max(1, Number(state.user.overviewRecentlyEditedRows) || 1));
+  const markedRows = Math.min(6, Math.max(1, Number(state.user.overviewMarkedRows) || 1));
   const dueSoonRows = Math.min(6, Math.max(1, Number(state.user.overviewDueSoonRows) || 2));
   const highPriorityRows = Math.min(6, Math.max(1, Number(state.user.overviewHighPriorityRows) || 2));
   const activeProjects = overview.projects || [];
@@ -972,6 +1017,10 @@ async function renderHome(keepMenuOpen = false) {
   const stats = overviewStats(activeProjects, completedProjects);
   const recentProjects = activeProjects.filter(project => project.latestEntryId).sort((a, b) => String(b.latestEntryDate || '').localeCompare(String(a.latestEntryDate || '')));
   const recentlyEditedProjects = [...activeProjects].sort((a, b) => String(b.lastActivityAt || b.updatedAt || b.createdAt || '').localeCompare(String(a.lastActivityAt || a.updatedAt || a.createdAt || '')));
+  const markedItems = activeProjects.flatMap(project => [
+    ...(project.flagged === true ? [{ project }] : []),
+    ...(project.tasks || []).filter(task => task.flagged === true && task.status !== 'Erledigt').map(task => ({ project, task })),
+  ]);
   const detailProjects = showNext || showDueSoon || showHighPriority || showActivity || showTimeline ? activeProjects : [];
   const priorityOrder = { Hoch:0, Normal:1, Niedrig:2 };
   const nextTasks = detailProjects.flatMap(project => (project.tasks || []).filter(task => task.status !== 'Erledigt').map(task => ({ project, task }))).sort((left, right) => {
@@ -1006,18 +1055,51 @@ async function renderHome(keepMenuOpen = false) {
     return String(left.task?.title || left.project.title).localeCompare(String(right.task?.title || right.project.title), 'de', { sensitivity:'base' });
   });
   const activityEntries = detailProjects.flatMap(project => (project.entries || []).map(entry => ({ ...entry, projectTitle:project.title })));
-  const entries = stats.allEntries.length;
+  const entries = stats.entries4Weeks;
   const sectionMarkup = {
-    summary:showSummary ? `<section class="overview-work-section overview-section" aria-label="Statistik"><div class="section-head"><h2>Statistik</h2></div><div class="stats"><div class="stat"><span>Aktive Projekte</span><div class="stat-value"><b>${activeProjects.length}</b></div><small>aktuell in Arbeit</small></div><div class="stat"><span>Abgeschlossen</span><div class="stat-value"><b>${stats.completedYear}</b>${trendMarkup(stats.completedTrend, '12 Monate gegenüber den 12 Monaten davor')}</div><small>${stats.completed30Days} in 30 Tagen · ${completedProjects.length} insgesamt</small></div><div class="stat"><span>Dokumentierte Arbeitsschritte</span><div class="stat-value"><b>${entries}</b>${trendMarkup(stats.entriesTrend, '30 Tage gegenüber den 30 Tagen davor')}</div><small>in aktiven Projekten</small></div><div class="stat"><span>Aktive Tage</span><div class="stat-value"><b>${stats.activeDays}</b>${trendMarkup(stats.activeDaysTrend, '12 Monate gegenüber den 12 Monaten davor')}</div><small>in den letzten 12 Monaten</small></div><div class="stat"><span>Wochenserie</span><div class="stat-value"><b>${stats.weekStreak}</b></div><small>${stats.weekStreak === 1 ? 'Woche' : 'Wochen'} mit Dokumentation</small></div><div class="stat"><span>Ø Projektdauer</span><div class="stat-value"><b>${stats.durationText}</b>${trendMarkup(stats.durationTrend, 'Abschlüsse der letzten 12 Monate gegenüber dem Vorzeitraum')}</div><small>${stats.durationCount} ${stats.durationCount === 1 ? 'abgeschlossenes Projekt' : 'abgeschlossene Projekte'}</small></div></div></section>` : '',
+    summary:showSummary ? `<section class="overview-work-section overview-section" aria-label="Statistik"><div class="section-head"><h2>Statistik</h2></div><div class="stats">${[
+      statCard('active-projects', 'Aktive Projekte', activeProjects.length, 'aktuell in Arbeit', 'Gezählt werden alle Projekte mit dem Status „Aktiv“. Pausierte, abgeschlossene, archivierte und gelöschte Projekte bleiben unberücksichtigt. Die Zahl zeigt, wie viele Vorhaben gleichzeitig Aufmerksamkeit benötigen.'),
+      statCard('open-tasks', 'Offene Arbeitsschritte', stats.openTaskCount, 'in aktiven Projekten', 'Gezählt werden alle Arbeitsschritte in aktiven Projekten, deren Status nicht „Erledigt“ ist. Fälligkeit und Priorität spielen dabei keine Rolle. Die Zahl zeigt die Größe des aktuellen Arbeitsvorrats und kann auf zu viele gleichzeitig geplante Aufgaben hinweisen.'),
+      statCard('overdue-tasks', 'Überfällige Arbeitsschritte', stats.overdueTaskCount, 'offen und vor heute fällig', 'Gezählt werden offene Arbeitsschritte in aktiven Projekten, deren Fälligkeitsdatum vor dem heutigen Tag liegt. Heute fällige Schritte gelten noch nicht als überfällig. Die Zahl macht sichtbar, wo Termine geprüft, neu geplant oder Arbeitsschritte abgeschlossen werden sollten.'),
+      statCard('inactive-projects', 'Projekte ohne Aktivität', stats.inactiveProjectCount, 'seit mindestens 4 Wochen', 'Gezählt werden aktive Projekte, deren letzte gespeicherte Änderung länger als 4 Wochen zurückliegt. Dazu zählen Änderungen am Projekt und seinen Inhalten. Die Zahl hilft, festgefahrene Vorhaben zu entdecken und zu entscheiden, ob sie weitergeführt, pausiert oder abgeschlossen werden sollten.'),
+      statCard('completed-projects', 'Abgeschlossene Projekte', stats.completed4Weeks, `in den letzten 4 Wochen · ${completedProjects.length} insgesamt`, 'Gezählt werden Projekte, deren Abschlussdatum innerhalb der letzten 28 Kalendertage einschließlich heute liegt. Die Gesamtzahl darunter umfasst alle abgeschlossenen Projekte. Der Pfeil vergleicht die letzten 4 Wochen mit den unmittelbar davorliegenden 4 Wochen und macht den Projektdurchsatz sichtbar.', trendMarkup(stats.completedTrend, '4 Wochen gegenüber den 4 Wochen davor')),
+      statCard('task-completion-rate', 'Erledigungsquote', stats.taskCompletionRate === null ? '–' : `${stats.taskCompletionRate} %`, `${stats.completedTaskCount} von ${stats.totalTaskCount} Arbeitsschritten erledigt`, 'Die Quote teilt die Anzahl erledigter Arbeitsschritte durch alle Arbeitsschritte in aktiven Projekten und rundet das Ergebnis auf ganze Prozent. Sie bezieht sich auf den gesamten aktuellen Aufgabenbestand, nicht auf einen Zeitraum. Eine steigende Quote zeigt Fortschritt; neue geplante Schritte können sie sinnvollerweise wieder senken.'),
+      statCard('documented-steps', 'Dokumentierte Arbeitsschritte', entries, 'in den letzten 4 Wochen', 'Gezählt werden Dokumentationseinträge in aktuell aktiven Projekten, deren Datum innerhalb der letzten 28 Kalendertage einschließlich heute liegt. Mehrere Einträge am selben Tag zählen jeweils einzeln. Der Pfeil vergleicht mit den 4 Wochen davor und zeigt, ob die Dokumentationsaktivität zu- oder abnimmt.', trendMarkup(stats.entriesTrend, '4 Wochen gegenüber den 4 Wochen davor')),
+      statCard('active-days', 'Aktive Tage', stats.activeDays, 'in den letzten 12 Monaten', 'Ein Tag gilt als aktiv, sobald an diesem Datum mindestens ein Arbeitsschritt in einem aktuell aktiven Projekt dokumentiert wurde. Mehrere Einträge am selben Tag erhöhen den Wert nicht. Der Pfeil vergleicht die Anzahl unterschiedlicher aktiver Tage mit den vorherigen 12 Monaten und zeigt, wie regelmäßig dokumentiert wird.', trendMarkup(stats.activeDaysTrend, '12 Monate gegenüber den 12 Monaten davor')),
+      statCard('week-streak', 'Wochenserie', stats.weekStreak, `${stats.weekStreak === 1 ? 'Woche' : 'Wochen'} mit Dokumentation`, 'Gezählt werden aufeinanderfolgende Kalenderwochen mit mindestens einem dokumentierten Arbeitsschritt in einem aktuell aktiven Projekt. Die Serie endet in der laufenden Woche oder – falls dort noch nichts dokumentiert wurde – in der unmittelbar vorherigen Woche. Sie macht eine beständige Dokumentationsroutine sichtbar.'),
+      statCard('project-duration', 'Ø Projektdauer', stats.durationText, `${stats.durationCount} ${stats.durationCount === 1 ? 'abgeschlossenes Projekt' : 'abgeschlossene Projekte'}`, 'Für alle abgeschlossenen Projekte mit gültigem Erstellungs- und Abschlussdatum wird die Dauer in Tagen berechnet. Daraus entsteht das arithmetische Mittel, das auf ganze Wochen gerundet wird; Dauern unter einer Woche werden entsprechend ausgewiesen. Der Pfeil vergleicht Projekte der letzten 12 Monate mit denen der 12 Monate davor. Eine längere oder kürzere Dauer ist nicht automatisch besser, sondern hilft vor allem bei realistischeren Planungen.', trendMarkup(stats.durationTrend, 'Abschlüsse der letzten 12 Monate gegenüber dem Vorzeitraum'))
+    ].join('')}</div></section>` : '',
     recentlyEdited:showRecentlyEdited ? `<section class="overview-work-section overview-section"><div class="section-head"><h2>Zuletzt bearbeitete Projekte</h2></div>${recentlyEditedProjects.length ? `<div class="project-grid" data-overview-grid data-overview-rows="${recentlyEditedRows}">${recentlyEditedProjects.map(recentlyEditedProjectCard).join('')}</div>` : `<div class="empty"><strong>Noch keine Projekte vorhanden.</strong>Lege ein Projekt an, um hier weiterzuarbeiten.</div>`}</section>` : '',
-    dueSoon:showDueSoon ? `<section class="overview-work-section overview-section"><div class="section-head"><h2>Demnächst fällig</h2></div>${dueSoonItems.length ? `<div class="project-grid" data-overview-grid data-overview-rows="${dueSoonRows}">${dueSoonItems.map(overviewFocusCard).join('')}</div>` : `<div class="empty"><strong>Keine Fälligkeiten anstehend.</strong>Projekte und offene Arbeitsschritte mit Fälligkeit erscheinen hier.</div>`}</section>` : '',
-    highPriority:showHighPriority ? `<section class="overview-work-section overview-section"><div class="section-head"><h2>Hohe Priorität</h2></div>${highPriorityItems.length ? `<div class="project-grid" data-overview-grid data-overview-rows="${highPriorityRows}">${highPriorityItems.map(overviewFocusCard).join('')}</div>` : `<div class="empty"><strong>Nichts mit hoher Priorität.</strong>Projekte und offene Arbeitsschritte mit hoher Priorität erscheinen hier.</div>`}</section>` : '',
+    marked:showMarked ? `<section class="overview-work-section overview-section"><div class="section-head"><h2>Markiert</h2></div>${markedItems.length ? `<div class="project-grid overview-marked-grid" data-overview-grid data-overview-rows="${markedRows}">${markedItems.map(item => overviewFocusCard(item, true)).join('')}</div>` : `<div class="empty"><strong>Noch nichts markiert.</strong>Markiere wichtige Projekte oder Arbeitsschritte mit dem Fähnchen.</div>`}</section>` : '',
+    dueSoon:showDueSoon ? `<section class="overview-work-section overview-section"><div class="section-head"><h2>Demnächst fällig</h2></div>${dueSoonItems.length ? `<div class="project-grid" data-overview-grid data-overview-rows="${dueSoonRows}">${dueSoonItems.map(item => overviewFocusCard(item)).join('')}</div>` : `<div class="empty"><strong>Keine Fälligkeiten anstehend.</strong>Projekte und offene Arbeitsschritte mit Fälligkeit erscheinen hier.</div>`}</section>` : '',
+    highPriority:showHighPriority ? `<section class="overview-work-section overview-section"><div class="section-head"><h2>Hohe Priorität</h2></div>${highPriorityItems.length ? `<div class="project-grid" data-overview-grid data-overview-rows="${highPriorityRows}">${highPriorityItems.map(item => overviewFocusCard(item)).join('')}</div>` : `<div class="empty"><strong>Nichts mit hoher Priorität.</strong>Projekte und offene Arbeitsschritte mit hoher Priorität erscheinen hier.</div>`}</section>` : '',
     next:showNext ? `<section class="overview-work-section overview-section"><div class="section-head"><h2>Nächste Arbeitsschritte</h2></div>${nextTasks.length ? `<div class="project-grid" data-overview-grid data-overview-rows="${nextRows}">${nextTasks.map(nextTaskCard).join('')}</div>` : `<div class="empty"><strong>Keine Arbeitsschritte geplant.</strong>Lege in einem Projekt den nächsten Arbeitsschritt an.</div>`}</section>` : '',
     recent:showRecent ? `<section class="overview-work-section overview-section"><div class="section-head"><h2>Letzte Arbeitsschritte</h2></div>${recentProjects.length ? `<div class="project-grid" data-overview-grid data-overview-rows="${recentRows}">${recentProjects.map(recentEntryCard).join('')}</div>` : `<div class="empty"><strong>Noch keine Arbeitsschritte vorhanden.</strong>Öffne ein Projekt und dokumentiere den ersten Arbeitsschritt.</div>`}</section>` : '',
     activity:showActivity ? activityView(activityEntries) : '',
     timeline:showTimeline ? projectTimelineView(detailProjects) : ''
   };
   $('#main').innerHTML = `<header class="page-head overview-head"><div><h1>Übersicht</h1></div>${overviewMenuContent()}</header>${currentOverviewOrder().map(section => sectionMarkup[section] || '').join('')}`;
+  document.querySelectorAll('[data-overview-complete-task]').forEach(button => button.onclick = async event => {
+    event.stopPropagation();
+    const project = activeProjects.find(item => item.id === button.dataset.overviewProject);
+    const task = project?.tasks?.find(item => item.id === button.dataset.overviewCompleteTask);
+    if (!project || !task) return;
+    const startedAt = Date.now();
+    const matchingButtons = [...document.querySelectorAll('[data-overview-complete-task]')].filter(item => item.dataset.overviewProject === project.id && item.dataset.overviewCompleteTask === task.id);
+    const cards = [...new Set(matchingButtons.map(item => item.closest('[data-overview-card]')).filter(Boolean))];
+    matchingButtons.forEach(item => { item.disabled = true; });
+    cards.forEach(card => card.classList.add('completion-pending'));
+    try {
+      await api(`/projects/${encodeURIComponent(project.id)}/tasks/${encodeURIComponent(task.id)}/complete`, { method:'POST', body:JSON.stringify({ date:today() }) });
+      toast('Arbeitsschritt als erledigt geloggt');
+      await finishCompletionTransition(cards, startedAt);
+      await renderHome();
+    } catch (error) {
+      toast(error.message);
+      matchingButtons.forEach(item => { item.disabled = false; });
+      cards.forEach(card => card.classList.remove('completion-pending', 'completion-removing'));
+    }
+  });
   bindOverviewGridRows();
   if (showActivity) bindActivitySummary(); else state.activityObserver?.disconnect();
   if (showTimeline) bindProjectTimeline(); else state.timelineObserver?.disconnect();
@@ -1057,14 +1139,17 @@ async function renderArchive() {
 function trashProjectCard(project) {
   const deletedAt = Number(project.deletedAt) > 0 ? formatEpoch(project.deletedAt) : 'Unbekannt';
   const actions = mayEditProjects() ? `<details class="action-menu card-menu"><summary aria-label="Papierkorbaktionen">☰</summary><div class="action-menu-panel"><button class="menu-item" data-restore-project="${escapeHtml(project.id)}">Wiederherstellen</button><button class="menu-item danger" data-purge-project="${escapeHtml(project.id)}">Endgültig löschen</button></div></details>` : '';
-  return `<article class="project-card trash-project-card" data-project-card><div class="card-main"><h3>${escapeHtml(project.title)}</h3><p>${escapeHtml(project.description || 'Noch keine Beschreibung hinterlegt.')}</p></div>${tagChips(project.tagIds, { linked:false })}<span class="project-meta">In den Papierkorb verschoben: ${escapeHtml(deletedAt)}</span>${actions}</article>`;
+  return `<article class="project-card trash-project-card" data-project-card>
+    <div class="project-card-content"><div class="entity-card-lead"><span class="project-entity-icon" aria-hidden="true">${iconSvg(projectIconName(project))}</span><span class="entity-card-copy"><h3>${escapeHtml(project.title)}</h3><p>${escapeHtml(project.description || 'Noch keine Beschreibung hinterlegt.')}</p></span></div><div class="project-next-step trash-deleted-at"><small>In den Papierkorb verschoben</small><strong>${escapeHtml(deletedAt)}</strong></div></div>
+    <aside class="project-card-status" aria-label="Papierkorbstatus"><div class="project-card-actions">${actions}</div><div class="project-status-row"><small>Status</small><span class="project-status trashed">Papierkorb</span></div><div class="project-status-row"><small>Priorität</small>${projectPriorityMarkup(project)}</div><div class="project-status-row project-status-tags"><small>Tags</small>${tagChips(project.tagIds, { linked:false }) || '<span class="project-status-empty">Keine</span>'}</div></aside>
+  </article>`;
 }
 
 async function renderTrash() {
   await loadProjectBrowser();
   const projects = state.projects.filter(project => project.status === 'trashed').sort((a, b) => Number(b.deletedAt || 0) - Number(a.deletedAt || 0));
   const emptyButton = state.user.admin && projects.length ? '<button class="button danger" data-empty-trash>Papierkorb leeren</button>' : '';
-  $('#main').innerHTML = `<header class="page-head"><div><h1>Papierkorb</h1><p>${projects.length} ${projects.length === 1 ? 'gelöschtes Projekt' : 'gelöschte Projekte'}.</p></div>${emptyButton}</header>
+  $('#main').innerHTML = `<header class="page-head"><div><h1>Papierkorb</h1></div>${emptyButton}</header>
     ${projects.length ? `<div class="project-grid project-list">${projects.map(trashProjectCard).join('')}</div>` : '<div class="empty"><strong>Der Papierkorb ist leer.</strong>Gelöschte Projekte erscheinen hier, bevor sie endgültig entfernt werden.</div>'}`;
   bindTrashActions();
 }
@@ -1107,28 +1192,8 @@ function generalSettingsContent() {
 function dataContent() {
   const projectCount = state.projects.length;
   const userCount = state.users.length;
-  const smtp = state.smtp || {};
-  const schedule = state.backupSchedule || {};
-  const smtpStatus = smtp.configured ? '<span class="setting-status active">Eingerichtet</span>' : '<span class="setting-status">Nicht eingerichtet</span>';
   return `<div class="settings-group data-settings">
-    <section class="backup-area backup-auto"><div class="backup-area-head"><div><h2>Automatisches Backup</h2><p>Backups regelmäßig und ohne manuellen Download per E-Mail versenden.</p></div>${smtpStatus}</div>
-      <div class="smtp-settings"><div class="backup-subhead"><h3>SMTP-Server</h3><p>Make:Log verwendet den Mailserver des Betreibers. Das Passwort wird gespeichert, aber niemals an den Browser zurückgegeben.</p></div><form id="smtp-form" class="smtp-form"><div class="smtp-form-grid">
-        <label>SMTP-Server<input name="host" value="${escapeHtml(smtp.host || '')}" maxlength="253" placeholder="smtp.example.com" required></label>
-        <label>Port<input name="port" type="number" min="1" max="65535" value="${escapeHtml(smtp.port || 465)}" required></label>
-        <label>Verschlüsselung<select name="security"><option value="tls" ${smtp.security !== 'starttls' ? 'selected' : ''}>TLS direkt</option><option value="starttls" ${smtp.security === 'starttls' ? 'selected' : ''}>STARTTLS</option></select></label>
-        <label>Benutzername<input name="username" value="${escapeHtml(smtp.username || '')}" maxlength="254" autocomplete="username" required></label>
-        <label>SMTP-Passwort<input name="password" type="password" maxlength="256" autocomplete="new-password" placeholder="${smtp.passwordSet ? 'Gespeichertes Passwort beibehalten' : 'Passwort eingeben'}"><small>Leer lassen, um ein vorhandenes Passwort beizubehalten.</small></label>
-        <label>Absendername<input name="senderName" value="${escapeHtml(smtp.senderName || 'Make:Log')}" maxlength="80" required></label>
-        <label>Absenderadresse<input name="senderEmail" type="email" value="${escapeHtml(smtp.senderEmail || '')}" maxlength="254" placeholder="makerlog@example.com" required></label>
-        <label>Testempfänger<input name="testRecipient" type="email" value="${escapeHtml(smtp.testRecipient || '')}" maxlength="254" placeholder="admin@example.com" required></label>
-      </div><div class="smtp-form-actions"><button class="button secondary" type="button" data-test-smtp ${smtp.configured ? '' : 'disabled'}>Testmail senden</button><button class="button primary" type="submit">SMTP speichern</button></div></form></div>
-      <div class="backup-schedule"><div class="backup-subhead"><h3>Zeitplan</h3><p>Make:Log erstellt die Archive selbst und versendet sie auch dann, wenn kein Browser geöffnet ist.</p></div><form id="backup-schedule-form" class="backup-schedule-form"><div class="backup-schedule-grid">
-        <label class="checkbox-line backup-enabled"><input name="enabled" type="checkbox" ${schedule.enabled ? 'checked' : ''}><span>Automatische Backups aktivieren</span></label>
-        <label>Empfänger<input name="recipient" type="email" value="${escapeHtml(schedule.recipient || smtp.testRecipient || '')}" maxlength="254" required></label>
-        <label>Sicherungsumfang<select name="scope"><option value="projects" ${schedule.scope !== 'users' && schedule.scope !== 'both' ? 'selected' : ''}>Projektdaten</option><option value="users" ${schedule.scope === 'users' ? 'selected' : ''}>Benutzerkonten</option><option value="both" ${schedule.scope === 'both' ? 'selected' : ''}>Projektdaten und Benutzerkonten</option></select></label>
-        <label>Intervall in Tagen<input name="intervalDays" type="number" min="1" max="365" value="${escapeHtml(schedule.intervalDays || 7)}" required></label>
-      </div><div class="backup-schedule-status"><div><strong>Letzter Versand</strong><span>${escapeHtml(schedule.lastStatus || 'Noch nicht ausgeführt')} · ${escapeHtml(formatEpoch(schedule.lastSentAt))}</span></div><div><strong>Nächster Versand</strong><span>${schedule.enabled ? escapeHtml(formatEpoch(schedule.nextRunAt)) : 'Automatik ist deaktiviert'}</span></div></div><div class="smtp-form-actions"><button class="button secondary" type="button" data-send-backup ${smtp.configured ? '' : 'disabled'}>Backup jetzt senden</button><button class="button primary" type="submit">Zeitplan speichern</button></div></form></div></section>
-    <section class="backup-area"><div class="backup-area-head"><div><h2>Manuelles Backup</h2><p>Projektdaten und Benutzerkonten getrennt als Archiv herunterladen.</p></div></div><div class="backup-export-grid">
+    <section class="backup-area"><div class="backup-area-head"><div><h2>Backup herunterladen</h2><p>Projektdaten und Benutzerkonten getrennt als Archiv herunterladen.</p></div></div><div class="backup-export-grid">
       <article class="backup-card"><div><h3>Projekte herunterladen</h3><p>${projectCount} ${projectCount === 1 ? 'Projekt' : 'Projekte'} mit Logbuch, Material, Kontakten, Links und Ideen. Markdown und JSON bleiben offen lesbar; stabile IDs erhalten bestehende NFC-Links.</p></div><button class="button primary" data-export-projects>Projektdaten herunterladen</button></article>
       <article class="backup-card sensitive-backup"><div><h3>Benutzer herunterladen</h3><p>${userCount} ${userCount === 1 ? 'Benutzerkonto' : 'Benutzerkonten'} mit Rollen, Status, Projektfreigaben und Passwort-Hashes. Klartextpasswörter und aktive Sitzungen werden nicht exportiert.</p><small>Dieses Archiv ist sicherheitskritisch. Bewahre es geschützt auf.</small></div><button class="button primary" data-export-users>Benutzerkonten herunterladen</button></article>
     </div></section>
@@ -1158,7 +1223,43 @@ const deviceLabel = userAgent => {
   if (/Windows/i.test(value)) return 'Windows-PC';
   return value.slice(0, 55);
 };
-const auditLabel = action => ({ 'user.created':'Benutzer angelegt', 'user.updated':'Benutzer geändert', 'user.deleted':'Benutzer gelöscht', 'password.changed':'Passwort geändert', 'session.revoked':'Sitzung beendet', 'log.created':'Log angelegt', 'log.updated':'Log bearbeitet', 'log.deleted':'Log gelöscht', 'tag.created':'Tag angelegt', 'tag.updated':'Tag geändert', 'tag.merged':'Tags zusammengeführt', 'tag.deleted':'Tag gelöscht', 'data.project_imported':'Projekt aus Backup importiert', 'data.users_exported':'Benutzerkonten exportiert', 'data.users_imported':'Benutzerkonten importiert', 'server.settings_updated':'Servereinstellungen geändert', 'smtp.settings_updated':'SMTP-Konfiguration geändert', 'smtp.test_sent':'SMTP-Testmail versendet', 'backup.schedule_updated':'Backup-Zeitplan geändert', 'backup.sent':'Backup versendet', 'backup.failed':'Backup fehlgeschlagen', 'system.content_cleared':'Alle Projektinhalte gelöscht', 'system.users_cleared':'Benutzerkonten zurückgesetzt' }[action] || action);
+const auditLabel = action => ({ 'user.created':'Benutzer angelegt', 'user.updated':'Benutzer geändert', 'user.deleted':'Benutzer gelöscht', 'password.changed':'Passwort geändert', 'session.revoked':'Sitzung beendet', 'log.created':'Log angelegt', 'log.updated':'Log bearbeitet', 'log.deleted':'Log gelöscht', 'tag.created':'Tag angelegt', 'tag.updated':'Tag geändert', 'tag.merged':'Tags zusammengeführt', 'tag.deleted':'Tag gelöscht', 'data.project_imported':'Projekt aus Backup importiert', 'data.users_exported':'Benutzerkonten exportiert', 'data.users_imported':'Benutzerkonten importiert', 'server.settings_updated':'Servereinstellungen geändert', 'system.update_requested':'Make:Log-Update angefordert', 'system.content_cleared':'Alle Projektinhalte gelöscht', 'system.users_cleared':'Benutzerkonten zurückgesetzt', 'demo.installed':'Beispieldaten eingespielt', 'demo.removed':'Beispieldaten entfernt' }[action] || action);
+
+function updateCardContent() {
+  const update = state.update || {};
+  const current = update.currentVersion || state.system?.version || '–';
+  const latest = update.latestVersion || '';
+  const checkingFailed = Boolean(update.checkError);
+  let title = 'Make:Log ist aktuell';
+  let copy = `Version ${escapeHtml(current)} ist installiert.`;
+  let statusClass = 'active';
+  let status = 'Aktuell';
+  if (update.state === 'queued') {
+    title = `Update ${escapeHtml(update.requestedVersion || latest)} angefordert`;
+    copy = 'Der Docker-Host-Helfer übernimmt Download, Neustart und Healthcheck. Die Seite kann dabei kurz nicht erreichbar sein.';
+    statusClass = '';
+    status = 'Wartet';
+  } else if (update.state === 'failed') {
+    title = 'Das letzte Update ist fehlgeschlagen';
+    copy = escapeHtml(update.stateMessage || 'Die vorherige Version blieb aktiv.');
+    statusClass = 'inactive';
+    status = 'Fehler';
+  } else if (update.available) {
+    title = `Make:Log ${escapeHtml(latest)} ist verfügbar`;
+    copy = escapeHtml(update.summary || `Installiert ist Version ${current}.`);
+    statusClass = '';
+    status = 'Verfügbar';
+  } else if (checkingFailed) {
+    title = 'Update-Prüfung nicht möglich';
+    copy = escapeHtml(update.checkError);
+    statusClass = 'inactive';
+    status = 'Offline';
+  }
+  const releaseLink = update.releaseNotesUrl ? `<a href="${escapeHtml(update.releaseNotesUrl)}" target="_blank" rel="noopener">Release Notes ansehen</a>` : '';
+  const install = update.available ? `<button class="button primary" data-install-update ${update.installSupported ? '' : 'disabled'}>Update installieren</button>` : '';
+  const reason = update.available && !update.installSupported && update.installReason ? `<small>${escapeHtml(update.installReason)}</small>` : '';
+  return `<section class="update-card"><div class="update-card-copy"><div class="update-card-title"><h2>${title}</h2><span class="setting-status ${statusClass}">${status}</span></div><p>${copy}</p><div class="update-card-meta">${releaseLink}${update.checkedAt ? `<span>Geprüft: ${escapeHtml(formatDateTime(update.checkedAt))}</span>` : ''}</div>${reason}</div><div class="update-card-actions"><button class="button secondary" data-check-update>Neu prüfen</button>${install}</div></section>`;
+}
 
 function serverContent() {
   const server = state.server || {};
@@ -1167,7 +1268,7 @@ function serverContent() {
     <section><div class="settings-section-head"><h2>Instanz</h2><p>Diese Angaben gelten für alle Benutzer und für erzeugte Projektlinks.</p></div><form id="server-form" class="device-form"><div class="device-form-fields">
       <label>Name der Instanz<input name="siteName" value="${escapeHtml(server.siteName || 'Make:Log')}" minlength="2" maxlength="80" required><small>Wird in Backups und Systeminformationen verwendet.</small></label>
       <label>Öffentliche Webadresse<input name="baseUrl" type="url" value="${escapeHtml(server.baseUrl || location.origin)}" maxlength="300" required><small>Beispiel: https://log.example.de. Relative Projektlinks bleiben bei Umzügen erhalten.</small></label>
-      <label>Zeitzone<select name="timezone"><option value="Europe/Berlin" ${server.timezone === 'Europe/Berlin' ? 'selected' : ''}>Europe/Berlin</option><option value="Europe/Vienna" ${server.timezone === 'Europe/Vienna' ? 'selected' : ''}>Europe/Vienna</option><option value="Europe/Zurich" ${server.timezone === 'Europe/Zurich' ? 'selected' : ''}>Europe/Zurich</option><option value="UTC" ${server.timezone === 'UTC' ? 'selected' : ''}>UTC</option></select><small>Wird für Zeitangaben und automatische Backups verwendet.</small></label>
+      <label>Zeitzone<select name="timezone"><option value="Europe/Berlin" ${server.timezone === 'Europe/Berlin' ? 'selected' : ''}>Europe/Berlin</option><option value="Europe/Vienna" ${server.timezone === 'Europe/Vienna' ? 'selected' : ''}>Europe/Vienna</option><option value="Europe/Zurich" ${server.timezone === 'Europe/Zurich' ? 'selected' : ''}>Europe/Zurich</option><option value="UTC" ${server.timezone === 'UTC' ? 'selected' : ''}>UTC</option></select><small>Wird für Zeitangaben in Make:Log verwendet.</small></label>
     </div><div class="device-form-actions"><p>Betriebsart: ${escapeHtml(platform)} · Serverzeit: ${escapeHtml(formatDateTime(server.currentTime))}</p><button class="button primary" type="submit">Servereinstellungen speichern</button></div></form></section>
   </div>`;
 }
@@ -1196,7 +1297,7 @@ function settingsContent(section) {
   if (section === 'security') return securityContent();
   if (section === 'audit') return auditContent();
   const system = state.system || {};
-  return `<div class="settings-group"><div class="setting-list">
+  return `<div class="settings-group">${updateCardContent()}<div class="setting-list">
     ${settingRow('Version','Installierte Make:Log-Version. ',escapeHtml(system.version || 'Wird geladen'))}
     ${settingRow('Betriebsart','Art der aktuellen Installation.',escapeHtml(system.platform === 'docker' ? 'Docker' : 'Webhosting'))}
     ${settingRow('PHP & Datenbank','Laufzeit und lokaler Datenspeicher.',escapeHtml(`${system.phpVersion || '–'} · ${system.database || '–'}`))}
@@ -1206,7 +1307,8 @@ function settingsContent(section) {
   </div><section class="danger-zone"><div class="danger-zone-head"><h2>DANGER ZONE</h2><p>Diese Aktionen verändern oder löschen zentrale Daten dieser Make:Log-Instanz.</p></div>
     <div class="danger-row"><div><strong>Alle Inhalte löschen</strong><p>Löscht sämtliche aktiven und archivierten Projekte einschließlich Logs, Materialien, Kontakte, Links und Ideen. Benutzerkonten bleiben erhalten.</p></div><button class="button danger-button" data-clear-content>Alle Inhalte löschen</button></div>
     <div class="danger-row"><div><strong>Benutzerkonten zurücksetzen</strong><p>Löscht alle Benutzerkonten und deren Sitzungen. Der aktuell angemeldete Administrator bleibt erhalten.</p></div><button class="button danger-button" data-clear-users>Andere Benutzer löschen</button></div>
-    <div class="danger-row demo-row"><div><strong>Beispieldaten einspielen</strong><p>Spielt die 16 Maker-Beispielprojekte ein. Andere Projekte bleiben erhalten; vorhandene Demo-Projekte mit derselben ID werden aktualisiert.</p></div><button class="button secondary" data-load-demo>Beispieldaten einspielen</button></div>
+    <div class="danger-row demo-row"><div><strong>Beispieldaten einspielen</strong><p>Spielt elf Maker-Projekte und zwei thematische Ordner ein oder setzt sie auf den Lieferzustand zurück. Eigene Inhalte bleiben erhalten.</p></div><button class="button secondary" data-load-demo>${system.demoProjectCount || system.demoFolderCount ? 'Beispieldaten zurücksetzen' : 'Beispieldaten einspielen'}</button></div>
+    <div class="danger-row demo-row"><div><strong>Beispieldaten entfernen</strong><p>Löscht die mitgelieferten Demo-Projekte. Demo-Ordner werden nur gelöscht, wenn keine eigenen Projekte oder Unterordner darin liegen. Inhalte innerhalb eines Demo-Projekts werden mitgelöscht.</p></div><button class="button danger-button" data-remove-demo ${system.demoProjectCount || system.demoFolderCount ? '' : 'disabled'}>Beispieldaten entfernen</button></div>
   </section></div>`;
 }
 
@@ -1229,22 +1331,24 @@ async function loadAudit() {
 
 async function loadSystemStatus() {
   if (!state.user.admin) { state.system = null; return; }
-  state.system = await api('/system');
+  [state.system] = await Promise.all([api('/system'), loadUpdateStatus()]);
+}
+
+function updateUpdateBadge() {
+  const badge = $('#update-badge');
+  if (!badge) return;
+  badge.hidden = !state.update?.available;
+}
+
+async function loadUpdateStatus(force = false) {
+  if (!state.user?.admin) { state.update = null; return; }
+  state.update = await api(force ? '/update/check' : '/update/status', force ? { method:'POST', body:'{}' } : {});
+  updateUpdateBadge();
 }
 
 async function loadServerSettings() {
   if (!state.user.admin) { state.server = null; return; }
   state.server = await api('/settings/server');
-}
-
-async function loadSmtpSettings() {
-  if (!state.user.admin) { state.smtp = null; return; }
-  state.smtp = await api('/settings/smtp');
-}
-
-async function loadBackupSchedule() {
-  if (!state.user.admin) { state.backupSchedule = null; return; }
-  state.backupSchedule = await api('/settings/backup');
 }
 
 function bindServerActions() {
@@ -1269,7 +1373,7 @@ async function renderSettings() {
   const [, title, description] = settingsSections.find(([id]) => id === active);
   if (active === 'users' && state.user?.admin) await Promise.all([loadUsers(), loadProjects()]);
   if (active === 'tags' && state.user?.admin) await loadTags();
-  if (active === 'data' && state.user?.admin) await Promise.all([loadUsers(), loadProjects(), loadTags(), loadSmtpSettings(), loadBackupSchedule()]);
+  if (active === 'data' && state.user?.admin) await Promise.all([loadUsers(), loadProjects(), loadTags()]);
   if (active === 'profile') await loadProjects();
   if (active === 'security' && !state.user.mustChangePassword) await loadSessions();
   if (active === 'audit' && state.user?.admin) await loadAudit();
@@ -1433,67 +1537,10 @@ async function readBackupFile(file, validator, maxMegabytes = 25) {
 function bindDataActions() {
   let selectedProjects = null;
   let selectedUsers = null;
-  const smtpForm = $('#smtp-form');
-  const smtpTest = $('[data-test-smtp]');
-  const scheduleForm = $('#backup-schedule-form');
-  const sendBackup = $('[data-send-backup]');
   const projectExport = $('[data-export-projects]');
   const userExport = $('[data-export-users]');
   const projectImport = $('[data-import-projects]');
   const userImport = $('[data-import-users]');
-
-  smtpForm.addEventListener('submit', async event => {
-    event.preventDefault();
-    const button = smtpForm.querySelector('button[type="submit"]');
-    button.disabled = true;
-    try {
-      await api('/settings/smtp', { method:'PATCH', body:JSON.stringify(Object.fromEntries(new FormData(smtpForm))) });
-      toast('SMTP-Konfiguration gespeichert');
-      await loadSmtpSettings();
-      renderSettings();
-    } catch (error) { toast(error.message); button.disabled = false; }
-  });
-
-  smtpTest.onclick = async () => {
-    smtpTest.disabled = true;
-    smtpTest.textContent = 'Testmail wird gesendet …';
-    try {
-      const result = await api('/settings/smtp/test', { method:'POST', body:'{}' });
-      toast(`Testmail an ${result.recipient} versendet`);
-    } catch (error) { toast(`Test fehlgeschlagen: ${error.message}`); }
-    finally { smtpTest.disabled = false; smtpTest.textContent = 'Testmail senden'; }
-  };
-
-  const schedulePayload = () => ({
-    enabled:scheduleForm.elements.enabled.checked,
-    recipient:scheduleForm.elements.recipient.value,
-    scope:scheduleForm.elements.scope.value,
-    intervalDays:Number(scheduleForm.elements.intervalDays.value)
-  });
-
-  scheduleForm.addEventListener('submit', async event => {
-    event.preventDefault();
-    const button = scheduleForm.querySelector('button[type="submit"]');
-    button.disabled = true;
-    try {
-      await api('/settings/backup', { method:'PATCH', body:JSON.stringify(schedulePayload()) });
-      toast('Backup-Zeitplan gespeichert');
-      await loadBackupSchedule();
-      renderSettings();
-    } catch (error) { toast(error.message); button.disabled = false; }
-  });
-
-  sendBackup.onclick = async () => {
-    sendBackup.disabled = true;
-    sendBackup.textContent = 'Backup wird versendet …';
-    try {
-      await api('/settings/backup', { method:'PATCH', body:JSON.stringify(schedulePayload()) });
-      const result = await api('/settings/backup/send', { method:'POST', body:'{}' });
-      toast(`Backup an ${result.recipient} versendet`);
-      await loadBackupSchedule();
-      renderSettings();
-    } catch (error) { toast(`Backup fehlgeschlagen: ${error.message}`); sendBackup.disabled = false; sendBackup.textContent = 'Backup jetzt senden'; }
-  };
 
   projectExport.onclick = async () => {
     projectExport.disabled = true; projectExport.textContent = 'Archiv wird erstellt …';
@@ -1638,7 +1685,7 @@ function taskCard(task) {
   const priorityClass = priority.toLocaleLowerCase('de');
   const statusControl = mayEditProjects() ? `<select class="project-inline-select project-status task-attribute-select task-status ${statusClass}" data-task-inline-status="${escapeHtml(task.id)}" aria-label="Status von ${escapeHtml(task.title)} ändern"><option${status === 'Offen' ? ' selected' : ''}>Offen</option><option${status === 'In Arbeit' ? ' selected' : ''}>In Arbeit</option></select>` : `<span class="project-status task-status ${statusClass}">${escapeHtml(status)}</span>`;
   const priorityControl = mayEditProjects() ? `<select class="project-inline-select project-priority task-attribute-select task-priority ${priorityClass}" data-task-inline-priority="${escapeHtml(task.id)}" aria-label="Priorität von ${escapeHtml(task.title)} ändern"><option${priority === 'Hoch' ? ' selected' : ''}>Hoch</option><option${priority === 'Normal' ? ' selected' : ''}>Normal</option><option${priority === 'Niedrig' ? ' selected' : ''}>Niedrig</option></select>` : `<span class="project-priority task-priority ${priorityClass}">${escapeHtml(priority)}</span>`;
-  const controls = mayEditProjects() ? `<div class="workstep-card-actions">${itemEditButton('tasks', task.id)}<div class="workstep-action-group">${completeButton(task.id)}${reorderHandle('tasks', task.id)}${itemDeleteButton('tasks', task.id, 'Arbeitsschritt')}</div></div>` : '';
+  const controls = mayEditProjects() ? `<div class="workstep-card-actions">${itemEditButton('tasks', task.id)}<div class="workstep-action-group">${taskFlagControl(task)}${completeButton(task.id)}${reorderHandle('tasks', task.id)}${itemDeleteButton('tasks', task.id, 'Arbeitsschritt')}</div></div>` : task.flagged === true ? `<div class="workstep-card-actions"><span></span><div class="workstep-action-group">${taskFlagControl(task)}</div></div>` : '';
   return `<article class="task-card workstep-card" data-reorder-card data-reorder-id="${escapeHtml(task.id)}"${editCard}><div class="workstep-card-content"><h3>${escapeHtml(task.title)}</h3>${task.description ? `<p>${escapeHtml(task.description)}</p>` : ''}</div><aside class="workstep-card-status" aria-label="Attribute des Arbeitsschritts">${controls}<div class="project-status-row"><small>Status</small>${statusControl}</div><div class="project-status-row"><small>Priorität</small>${priorityControl}</div><div class="project-status-row"><small>Fälligkeit</small><span class="project-status-value">${task.dueDate ? formatDate(task.dueDate) : 'ohne'}</span></div></aside></article>`;
 }
 
@@ -1664,11 +1711,8 @@ async function renderProject(id) {
   if (state.activeTab === 'tasks') state.activeTab = 'entries';
   const tabs = [['entries','Logbuch'],['notes','Notizen'],['materials','Material'],['contacts','Kontakte'],['links','Links'],['ideas','Ideen'],['learnings','Erkenntnisse']];
   const content = state.activeTab === 'entries' ? diaryView(p) : itemsView(p, state.activeTab);
-  const containingFolder = folderById(p.folderId);
-  const backHref = p.status === 'archived' ? '/#/archive' : folderHref(p.folderId || null);
-  const backLabel = p.status === 'archived' ? 'Zurück zum Archiv' : containingFolder ? `Zurück zu ${containingFolder.name}` : 'Zurück zu den Projekten';
   const breadcrumbs = p.status === 'archived' ? '<nav class="folder-breadcrumbs" aria-label="Projektpfad"><a href="/#/archive">Archiviert</a></nav>' : folderBreadcrumbs(p.folderId || null);
-  $('#main').innerHTML = `<div class="project-page-head"><section class="project-hero"><div class="project-hero-layout"><div class="project-hero-main"><div class="project-breadcrumb-row"><a class="project-back" href="${escapeHtml(backHref)}" aria-label="${escapeHtml(backLabel)}" title="${escapeHtml(backLabel)}">←</a>${breadcrumbs}</div><div class="project-heading-row"><span class="project-hero-icon" aria-hidden="true">${iconSvg(projectIconName(p))}</span><div class="project-heading-content"><div class="project-title-line"><h1>${escapeHtml(p.title)}</h1></div><p class="project-description">${escapeHtml(p.description || 'Noch keine Projektbeschreibung hinterlegt.')}</p></div></div></div><aside class="project-hero-status" aria-label="Projektstatus"><div class="project-hero-status-head"><span>Projektstatus</span><div class="project-hero-actions">${projectCardActions(p)}</div></div><div class="project-hero-facts"><div class="project-hero-fact"><small>Status</small>${projectStatusControl(p)}</div><div class="project-hero-fact"><small>Priorität</small>${projectPriorityControl(p)}</div><div class="project-hero-fact"><small>Fälligkeit</small><span class="project-status-value">${p.dueDate ? formatDate(p.dueDate) : 'ohne'}</span></div><div class="project-hero-fact project-hero-tags"><small>Tags</small>${tagChips(p.tagIds, { limit:20, archived:p.status === 'archived' }) || '<span class="project-status-empty">Keine</span>'}</div></div></aside></div><div class="project-subnav"><nav class="tabs" aria-label="Projektbereiche">${tabs.map(([id,label]) => `<button class="tab ${state.activeTab===id?'active':''}" data-tab="${id}">${label}</button>`).join('')}</nav></div></section></div><section class="project-page-content">${content}</section>`;
+  $('#main').innerHTML = `<div class="project-page-breadcrumbs">${breadcrumbs}</div><div class="project-page-head"><section class="project-hero"><div class="project-hero-layout"><div class="project-hero-main"><div class="project-heading-row"><span class="project-hero-icon" aria-hidden="true">${iconSvg(projectIconName(p))}</span><div class="project-heading-content"><div class="project-title-line"><h1>${escapeHtml(p.title)}</h1></div><p class="project-description">${escapeHtml(p.description || 'Noch keine Projektbeschreibung hinterlegt.')}</p></div></div></div><aside class="project-hero-status" aria-label="Projektstatus"><div class="project-hero-status-head"><span>Projektstatus</span><div class="project-hero-actions">${projectCardActions(p)}</div></div><div class="project-hero-facts"><div class="project-hero-fact"><small>Status</small>${projectStatusControl(p)}</div><div class="project-hero-fact"><small>Priorität</small>${projectPriorityControl(p)}</div><div class="project-hero-fact"><small>Fälligkeit</small><span class="project-status-value">${p.dueDate ? formatDate(p.dueDate) : 'ohne'}</span></div><div class="project-hero-fact project-hero-tags"><small>Tags</small>${tagChips(p.tagIds, { limit:20, archived:p.status === 'archived' }) || '<span class="project-status-empty">Keine</span>'}</div></div></aside></div><div class="project-subnav"><nav class="tabs" aria-label="Projektbereiche">${tabs.map(([id,label]) => `<button class="tab ${state.activeTab===id?'active':''}" data-tab="${id}">${label}</button>`).join('')}</nav></div></section></div><section class="project-page-content">${content}</section>`;
   const newEntryButton = $('[data-new-entry]');
   if (newEntryButton) newEntryButton.onclick = () => openEntryDialog(p.id);
   const newItemButton = $('[data-new-item]');
@@ -1692,13 +1736,21 @@ async function renderProject(id) {
   document.querySelectorAll('[data-complete-task]').forEach(button => button.onclick = async event => {
     event.stopPropagation();
     const task = p.tasks?.find(item => item.id === button.dataset.completeTask);
-    if (!task || !confirm(`„${task.title}“ als erledigten Arbeitsschritt loggen?`)) return;
+    if (!task) return;
+    const startedAt = Date.now();
+    const card = button.closest('.workstep-card');
     button.disabled = true;
+    card?.classList.add('completion-pending');
     try {
       await api(`/projects/${encodeURIComponent(p.id)}/tasks/${encodeURIComponent(task.id)}/complete`, { method:'POST', body:JSON.stringify({ date:today() }) });
       toast('Arbeitsschritt als erledigt geloggt');
+      await finishCompletionTransition(card ? [card] : [], startedAt);
       await renderProject(p.id);
-    } catch (error) { toast(error.message); button.disabled = false; }
+    } catch (error) {
+      toast(error.message);
+      button.disabled = false;
+      card?.classList.remove('completion-pending', 'completion-removing');
+    }
   });
   document.querySelectorAll('[data-reopen-entry]').forEach(button => button.onclick = async event => {
     event.stopPropagation();
@@ -2164,6 +2216,28 @@ function bindSecurityActions() {
 }
 
 function bindSystemActions() {
+  const checkButton = $('[data-check-update]');
+  if (checkButton) checkButton.onclick = async () => {
+    checkButton.disabled = true;
+    try {
+      await loadUpdateStatus(true);
+      toast(state.update.available ? `Version ${state.update.latestVersion} ist verfügbar` : 'Make:Log ist aktuell');
+      await renderSettings();
+    } catch (error) { toast(error.message); checkButton.disabled = false; }
+  };
+  const installButton = $('[data-install-update]');
+  if (installButton) installButton.onclick = () => {
+    const update = state.update || {};
+    const dialog = $('#update-dialog');
+    const form = $('#update-form');
+    form.reset();
+    $('#update-error').textContent = '';
+    $('#update-dialog-copy').textContent = update.platform === 'docker'
+      ? `Version ${update.latestVersion} wird beim Docker-Host-Helfer angefordert. Der Container erhält dabei keinen Zugriff auf den Docker-Socket.`
+      : `Version ${update.latestVersion} wird geprüft, gesichert und anschließend installiert. Währenddessen ist Make:Log kurz im Wartungsmodus.`;
+    dialog.showModal();
+    form.elements.password.focus();
+  };
   $('[data-clear-content]').onclick = async event => {
     if (!confirm('Wirklich alle Projekte einschließlich aller Logs und Projektinhalte endgültig löschen? Benutzerkonten bleiben erhalten.')) return;
     const button = event.currentTarget;
@@ -2186,22 +2260,26 @@ function bindSystemActions() {
     } catch (error) { toast(error.message); button.disabled = false; }
   };
   $('[data-load-demo]').onclick = async event => {
-    if (!confirm('Die 16 Beispielprojekte einspielen? Andere Projekte bleiben erhalten; vorhandene Demo-Projekte werden aktualisiert.')) return;
+    if (!confirm('Die elf Beispielprojekte und zwei Demo-Ordner einspielen? Bereits vorhandene Demodaten werden auf den Lieferzustand zurückgesetzt; eigene Inhalte bleiben erhalten.')) return;
     const button = event.currentTarget;
     button.disabled = true;
     button.textContent = 'Beispieldaten werden eingespielt …';
     try {
-      const response = await fetch('/demo-data.json?v=20260819-2', { cache:'no-store' });
-      if (!response.ok) throw new Error('Beispieldaten konnten nicht geladen werden');
-      const demo = await response.json();
-      if (demo.format !== 'make-log-demo' || !Array.isArray(demo.projects) || demo.projects.length !== 16) throw new Error('Beispieldatensatz ist ungültig');
-      for (const project of demo.projects) {
-        if (!Array.isArray(project.tasks)) project.tasks = project.status === 'active' ? [{ id:`${project.id}-task-1`, title:project.ideas?.[0]?.title || 'Nächsten Arbeitsschritt planen', description:project.ideas?.[0]?.description || '', status:'Offen', priority:'Normal', dueDate:'', createdAt:project.createdAt }] : [];
-        await api('/import/project', { method:'POST', body:JSON.stringify({ project, tags:demo.tags || [], accessUsers:[], replace:true }) });
-      }
-      toast('16 Beispielprojekte eingespielt');
+      const result = await api('/demo', { method:'POST' });
+      toast(`${result.installed || 0} Beispielprojekte eingespielt`);
       await renderSettings();
     } catch (error) { toast(error.message); button.disabled = false; button.textContent = 'Beispieldaten einspielen'; }
+  };
+  $('[data-remove-demo]').onclick = async event => {
+    if (!confirm('Wirklich alle Beispielprojekte einschließlich nachträglich darin angelegter Inhalte endgültig löschen? Demo-Ordner mit eigenen Projekten oder Unterordnern bleiben erhalten.')) return;
+    const button = event.currentTarget;
+    button.disabled = true;
+    try {
+      const result = await api('/demo', { method:'DELETE' });
+      const retained = result.foldersRetained || 0;
+      toast(`${result.removed || 0} Beispielprojekte entfernt${retained ? ` · ${retained} belegte Demo-Ordner behalten` : ''}`);
+      await renderSettings();
+    } catch (error) { toast(error.message); button.disabled = false; }
   };
 }
 
@@ -2426,6 +2504,17 @@ function bindItemActions() {
       toast('Status des Arbeitsschritts geändert');
       await renderProject(state.current.id);
     } catch (error) { toast(error.message); await renderProject(state.current.id); }
+  });
+  document.querySelectorAll('[data-task-flag]').forEach(button => button.onclick = async event => {
+    event.stopPropagation();
+    const id = button.dataset.taskFlag;
+    const flagged = button.dataset.flagged !== 'true';
+    button.disabled = true;
+    try {
+      await api(`/projects/${encodeURIComponent(state.current.id)}/tasks/${encodeURIComponent(id)}`, { method:'PATCH', body:JSON.stringify({ flagged }) });
+      toast(flagged ? 'Arbeitsschritt markiert' : 'Markierung entfernt');
+      await renderProject(state.current.id);
+    } catch (error) { toast(error.message); button.disabled = false; }
   });
   document.querySelectorAll('[data-task-inline-priority]').forEach(select => select.onchange = async event => {
     event.stopPropagation();
@@ -2766,6 +2855,33 @@ $('#password-form').addEventListener('submit', async event => {
     $('#password-dialog').close(); form.reset(); toast('Passwort geändert');
     if (form.dataset.forced === 'true') { location.hash = '#/settings/profile'; await route(); }
   } catch (cause) { error.textContent = cause.message; }
+});
+$('#update-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const error = $('#update-error');
+  const submit = form.querySelector('button[type="submit"]');
+  error.textContent = '';
+  submit.disabled = true;
+  submit.textContent = state.update?.platform === 'docker' ? 'Update wird angefordert …' : 'Update wird installiert …';
+  try {
+    const result = await api('/update/install', { method:'POST', body:JSON.stringify({ password:form.elements.password.value }) });
+    $('#update-dialog').close();
+    form.reset();
+    if (result.reload) {
+      toast('Update installiert · Make:Log wird neu geladen');
+      setTimeout(() => location.reload(), 700);
+      return;
+    }
+    toast('Docker-Update wurde angefordert');
+    await loadUpdateStatus();
+    await renderSettings();
+  } catch (cause) {
+    error.textContent = cause.message;
+  } finally {
+    submit.disabled = false;
+    submit.textContent = 'Update installieren';
+  }
 });
 $('#logout').onclick = async () => { await api('/logout', { method:'POST' }); location.reload(); };
 $('#settings-toggle').onclick = () => {

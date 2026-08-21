@@ -25,5 +25,6 @@ Anwendungscode und `storage/` dürfen nicht öffentlich abrufbar sein. Kann der 
 
 ## Updates
 
-Vor einem Update beide Backups herunterladen. Danach `app/` und `public/` durch die neue Version ersetzen; `storage/` niemals überschreiben. Beim nächsten Aufruf führt Make:Log notwendige Datenbankmigrationen automatisch aus.
+Administratoren werden unter **Einstellungen → System** auf ein signiertes GitHub Release hingewiesen. Darf PHP die Programmdateien verändern, kann das Update dort nach erneuter Eingabe des Administratorpassworts direkt installiert werden. Make:Log erstellt vorher automatisch eine SQLite- und Programmsicherung, aktiviert den Wartungsmodus und rollt einen fehlgeschlagenen Dateitausch zurück. `storage/` wird niemals durch ein Release überschrieben.
 
+Fehlen Schreibrechte, bleibt das manuelle Verfahren möglich: zuerst beide Browser-Backups herunterladen und anschließend `app/`, `public/`, `config/`, `VERSION` und `SCHEMA_VERSION` aus dem neuen Webpaket ersetzen. `storage/` niemals überschreiben. Beim nächsten Aufruf führt Make:Log notwendige Datenbankmigrationen automatisch aus.

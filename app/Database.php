@@ -8,8 +8,6 @@ use PDO;
 
 final class Database
 {
-    private const SCHEMA_VERSION = '5';
-
     private PDO $pdo;
     private string $path;
 
@@ -60,7 +58,7 @@ final class Database
     {
         try {
             $statement = $this->pdo->query("SELECT value FROM meta WHERE key = 'schema_version'");
-            return (string) $statement->fetchColumn() === self::SCHEMA_VERSION;
+            return (int) $statement->fetchColumn() === \makelog_schema_version();
         } catch (\PDOException) {
             return false;
         }
@@ -88,6 +86,11 @@ final class Database
 
     private function migrate(): void
     {
+        $previousVersion = 0;
+        try {
+            $previousVersion = (int) ($this->pdo->query("SELECT value FROM meta WHERE key = 'schema_version'")->fetchColumn() ?: 0);
+        } catch (\PDOException) {
+        }
         $this->pdo->exec(<<<'SQL'
             CREATE TABLE IF NOT EXISTS meta (
                 key TEXT PRIMARY KEY,
@@ -177,8 +180,31 @@ final class Database
         // Tags can no longer be disabled. Restore previously disabled tags so
         // they remain visible and selectable after the feature is removed.
         $this->pdo->exec('UPDATE tags SET active = 1 WHERE active <> 1');
+        $this->pdo->exec("DELETE FROM settings WHERE key IN ('smtp', 'backup')");
+
+        $targetVersion = \makelog_schema_version();
+        for ($version = max(7, $previousVersion + 1); $version <= $targetVersion; $version++) {
+            $migrationPath = \makelog_root_path() . '/database/migrations/' . sprintf('%03d.sql', $version);
+            if (!is_file($migrationPath)) {
+                throw new \RuntimeException('Die Datenbankmigration ' . $version . ' fehlt.');
+            }
+            $sql = (string) file_get_contents($migrationPath);
+            if ($sql === '' || preg_match('/\b(?:ATTACH|DETACH|VACUUM|BEGIN|COMMIT|ROLLBACK)\b/i', $sql)) {
+                throw new \RuntimeException('Die Datenbankmigration ' . $version . ' ist ungültig.');
+            }
+            $this->pdo->beginTransaction();
+            try {
+                $this->pdo->exec($sql);
+                $statement = $this->pdo->prepare('INSERT INTO meta (key, value) VALUES (:key, :value) ON CONFLICT(key) DO UPDATE SET value = excluded.value');
+                $statement->execute(['key' => 'schema_version', 'value' => (string) $version]);
+                $this->pdo->commit();
+            } catch (\Throwable $error) {
+                if ($this->pdo->inTransaction()) $this->pdo->rollBack();
+                throw $error;
+            }
+        }
 
         $statement = $this->pdo->prepare('INSERT INTO meta (key, value) VALUES (:key, :value) ON CONFLICT(key) DO UPDATE SET value = excluded.value');
-        $statement->execute(['key' => 'schema_version', 'value' => self::SCHEMA_VERSION]);
+        $statement->execute(['key' => 'schema_version', 'value' => (string) $targetVersion]);
     }
 }

@@ -28,6 +28,8 @@ form.addEventListener('submit', async event => {
     error.textContent = 'Die Passwörter stimmen nicht überein.';
     return;
   }
+  delete values.confirmPassword;
+  values.demoData = form.elements.demoData.checked;
   const button = form.querySelector('button');
   button.disabled = true;
   try {

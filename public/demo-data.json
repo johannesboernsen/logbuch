@@ -2,1967 +2,406 @@
   "format": "make-log-demo",
   "version": 1,
   "tags": [
-    { "id": "tag-elektronik", "name": "Elektronik", "active": true },
-    { "id": "tag-esp32", "name": "ESP32", "active": true },
-    { "id": "tag-3d-druck", "name": "3D-Druck", "active": true },
-    { "id": "tag-werkstatt", "name": "Werkstatt", "active": true },
-    { "id": "tag-holzwerken", "name": "Holzwerken", "active": true },
-    { "id": "tag-upcycling", "name": "Upcycling", "active": true },
-    { "id": "tag-fotografie", "name": "Fotografie", "active": true },
-    { "id": "tag-solar", "name": "Solar", "active": true }
+    { "id": "demo-tag-elektronik", "name": "Elektronik", "createdAt": "2026-01-05T10:00:00Z" },
+    { "id": "demo-tag-esp32", "name": "ESP32", "createdAt": "2026-01-05T10:00:00Z" },
+    { "id": "demo-tag-3d-druck", "name": "3D-Druck", "createdAt": "2026-01-05T10:00:00Z" },
+    { "id": "demo-tag-holzwerken", "name": "Holzwerken", "createdAt": "2026-01-05T10:00:00Z" },
+    { "id": "demo-tag-werkstatt", "name": "Werkstatt", "createdAt": "2026-01-05T10:00:00Z" },
+    { "id": "demo-tag-upcycling", "name": "Upcycling", "createdAt": "2026-01-05T10:00:00Z" },
+    { "id": "demo-tag-fotografie", "name": "Fotografie", "createdAt": "2026-01-05T10:00:00Z" },
+    { "id": "demo-tag-solar", "name": "Solar", "createdAt": "2026-01-05T10:00:00Z" }
+  ],
+  "folders": [
+    {
+      "id": "demo-folder-elektronik",
+      "parentId": null,
+      "name": "Elektronik",
+      "description": "Schaltungen, Sensoren und Steuerungen vom ersten Testaufbau bis zum fertigen Gehäuse.",
+      "priority": "Hoch",
+      "flagged": false,
+      "icon": "cpu",
+      "tagIds": ["demo-tag-elektronik", "demo-tag-esp32"],
+      "createdAt": "2026-01-05T10:00:00Z"
+    },
+    {
+      "id": "demo-folder-werkstatt",
+      "parentId": null,
+      "name": "Holzwerken",
+      "description": "Werkstattmöbel und praktische Vorrichtungen für präzises, wiederholbares Arbeiten mit Holz.",
+      "priority": "Mittel",
+      "flagged": false,
+      "icon": "hammer",
+      "tagIds": ["demo-tag-holzwerken", "demo-tag-werkstatt"],
+      "createdAt": "2026-01-05T10:00:00Z"
+    }
   ],
   "projects": [
     {
-      "id": "cnc-absaugautomatik",
-      "title": "CNC-Fräse: Absaugautomatik",
-      "description": "Eine stromüberwachte Absaugung, die gemeinsam mit der CNC-Fräse startet und kontrolliert nachläuft.",
-      "status": "active",
-      "createdAt": "2025-11-08",
-      "tagIds": ["tag-werkstatt", "tag-elektronik"],
+      "id": "demo-loetstation-absaugung",
+      "title": "Leise Lötrauchabsaugung",
+      "description": "Kompakte Absaugung mit wechselbarem Aktivkohlefilter, regelbarem Lüfter und 3D-gedruckter Einströmdüse für den Elektronikarbeitsplatz.",
+      "status": "active", "priority": "Hoch", "flagged": true, "icon": "wind", "iconInherited": false,
+      "createdAt": "2026-07-02", "dueDate": "2026-09-05", "createdBy": "demo", "tagIds": ["demo-tag-elektronik", "demo-tag-3d-druck", "demo-tag-werkstatt"], "folderId": "demo-folder-elektronik",
       "entries": [
-        {
-          "id": "cnc-absaugautomatik-entry-1",
-          "date": "2025-11-08",
-          "title": "Anforderungen gesammelt",
-          "body": "Schaltleistung, Nachlaufzeit und vorhandene Anschlüsse an Fräse und Sauger aufgenommen.",
-          "nextStep": "Stromsensor vermessen",
-          "author": "admin"
-        },
-        {
-          "id": "cnc-absaugautomatik-entry-2",
-          "date": "2025-11-22",
-          "title": "Stromsensor vermessen",
-          "body": "Den Stromsensor mit Leerlauf und Frässpindel getestet und sichere Schaltschwellen bestimmt.",
-          "nextStep": "Relaisstufe aufgebaut",
-          "author": "admin"
-        },
-        {
-          "id": "cnc-absaugautomatik-entry-3",
-          "date": "2025-12-13",
-          "title": "Relaisstufe aufgebaut",
-          "body": "Schütz, Sicherung und Kleinspannungssteuerung auf einer Montageplatte verdrahtet.",
-          "nextStep": "Firmware-Grundfunktion getestet",
-          "author": "admin"
-        },
-        {
-          "id": "cnc-absaugautomatik-entry-4",
-          "date": "2026-01-17",
-          "title": "Firmware-Grundfunktion getestet",
-          "body": "Startschwelle, Entprellung und Nachlaufzeit im Werkstattbetrieb erprobt.",
-          "nextStep": "Gehäuse konstruiert",
-          "author": "admin"
-        },
-        {
-          "id": "cnc-absaugautomatik-entry-5",
-          "date": "2026-02-28",
-          "title": "Gehäuse konstruiert",
-          "body": "Ein geschlossenes Hutschienengehäuse mit getrennten Spannungsbereichen gezeichnet.",
-          "nextStep": "Absaugschieber gekoppelt",
-          "author": "admin"
-        },
-        {
-          "id": "cnc-absaugautomatik-entry-6",
-          "date": "2026-04-11",
-          "title": "Absaugschieber gekoppelt",
-          "body": "Einen Servo ergänzt, der den Schieber am Maschinenanschluss automatisch öffnet.",
-          "nextStep": "Dauertest durchgeführt",
-          "author": "admin"
-        },
-        {
-          "id": "cnc-absaugautomatik-entry-7",
-          "date": "2026-06-20",
-          "title": "Dauertest durchgeführt",
-          "body": "Mehrere Fräsjobs ohne Fehlschaltung absolviert und die Temperatur im Gehäuse geprüft.",
-          "nextStep": "Beschriftung ergänzt",
-          "author": "admin"
-        },
-        {
-          "id": "cnc-absaugautomatik-entry-8",
-          "date": "2026-08-02",
-          "title": "Beschriftung ergänzt",
-          "body": "Anschlüsse, Sicherung und manuellen Überbrückungsschalter dauerhaft beschriftet.",
-          "nextStep": "",
-          "author": "admin"
-        }
+        { "id": "demo-absaugung-entry-1", "date": "2026-08-12", "title": "Luftführung getestet", "body": "Der 120-mm-Lüfter zieht bei 70 % Leistung zuverlässig durch zwei Filterlagen. Die erste Düse war zu eng und erzeugte deutliches Pfeifen.", "nextStep": "Breitere Düse drucken und Lautstärke vergleichen.", "author": "demo", "createdAt": "2026-08-12T18:20:00Z" }
+      ],
+      "tasks": [
+        { "id": "demo-absaugung-task-1", "title": "Düse Version 2 drucken", "description": "Öffnung auf 160 × 35 mm verbreitern und die Innenkante verrunden.", "status": "In Arbeit", "priority": "Hoch", "dueDate": "2026-08-24", "author": "demo", "createdAt": "2026-08-12T18:25:00Z" },
+        { "id": "demo-absaugung-task-2", "title": "PWM-Regler ins Gehäuse setzen", "description": "Knopf und Kabeldurchführung so platzieren, dass der Filter ohne Werkzeug wechselbar bleibt.", "status": "Offen", "priority": "Normal", "dueDate": "2026-08-30", "flagged": true, "author": "demo", "createdAt": "2026-08-12T18:26:00Z" }
       ],
       "materials": [
-        {
-          "id": "cnc-absaugautomatik-material-1",
-          "name": "Stromsensor-Modul",
-          "quantity": "1",
-          "status": "Verbaut",
-          "price": "12,90 €",
-          "properties": "Galvanisch getrennte Messung",
-          "url": "",
-          "createdAt": "2025-11-08"
-        },
-        {
-          "id": "cnc-absaugautomatik-material-2",
-          "name": "Hutschienen-Schütz 230 V",
-          "quantity": "1",
-          "status": "Verbaut",
-          "price": "18,50 €",
-          "properties": "Spule 12 V, zweipolig",
-          "url": "",
-          "createdAt": "2025-11-08"
-        },
-        {
-          "id": "cnc-absaugautomatik-material-3",
-          "name": "Servo für Absaugschieber",
-          "quantity": "1",
-          "status": "Gekauft",
-          "price": "9,80 €",
-          "properties": "Metallgetriebe",
-          "url": "",
-          "createdAt": "2025-11-08"
-        }
+        { "id": "demo-absaugung-material-1", "name": "120-mm-PC-Lüfter", "quantity": "1", "status": "Vorhanden", "price": "14,90 €", "url": "", "properties": "12 V, PWM, hoher statischer Druck", "author": "demo", "createdAt": "2026-07-02T17:00:00Z" },
+        { "id": "demo-absaugung-material-2", "name": "Aktivkohlematte", "quantity": "2 Zuschnitte", "status": "Vorhanden", "price": "8,50 €", "url": "", "properties": "10 mm stark", "author": "demo", "createdAt": "2026-07-02T17:02:00Z" }
       ],
-      "contacts": [],
+      "contacts": [
+        { "id": "demo-absaugung-contact-1", "name": "Mara Beispiel", "role": "Austausch zur Lüfterauslegung", "company": "Offene Werkstatt", "email": "mara@example.com", "phone": "", "notes": "Hat ein Anemometer für den Vergleichstest.", "author": "demo", "createdAt": "2026-07-04T11:00:00Z" }
+      ],
       "links": [
-        {
-          "id": "cnc-absaugautomatik-link-1",
-          "title": "Datenblatt Stromsensor",
-          "url": "https://example.com/stromsensor",
-          "notes": "Pinbelegung und zulässige Isolation.",
-          "createdAt": "2025-11-08"
-        }
+        { "id": "demo-absaugung-link-1", "title": "Datenblatt des Lüfters", "url": "https://example.com/maker/luefter-datenblatt", "notes": "Druckkurve bei 12 V beachten.", "author": "demo", "createdAt": "2026-07-03T09:00:00Z" }
       ],
       "ideas": [
-        {
-          "id": "cnc-absaugautomatik-idea-1",
-          "title": "Nachlauf abhängig vom Fräsjob",
-          "status": "Prüfen",
-          "description": "Lange Jobs sollen eine längere Filterreinigung auslösen.",
-          "createdAt": "2025-11-08"
-        },
-        {
-          "id": "cnc-absaugautomatik-idea-2",
-          "title": "Manueller Werkstattmodus",
-          "status": "Umgesetzt",
-          "description": "Absaugung lässt sich unabhängig von der CNC einschalten.",
-          "createdAt": "2025-11-08"
-        }
+        { "id": "demo-absaugung-idea-1", "title": "Filterwechselanzeige", "status": "Prüfen", "description": "Betriebsstunden im kleinen OLED anzeigen, statt einen festen Kalendertermin zu verwenden.", "author": "demo", "createdAt": "2026-08-13T08:00:00Z" }
       ],
-      "entryCount": 8,
-      "latestEntryId": "cnc-absaugautomatik-entry-8",
-      "latestEntryDate": "2026-08-02",
-      "latestEntryTitle": "Beschriftung ergänzt",
-      "latestEntryBody": "Anschlüsse, Sicherung und manuellen Überbrückungsschalter dauerhaft beschriftet.",
-      "latestNextStep": ""
+      "learnings": [
+        { "id": "demo-absaugung-learning-1", "title": "Große Querschnitte sind leiser", "description": "Nicht der Lüfter, sondern die scharfkantige kleine Düse war die dominante Geräuschquelle.", "futureUse": "Luftkanäle großzügig dimensionieren und Übergänge verrunden.", "author": "demo", "createdAt": "2026-08-12T18:30:00Z" }
+      ],
+      "notes": [
+        { "id": "demo-absaugung-note-1", "title": "Gehäusemaße", "description": "Außen 180 × 165 × 70 mm; Filtereinschub auf der rechten Seite, vier M4-Gewindeeinsätze.", "author": "demo", "createdAt": "2026-08-12T18:32:00Z" },
+        { "id": "demo-absaugung-note-egg", "title": "Akustischer Abnahmetest", "description": "Bestanden, wenn man neben der Absaugung noch hört, wie eine M3-Mutter auf den Boden fällt. Nicht bestanden, wenn anschließend niemand weiß, wohin sie gerollt ist.", "author": "demo", "createdAt": "2026-08-12T18:33:00Z" }
+      ]
     },
     {
-      "id": "gewaechshaus-wetterstation",
-      "title": "Gewächshaus-Wetterstation",
-      "description": "Temperatur, Luftfeuchte, Bodenfeuchte und Licht im kleinen Gewächshaus erfassen und lokal darstellen.",
-      "status": "active",
-      "createdAt": "2026-02-14",
-      "tagIds": ["tag-elektronik", "tag-esp32"],
+      "id": "demo-pflanzenlicht-controller",
+      "title": "Pflanzenlicht-Controller",
+      "description": "ESP32-Steuerung für zwei dimmbare Pflanzenleuchten mit sanftem Sonnenaufgang und lokaler Bedienung ohne Cloud.",
+      "status": "active", "priority": "Mittel", "flagged": false, "icon": "sprout", "iconInherited": false,
+      "createdAt": "2026-06-18", "dueDate": "2026-09-20", "createdBy": "demo", "tagIds": ["demo-tag-elektronik", "demo-tag-esp32", "demo-tag-3d-druck"], "folderId": "demo-folder-elektronik",
       "entries": [
-        {
-          "id": "gewaechshaus-wetterstation-entry-1",
-          "date": "2026-02-14",
-          "title": "Messgrößen festgelegt",
-          "body": "Temperatur, Luftfeuchte, Bodenfeuchte und Beleuchtungsstärke als Kernwerte ausgewählt.",
-          "nextStep": "Sensoren verglichen",
-          "author": "admin"
-        },
-        {
-          "id": "gewaechshaus-wetterstation-entry-2",
-          "date": "2026-03-01",
-          "title": "Sensoren verglichen",
-          "body": "Drei Feuchtesensoren parallel betrieben und die Abweichungen dokumentiert.",
-          "nextStep": "ESP32-Messknoten aufgebaut",
-          "author": "admin"
-        },
-        {
-          "id": "gewaechshaus-wetterstation-entry-3",
-          "date": "2026-03-28",
-          "title": "ESP32-Messknoten aufgebaut",
-          "body": "Sensoren auf Lochraster verdrahtet und erste Messwerte per WLAN übertragen.",
-          "nextStep": "Wetterschutz gedruckt",
-          "author": "admin"
-        },
-        {
-          "id": "gewaechshaus-wetterstation-entry-4",
-          "date": "2026-05-09",
-          "title": "Wetterschutz gedruckt",
-          "body": "Ein belüftetes weißes Gehäuse gegen direkte Sonne und Spritzwasser montiert.",
-          "nextStep": "Bodenfeuchte kalibriert",
-          "author": "admin"
-        },
-        {
-          "id": "gewaechshaus-wetterstation-entry-5",
-          "date": "2026-06-27",
-          "title": "Bodenfeuchte kalibriert",
-          "body": "Messwerte für trockene, feuchte und gesättigte Erde bestimmt.",
-          "nextStep": "Dashboard überarbeitet",
-          "author": "admin"
-        },
-        {
-          "id": "gewaechshaus-wetterstation-entry-6",
-          "date": "2026-08-09",
-          "title": "Dashboard überarbeitet",
-          "body": "Tagesminima, Maxima und Warnschwellen übersichtlicher dargestellt.",
-          "nextStep": "",
-          "author": "admin"
-        }
+        { "id": "demo-pflanzenlicht-entry-1", "date": "2026-08-09", "title": "Dimm-Schnittstelle vermessen", "body": "Die Leuchten akzeptieren 0–10 V. Ein Tiefpass hinter dem PWM-Ausgang liefert ein ausreichend ruhiges Signal.", "nextStep": "Langzeittest mit beiden Kanälen starten.", "author": "demo", "createdAt": "2026-08-09T14:10:00Z" }
+      ],
+      "tasks": [
+        { "id": "demo-pflanzenlicht-task-1", "title": "Zeitplan im Webinterface ergänzen", "description": "Je Kanal Startzeit, Dauer und Rampenlänge speichern.", "status": "In Arbeit", "priority": "Hoch", "dueDate": "2026-08-28", "author": "demo", "createdAt": "2026-08-10T09:00:00Z" },
+        { "id": "demo-pflanzenlicht-task-2", "title": "Gehäuse mit Lüftungsschlitzen drucken", "description": "Netzteil und Kleinspannung räumlich trennen.", "status": "Offen", "priority": "Normal", "dueDate": "2026-09-06", "author": "demo", "createdAt": "2026-08-10T09:05:00Z" }
       ],
       "materials": [
-        {
-          "id": "gewaechshaus-wetterstation-material-1",
-          "name": "SHT31 Temperatur-/Feuchtesensor",
-          "quantity": "2",
-          "status": "Verbaut",
-          "price": "15,80 €",
-          "properties": "I²C, zwei Messorte",
-          "url": "",
-          "createdAt": "2026-02-14"
-        },
-        {
-          "id": "gewaechshaus-wetterstation-material-2",
-          "name": "Kapazitiver Bodenfeuchtesensor",
-          "quantity": "3",
-          "status": "Verbaut",
-          "price": "13,50 €",
-          "properties": "Korrosionsarm",
-          "url": "",
-          "createdAt": "2026-02-14"
-        },
-        {
-          "id": "gewaechshaus-wetterstation-material-3",
-          "name": "UV-beständiges PETG",
-          "quantity": "250 g",
-          "status": "Vorhanden",
-          "price": "",
-          "properties": "Weiß für Strahlungsschutz",
-          "url": "",
-          "createdAt": "2026-02-14"
-        }
+        { "id": "demo-pflanzenlicht-material-1", "name": "ESP32-C3 DevKit", "quantity": "1", "status": "Verbaut", "price": "7,20 €", "url": "", "properties": "WLAN nur für das lokale Webinterface", "author": "demo", "createdAt": "2026-06-18T12:00:00Z" },
+        { "id": "demo-pflanzenlicht-material-2", "name": "Operationsverstärker-Modul", "quantity": "2 Kanäle", "status": "Testaufbau", "price": "4,80 €", "url": "", "properties": "Ausgang 0–10 V", "author": "demo", "createdAt": "2026-06-20T12:00:00Z" }
       ],
-      "contacts": [],
+      "contacts": [
+        { "id": "demo-pflanzenlicht-contact-1", "name": "Alex Muster", "role": "Pflanzenpflege und Testbetrieb", "company": "Nachbarschaftsgarten", "email": "alex@example.com", "phone": "", "notes": "Testet den zweiten Prototypen im Kräuterregal.", "author": "demo", "createdAt": "2026-07-01T10:00:00Z" },
+        { "id": "demo-pflanzenlicht-contact-egg", "name": "Monstera Monika", "role": "Kritische Endanwenderin", "company": "Fensterbank West", "email": "", "phone": "", "notes": "Antwortet langsam auf Rückfragen, zeigt Zustimmung aber zuverlässig durch neue Blätter.", "author": "demo", "createdAt": "2026-07-02T07:30:00Z" }
+      ],
       "links": [
-        {
-          "id": "gewaechshaus-wetterstation-link-1",
-          "title": "SHT31-Datenblatt",
-          "url": "https://example.com/sht31",
-          "notes": "Messgenauigkeit und Montagehinweise.",
-          "createdAt": "2026-02-14"
-        }
+        { "id": "demo-pflanzenlicht-link-1", "title": "ESP32-C3 Referenz", "url": "https://example.com/maker/esp32-c3-referenz", "notes": "Pinbelegung des verwendeten Boards.", "author": "demo", "createdAt": "2026-06-18T12:30:00Z" }
       ],
       "ideas": [
-        {
-          "id": "gewaechshaus-wetterstation-idea-1",
-          "title": "Lüfter automatisch steuern",
-          "status": "Offen",
-          "description": "Bei hoher Temperatur einen 12-V-Lüfter zuschalten.",
-          "createdAt": "2026-02-14"
-        },
-        {
-          "id": "gewaechshaus-wetterstation-idea-2",
-          "title": "Regenfass-Füllstand ergänzen",
-          "status": "Prüfen",
-          "description": "Ultraschallsensor am Vorratsbehälter testen.",
-          "createdAt": "2026-02-14"
-        }
+        { "id": "demo-pflanzenlicht-idea-1", "title": "Urlaubsmodus", "status": "Offen", "description": "Helligkeit für mehrere Tage reduzieren und danach automatisch zum normalen Plan zurückkehren.", "author": "demo", "createdAt": "2026-08-11T08:00:00Z" }
       ],
-      "entryCount": 6,
-      "latestEntryId": "gewaechshaus-wetterstation-entry-6",
-      "latestEntryDate": "2026-08-09",
-      "latestEntryTitle": "Dashboard überarbeitet",
-      "latestEntryBody": "Tagesminima, Maxima und Warnschwellen übersichtlicher dargestellt.",
-      "latestNextStep": ""
+      "learnings": [
+        { "id": "demo-pflanzenlicht-learning-1", "title": "PWM nicht direkt einspeisen", "description": "Die Leuchten reagieren auf ungefiltertes PWM mit sichtbarem Flimmern.", "futureUse": "Analoge Steuereingänge zuerst vermessen und mit Oszilloskop prüfen.", "author": "demo", "createdAt": "2026-08-09T14:20:00Z" }
+      ],
+      "notes": [
+        { "id": "demo-pflanzenlicht-note-1", "title": "Sicherheitsgrenze", "description": "Ausgang softwareseitig auf 8,5 V begrenzen; das entspricht der gewünschten maximalen Helligkeit.", "author": "demo", "createdAt": "2026-08-09T14:25:00Z" }
+      ]
     },
     {
-      "id": "retro-radio-bluetooth",
-      "title": "Retro-Radio mit Bluetooth",
-      "description": "Ein Röhrenradio-Gehäuse restaurieren und mit moderner, sicherer Audioelektronik weiterverwenden.",
-      "status": "active",
-      "createdAt": "2025-09-06",
-      "tagIds": ["tag-elektronik", "tag-upcycling"],
+      "id": "demo-modulare-werkbank",
+      "title": "Modulare Werkbank",
+      "description": "Mobile Werkbank aus Multiplex mit Lochraster, austauschbaren Maschineneinsätzen und Stauraum für Handwerkzeuge.",
+      "status": "active", "priority": "Hoch", "flagged": true, "icon": "hammer", "iconInherited": false,
+      "createdAt": "2026-05-10", "dueDate": "2026-10-03", "createdBy": "demo", "tagIds": ["demo-tag-holzwerken", "demo-tag-werkstatt"], "folderId": "demo-folder-werkstatt",
       "entries": [
-        {
-          "id": "retro-radio-bluetooth-entry-1",
-          "date": "2025-09-06",
-          "title": "Radio zerlegt",
-          "body": "Chassis, Lautsprecher und Skalenscheibe ausgebaut und alle Teile fotografisch dokumentiert.",
-          "nextStep": "Gehäuse gereinigt",
-          "author": "admin"
-        },
-        {
-          "id": "retro-radio-bluetooth-entry-2",
-          "date": "2025-10-04",
-          "title": "Gehäuse gereinigt",
-          "body": "Furnier vorsichtig gereinigt und lose Stellen mit Knochenleim fixiert.",
-          "nextStep": "Lautsprecher geprüft",
-          "author": "admin"
-        },
-        {
-          "id": "retro-radio-bluetooth-entry-3",
-          "date": "2025-11-15",
-          "title": "Lautsprecher geprüft",
-          "body": "Originalchassis gemessen und wegen beschädigter Sicke einen Ersatz ausgewählt.",
-          "nextStep": "Verstärker getestet",
-          "author": "admin"
-        },
-        {
-          "id": "retro-radio-bluetooth-entry-4",
-          "date": "2026-01-10",
-          "title": "Verstärker getestet",
-          "body": "Class-D-Verstärker mit Labornetzteil und Ersatzlautsprecher auf Störgeräusche geprüft.",
-          "nextStep": "Skalenbeleuchtung erneuert",
-          "author": "admin"
-        },
-        {
-          "id": "retro-radio-bluetooth-entry-5",
-          "date": "2026-03-07",
-          "title": "Skalenbeleuchtung erneuert",
-          "body": "Warmweiße LEDs hinter Diffusoren montiert und dimmbar gemacht.",
-          "nextStep": "Bedienknöpfe adaptiert",
-          "author": "admin"
-        },
-        {
-          "id": "retro-radio-bluetooth-entry-6",
-          "date": "2026-05-16",
-          "title": "Bedienknöpfe adaptiert",
-          "body": "Originalknöpfe über gedruckte Kupplungen mit Encoder und Potentiometer verbunden.",
-          "nextStep": "Bluetooth-Antenne versetzt",
-          "author": "admin"
-        },
-        {
-          "id": "retro-radio-bluetooth-entry-7",
-          "date": "2026-07-25",
-          "title": "Bluetooth-Antenne versetzt",
-          "body": "Antenne außerhalb der Abschirmbleche positioniert und Reichweite verbessert.",
-          "nextStep": "",
-          "author": "admin"
-        }
+        { "id": "demo-werkbank-entry-1", "date": "2026-08-15", "title": "Untergestell verleimt", "body": "Die beiden Seitenteile sind rechtwinklig. Die hintere Zarge wurde wegen der Absaugführung um 40 mm nach oben versetzt.", "nextStep": "Rollen montieren und Diagonalsteifigkeit prüfen.", "author": "demo", "createdAt": "2026-08-15T16:00:00Z" }
+      ],
+      "tasks": [
+        { "id": "demo-werkbank-task-1", "title": "Schwerlastrollen montieren", "description": "Vier Rollen mit M8-Durchgangsschrauben und großen Unterlegscheiben befestigen.", "status": "In Arbeit", "priority": "Hoch", "dueDate": "2026-08-23", "author": "demo", "createdAt": "2026-08-15T16:10:00Z" },
+        { "id": "demo-werkbank-task-2", "title": "Ersten Maschineneinsatz bauen", "description": "Bündige Platte für die Kappsäge herstellen und nivellierbar lagern.", "status": "Offen", "priority": "Normal", "dueDate": "2026-09-12", "flagged": true, "author": "demo", "createdAt": "2026-08-15T16:11:00Z" }
       ],
       "materials": [
-        {
-          "id": "retro-radio-bluetooth-material-1",
-          "name": "Bluetooth-Audiomodul",
-          "quantity": "1",
-          "status": "Verbaut",
-          "price": "16,90 €",
-          "properties": "aptX-fähig",
-          "url": "",
-          "createdAt": "2025-09-06"
-        },
-        {
-          "id": "retro-radio-bluetooth-material-2",
-          "name": "Class-D-Verstärker 2 × 30 W",
-          "quantity": "1",
-          "status": "Verbaut",
-          "price": "21,00 €",
-          "properties": "Versorgung 24 V",
-          "url": "",
-          "createdAt": "2025-09-06"
-        },
-        {
-          "id": "retro-radio-bluetooth-material-3",
-          "name": "Warmweiße LED-Leiste",
-          "quantity": "40 cm",
-          "status": "Verbaut",
-          "price": "6,40 €",
-          "properties": "2700 K",
-          "url": "",
-          "createdAt": "2025-09-06"
-        }
+        { "id": "demo-werkbank-material-1", "name": "Birke-Multiplex 21 mm", "quantity": "2 Platten 1250 × 2500 mm", "status": "Zugeschnitten", "price": "186 €", "url": "", "properties": "Sichtkanten später ölen", "author": "demo", "createdAt": "2026-05-11T09:00:00Z" },
+        { "id": "demo-werkbank-material-2", "name": "Schwerlastrollen mit Feststeller", "quantity": "4", "status": "Vorhanden", "price": "52 €", "url": "", "properties": "Traglast je Rolle 100 kg", "author": "demo", "createdAt": "2026-06-03T09:00:00Z" },
+        { "id": "demo-werkbank-material-egg", "name": "10-mm-Stecknuss", "quantity": "Theoretisch 1", "status": "Seit Dienstag vermisst", "price": "Ideeller Wert: unbezahlbar", "url": "", "properties": "Zuletzt unter der künftigen Werkbank gesehen. Die Werkbank existierte zu diesem Zeitpunkt noch nicht.", "author": "demo", "createdAt": "2026-06-03T09:03:00Z" }
       ],
-      "contacts": [],
+      "contacts": [
+        { "id": "demo-werkbank-contact-1", "name": "Holzhandel Beispiel", "role": "Plattenzuschnitt", "company": "Beispiel Holz GmbH", "email": "zuschnitt@example.com", "phone": "", "notes": "Reststücke für Schubladenfronten zurücklegen lassen.", "author": "demo", "createdAt": "2026-05-10T10:00:00Z" }
+      ],
       "links": [
-        {
-          "id": "retro-radio-bluetooth-link-1",
-          "title": "Schaltplan des Originalradios",
-          "url": "https://example.com/retro-radio-schaltplan",
-          "notes": "Nur zur Dokumentation der ursprünglichen Verdrahtung.",
-          "createdAt": "2025-09-06"
-        }
+        { "id": "demo-werkbank-link-1", "title": "Bohrbild der Spannplatte", "url": "https://example.com/maker/werkbank-lochraster", "notes": "96-mm-Raster als Ausgangspunkt.", "author": "demo", "createdAt": "2026-05-12T10:00:00Z" }
       ],
       "ideas": [
-        {
-          "id": "retro-radio-bluetooth-idea-1",
-          "title": "Internetradio ergänzen",
-          "status": "Prüfen",
-          "description": "Separates ESP32-Audiomodul über den Quellenwahlschalter anbinden.",
-          "createdAt": "2025-09-06"
-        },
-        {
-          "id": "retro-radio-bluetooth-idea-2",
-          "title": "Senderzeiger motorisieren",
-          "status": "Offen",
-          "description": "Zeiger bei Quellenwechsel auf passende Markierung fahren.",
-          "createdAt": "2025-09-06"
-        }
+        { "id": "demo-werkbank-idea-1", "title": "Klappbare Seitenauflage", "status": "Prüfen", "description": "Für lange Werkstücke links eine abnehmbare Auflage mit T-Nut vorsehen.", "author": "demo", "createdAt": "2026-08-16T08:00:00Z" }
       ],
-      "entryCount": 7,
-      "latestEntryId": "retro-radio-bluetooth-entry-7",
-      "latestEntryDate": "2026-07-25",
-      "latestEntryTitle": "Bluetooth-Antenne versetzt",
-      "latestEntryBody": "Antenne außerhalb der Abschirmbleche positioniert und Reichweite verbessert.",
-      "latestNextStep": ""
+      "learnings": [
+        { "id": "demo-werkbank-learning-1", "title": "Bauteile paarweise bohren", "description": "Gemeinsam gespannte Seitenteile wurden deutlich symmetrischer als einzeln angezeichnete Teile.", "futureUse": "Spiegelgleiche Werkstücke immer im Paket bearbeiten.", "author": "demo", "createdAt": "2026-08-15T16:20:00Z" }
+      ],
+      "notes": [
+        { "id": "demo-werkbank-note-1", "title": "Endmaße", "description": "Arbeitsfläche 1600 × 800 mm, Höhe mit Rollen 910 mm. Freiraum für die Kappsäge: 680 × 520 mm.", "author": "demo", "createdAt": "2026-05-10T10:30:00Z" }
+      ]
     },
     {
-      "id": "filamenttrockner",
-      "title": "Filamenttrockner aus Vorratsbox",
-      "description": "Eine dichte Box mit geregelter Warmluft und Feuchtemessung für empfindliche 3D-Druck-Filamente.",
-      "status": "active",
-      "createdAt": "2026-05-03",
-      "tagIds": ["tag-3d-druck", "tag-elektronik"],
-      "entries": [
-        {
-          "id": "filamenttrockner-entry-1",
-          "date": "2026-05-03",
-          "title": "Box ausgewählt",
-          "body": "Dichtung, Rollengröße und mögliche Kabeldurchführungen der Vorratsbox geprüft.",
-          "nextStep": "Luftführung getestet",
-          "author": "admin"
-        },
-        {
-          "id": "filamenttrockner-entry-2",
-          "date": "2026-05-17",
-          "title": "Luftführung getestet",
-          "body": "Heizmatte und Umluftlüfter provisorisch angeordnet und Temperaturverteilung gemessen.",
-          "nextStep": "Regelung programmiert",
-          "author": "admin"
-        },
-        {
-          "id": "filamenttrockner-entry-3",
-          "date": "2026-06-07",
-          "title": "Regelung programmiert",
-          "body": "Temperaturregelung mit Sicherheitsabschaltung und Timer umgesetzt.",
-          "nextStep": "Rollenhalter montiert",
-          "author": "admin"
-        },
-        {
-          "id": "filamenttrockner-entry-4",
-          "date": "2026-07-05",
-          "title": "Rollenhalter montiert",
-          "body": "Kugelgelagerte Halter für zwei Spulen eingebaut und PTFE-Ausgänge ergänzt.",
-          "nextStep": "PETG-Trocknung erprobt",
-          "author": "admin"
-        },
-        {
-          "id": "filamenttrockner-entry-5",
-          "date": "2026-08-10",
-          "title": "PETG-Trocknung erprobt",
-          "body": "Eine feuchte Rolle über sechs Stunden getrocknet und Druckbild vorher/nachher verglichen.",
-          "nextStep": "",
-          "author": "admin"
-        }
-      ],
-      "materials": [
-        {
-          "id": "filamenttrockner-material-1",
-          "name": "Dichte Vorratsbox 22 l",
-          "quantity": "1",
-          "status": "Verbaut",
-          "price": "19,90 €",
-          "properties": "Silikondichtung",
-          "url": "",
-          "createdAt": "2026-05-03"
-        },
-        {
-          "id": "filamenttrockner-material-2",
-          "name": "PTC-Heizelement 80 W",
-          "quantity": "1",
-          "status": "Verbaut",
-          "price": "14,20 €",
-          "properties": "Selbstbegrenzend",
-          "url": "",
-          "createdAt": "2026-05-03"
-        },
-        {
-          "id": "filamenttrockner-material-3",
-          "name": "Silikagel regenerierbar",
-          "quantity": "1 kg",
-          "status": "Gekauft",
-          "price": "11,50 €",
-          "properties": "Orange Indikator",
-          "url": "",
-          "createdAt": "2026-05-03"
-        }
-      ],
-      "contacts": [],
-      "links": [
-        {
-          "id": "filamenttrockner-link-1",
-          "title": "Trocknungstemperaturen",
-          "url": "https://example.com/filament-trocknung",
-          "notes": "Richtwerte der verwendeten Materialien.",
-          "createdAt": "2026-05-03"
-        }
-      ],
-      "ideas": [
-        {
-          "id": "filamenttrockner-idea-1",
-          "title": "Gewichtsüberwachung",
-          "status": "Offen",
-          "description": "Spulenhalter auf Wägezellen setzen.",
-          "createdAt": "2026-05-03"
-        },
-        {
-          "id": "filamenttrockner-idea-2",
-          "title": "Trocknungsprofile speichern",
-          "status": "Prüfen",
-          "description": "Profile für PLA, PETG, PA und TPU hinterlegen.",
-          "createdAt": "2026-05-03"
-        }
-      ],
-      "entryCount": 5,
-      "latestEntryId": "filamenttrockner-entry-5",
-      "latestEntryDate": "2026-08-10",
-      "latestEntryTitle": "PETG-Trocknung erprobt",
-      "latestEntryBody": "Eine feuchte Rolle über sechs Stunden getrocknet und Druckbild vorher/nachher verglichen.",
-      "latestNextStep": ""
-    },
-    {
-      "id": "luftqualitaets-ampel",
-      "title": "Werkstatt-Luftqualitätsampel",
-      "description": "CO₂, Feinstaub und VOC messen und den Lüftungsbedarf unmittelbar per Ampelfarbe anzeigen.",
-      "status": "active",
-      "createdAt": "2026-03-12",
-      "tagIds": ["tag-werkstatt", "tag-elektronik", "tag-esp32"],
-      "entries": [
-        {
-          "id": "luftqualitaets-ampel-entry-1",
-          "date": "2026-03-12",
-          "title": "Sensorposition gesucht",
-          "body": "Messorte neben Lötplatz, Tür und Fenster miteinander verglichen.",
-          "nextStep": "CO₂-Sensor eingebunden",
-          "author": "admin"
-        },
-        {
-          "id": "luftqualitaets-ampel-entry-2",
-          "date": "2026-03-26",
-          "title": "CO₂-Sensor eingebunden",
-          "body": "NDIR-Sensor ausgelesen und automatische Baseline-Kalibrierung deaktiviert.",
-          "nextStep": "Feinstaubsensor ergänzt",
-          "author": "admin"
-        },
-        {
-          "id": "luftqualitaets-ampel-entry-3",
-          "date": "2026-04-18",
-          "title": "Feinstaubsensor ergänzt",
-          "body": "Luftkanal und Lüfter so angeordnet, dass keine Abluft zurückgesaugt wird.",
-          "nextStep": "Ampellogik definiert",
-          "author": "admin"
-        },
-        {
-          "id": "luftqualitaets-ampel-entry-4",
-          "date": "2026-05-30",
-          "title": "Ampellogik definiert",
-          "body": "Grenzwerte und zeitliche Mittelung für Grün, Gelb und Rot festgelegt.",
-          "nextStep": "LED-Ring montiert",
-          "author": "admin"
-        },
-        {
-          "id": "luftqualitaets-ampel-entry-5",
-          "date": "2026-07-04",
-          "title": "LED-Ring montiert",
-          "body": "Diffusor gedruckt und Helligkeit für Tages- und Nachtbetrieb angepasst.",
-          "nextStep": "Lüftungstest ausgewertet",
-          "author": "admin"
-        },
-        {
-          "id": "luftqualitaets-ampel-entry-6",
-          "date": "2026-08-08",
-          "title": "Lüftungstest ausgewertet",
-          "body": "Stoßlüften und Absaugung anhand der Messkurven miteinander verglichen.",
-          "nextStep": "",
-          "author": "admin"
-        }
-      ],
-      "materials": [
-        {
-          "id": "luftqualitaets-ampel-material-1",
-          "name": "NDIR-CO₂-Sensor",
-          "quantity": "1",
-          "status": "Verbaut",
-          "price": "34,00 €",
-          "properties": "Messbereich bis 5000 ppm",
-          "url": "",
-          "createdAt": "2026-03-12"
-        },
-        {
-          "id": "luftqualitaets-ampel-material-2",
-          "name": "Feinstaubsensor",
-          "quantity": "1",
-          "status": "Verbaut",
-          "price": "27,50 €",
-          "properties": "PM1, PM2.5, PM10",
-          "url": "",
-          "createdAt": "2026-03-12"
-        },
-        {
-          "id": "luftqualitaets-ampel-material-3",
-          "name": "RGBW-LED-Ring",
-          "quantity": "1",
-          "status": "Verbaut",
-          "price": "8,90 €",
-          "properties": "16 LEDs",
-          "url": "",
-          "createdAt": "2026-03-12"
-        }
-      ],
-      "contacts": [],
-      "links": [
-        {
-          "id": "luftqualitaets-ampel-link-1",
-          "title": "UBA-Empfehlungen Innenraumluft",
-          "url": "https://example.com/innenraumluft",
-          "notes": "Orientierungswerte für CO₂ und Feinstaub.",
-          "createdAt": "2026-03-12"
-        }
-      ],
-      "ideas": [
-        {
-          "id": "luftqualitaets-ampel-idea-1",
-          "title": "Absaugung automatisch einschalten",
-          "status": "Prüfen",
-          "description": "Bei hoher Partikellast ein potentialfreies Signal ausgeben.",
-          "createdAt": "2026-03-12"
-        },
-        {
-          "id": "luftqualitaets-ampel-idea-2",
-          "title": "Akustische Warnung",
-          "status": "Verworfen",
-          "description": "In der Werkstatt zu störend.",
-          "createdAt": "2026-03-12"
-        }
-      ],
-      "entryCount": 6,
-      "latestEntryId": "luftqualitaets-ampel-entry-6",
-      "latestEntryDate": "2026-08-08",
-      "latestEntryTitle": "Lüftungstest ausgewertet",
-      "latestEntryBody": "Stoßlüften und Absaugung anhand der Messkurven miteinander verglichen.",
-      "latestNextStep": ""
-    },
-    {
-      "id": "loetrauchabsauger",
-      "title": "Modularer Lötrauchabsauger",
-      "description": "Ein leiser Absauger mit wechselbaren Filterkassetten und flexiblem Gelenkarm für den Lötplatz.",
-      "status": "active",
-      "createdAt": "2026-06-01",
-      "tagIds": ["tag-werkstatt", "tag-3d-druck"],
-      "entries": [
-        {
-          "id": "loetrauchabsauger-entry-1",
-          "date": "2026-06-01",
-          "title": "Luftbedarf gemessen",
-          "body": "Mit verschiedenen Lüftern die Erfassungsgeschwindigkeit am Lötplatz verglichen.",
-          "nextStep": "Filterkassette konstruiert",
-          "author": "admin"
-        },
-        {
-          "id": "loetrauchabsauger-entry-2",
-          "date": "2026-06-15",
-          "title": "Filterkassette konstruiert",
-          "body": "Steckbare Kassette für Vorfilter und Aktivkohle gezeichnet.",
-          "nextStep": "Gelenkarm aufgebaut",
-          "author": "admin"
-        },
-        {
-          "id": "loetrauchabsauger-entry-3",
-          "date": "2026-07-13",
-          "title": "Gelenkarm aufgebaut",
-          "body": "Drei gedruckte Segmente mit Reibgelenken und glattem Innenschlauch verbunden.",
-          "nextStep": "Geräusch reduziert",
-          "author": "admin"
-        },
-        {
-          "id": "loetrauchabsauger-entry-4",
-          "date": "2026-08-11",
-          "title": "Geräusch reduziert",
-          "body": "Lüfter entkoppelt und Ansaugkante strömungsgünstig verrundet.",
-          "nextStep": "",
-          "author": "admin"
-        }
-      ],
-      "materials": [
-        {
-          "id": "loetrauchabsauger-material-1",
-          "name": "Radiallüfter 120 mm",
-          "quantity": "1",
-          "status": "Verbaut",
-          "price": "29,90 €",
-          "properties": "PWM-regelbar",
-          "url": "",
-          "createdAt": "2026-06-01"
-        },
-        {
-          "id": "loetrauchabsauger-material-2",
-          "name": "Aktivkohlevlies",
-          "quantity": "4 Matten",
-          "status": "Gekauft",
-          "price": "12,00 €",
-          "properties": "Zuschneidbar",
-          "url": "",
-          "createdAt": "2026-06-01"
-        },
-        {
-          "id": "loetrauchabsauger-material-3",
-          "name": "Flexschlauch 60 mm",
-          "quantity": "1,5 m",
-          "status": "Verbaut",
-          "price": "9,50 €",
-          "properties": "Innen glatt",
-          "url": "",
-          "createdAt": "2026-06-01"
-        }
-      ],
-      "contacts": [],
-      "links": [
-        {
-          "id": "loetrauchabsauger-link-1",
-          "title": "Filteraufbau Lötrauch",
-          "url": "https://example.com/loetrauch-filter",
-          "notes": "Hinweise zu Partikel- und Gasfiltern.",
-          "createdAt": "2026-06-01"
-        }
-      ],
-      "ideas": [
-        {
-          "id": "loetrauchabsauger-idea-1",
-          "title": "Filterwechsel anzeigen",
-          "status": "Offen",
-          "description": "Laufzeit erfassen und Differenzdruck messen.",
-          "createdAt": "2026-06-01"
-        },
-        {
-          "id": "loetrauchabsauger-idea-2",
-          "title": "Zweiter Absaugarm",
-          "status": "Prüfen",
-          "description": "Y-Verteiler für zwei Arbeitsplätze testen.",
-          "createdAt": "2026-06-01"
-        }
-      ],
-      "entryCount": 4,
-      "latestEntryId": "loetrauchabsauger-entry-4",
-      "latestEntryDate": "2026-08-11",
-      "latestEntryTitle": "Geräusch reduziert",
-      "latestEntryBody": "Lüfter entkoppelt und Ansaugkante strömungsgünstig verrundet.",
-      "latestNextStep": ""
-    },
-    {
-      "id": "kamera-slider",
+      "id": "demo-motorisierter-kamera-slider",
       "title": "Motorisierter Kamera-Slider",
-      "description": "Ein kompakter Slider für gleichmäßige Video- und Zeitrafferfahrten mit programmierbaren Endpunkten.",
-      "status": "active",
-      "createdAt": "2025-12-05",
-      "tagIds": ["tag-fotografie", "tag-elektronik", "tag-3d-druck"],
+      "description": "Leichter Slider für Zeitrafferfahrten mit Schrittmotor, Zahnriemen und gedrucktem Motormodul.",
+      "status": "active", "priority": "Mittel", "flagged": false, "icon": "camera", "iconInherited": false,
+      "createdAt": "2026-07-21", "dueDate": "2026-10-15", "createdBy": "demo", "tagIds": ["demo-tag-fotografie", "demo-tag-elektronik", "demo-tag-3d-druck"], "folderId": null,
       "entries": [
-        {
-          "id": "kamera-slider-entry-1",
-          "date": "2025-12-05",
-          "title": "Schienenkonzept gewählt",
-          "body": "Aluprofil und Laufrollen für 800 Millimeter Fahrweg dimensioniert.",
-          "nextStep": "Wagen gefräst",
-          "author": "admin"
-        },
-        {
-          "id": "kamera-slider-entry-2",
-          "date": "2025-12-20",
-          "title": "Wagen gefräst",
-          "body": "Kamerawagen aus Aluminium gefertigt und Rollen spielfrei eingestellt.",
-          "nextStep": "Riemenantrieb montiert",
-          "author": "admin"
-        },
-        {
-          "id": "kamera-slider-entry-3",
-          "date": "2026-01-24",
-          "title": "Riemenantrieb montiert",
-          "body": "Zahnriemen gespannt und Umlenkrollen fluchtend ausgerichtet.",
-          "nextStep": "Stepper angesteuert",
-          "author": "admin"
-        },
-        {
-          "id": "kamera-slider-entry-4",
-          "date": "2026-03-14",
-          "title": "Stepper angesteuert",
-          "body": "Leise Mikroschritte und eine sanfte Beschleunigungsrampe implementiert.",
-          "nextStep": "Endschalter integriert",
-          "author": "admin"
-        },
-        {
-          "id": "kamera-slider-entry-5",
-          "date": "2026-04-25",
-          "title": "Endschalter integriert",
-          "body": "Magnetische Endschalter verdeckt im Profil montiert.",
-          "nextStep": "Bedienung ergänzt",
-          "author": "admin"
-        },
-        {
-          "id": "kamera-slider-entry-6",
-          "date": "2026-06-06",
-          "title": "Bedienung ergänzt",
-          "body": "OLED, Drehgeber und Start/Stopp-Taster in ein Handteil eingebaut.",
-          "nextStep": "Zeitraffer getestet",
-          "author": "admin"
-        },
-        {
-          "id": "kamera-slider-entry-7",
-          "date": "2026-08-01",
-          "title": "Zeitraffer getestet",
-          "body": "Eine zweistündige Fahrt mit 600 Auslösungen ohne Positionsverlust absolviert.",
-          "nextStep": "",
-          "author": "admin"
-        }
+        { "id": "demo-slider-entry-1", "date": "2026-08-17", "title": "Erste gleichmäßige Fahrt", "body": "Mit 1/16-Mikroschritten läuft der Wagen ruhig. Bei Richtungswechsel spannt sich der Riemen sichtbar nach.", "nextStep": "Riemenspanner konstruieren.", "author": "demo", "createdAt": "2026-08-17T19:00:00Z" }
+      ],
+      "tasks": [
+        { "id": "demo-slider-task-1", "title": "Riemenspanner drucken", "description": "Federweg von 8 mm und werkzeuglose Justage vorsehen.", "status": "In Arbeit", "priority": "Normal", "dueDate": "2026-08-27", "author": "demo", "createdAt": "2026-08-17T19:10:00Z" },
+        { "id": "demo-slider-task-2", "title": "Intervallmodus programmieren", "description": "Fahren, auslösen, warten; Anzahl der Bilder und Weg einstellbar machen.", "status": "Offen", "priority": "Hoch", "dueDate": "2026-09-15", "author": "demo", "createdAt": "2026-08-17T19:11:00Z" }
       ],
       "materials": [
-        {
-          "id": "kamera-slider-material-1",
-          "name": "Aluprofil 40 × 20 mm",
-          "quantity": "800 mm",
-          "status": "Verbaut",
-          "price": "28,00 €",
-          "properties": "Nutprofil",
-          "url": "",
-          "createdAt": "2025-12-05"
-        },
-        {
-          "id": "kamera-slider-material-2",
-          "name": "NEMA-17-Schrittmotor",
-          "quantity": "1",
-          "status": "Verbaut",
-          "price": "17,90 €",
-          "properties": "0,9° Schrittwinkel",
-          "url": "",
-          "createdAt": "2025-12-05"
-        },
-        {
-          "id": "kamera-slider-material-3",
-          "name": "Zahnriemen GT2",
-          "quantity": "2 m",
-          "status": "Verbaut",
-          "price": "8,20 €",
-          "properties": "6 mm breit",
-          "url": "",
-          "createdAt": "2025-12-05"
-        }
+        { "id": "demo-slider-material-1", "name": "Aluprofil 2040", "quantity": "800 mm", "status": "Montiert", "price": "23 €", "url": "", "properties": "Nut 6, schwarz eloxiert", "author": "demo", "createdAt": "2026-07-21T12:00:00Z" },
+        { "id": "demo-slider-material-2", "name": "NEMA-17-Schrittmotor", "quantity": "1", "status": "Testaufbau", "price": "16 €", "url": "", "properties": "0,9° Schrittwinkel", "author": "demo", "createdAt": "2026-07-21T12:02:00Z" }
+      ],
+      "contacts": [
+        { "id": "demo-slider-contact-1", "name": "Nina Beispiel", "role": "Kameratest", "company": "Freies Filmkollektiv", "email": "nina@example.com", "phone": "", "notes": "Bringt für den Belastungstest eine Kamera mit schwerem Objektiv mit.", "author": "demo", "createdAt": "2026-08-01T09:00:00Z" }
+      ],
+      "links": [
+        { "id": "demo-slider-link-1", "title": "Auslöser-Pinbelegung", "url": "https://example.com/maker/kamera-ausloeser", "notes": "Galvanische Trennung per Optokoppler.", "author": "demo", "createdAt": "2026-08-02T09:00:00Z" }
+      ],
+      "ideas": [
+        { "id": "demo-slider-idea-1", "title": "Schwenkachse nachrüsten", "status": "Offen", "description": "Später ein zweites Motormodul für Pan-Bewegungen auf dem Wagen ergänzen.", "author": "demo", "createdAt": "2026-08-18T08:00:00Z" },
+        { "id": "demo-slider-idea-egg", "title": "Epische Kamerafahrt durch die Schraubenkiste", "status": "Umgesetzt", "description": "Technisch völlig unnötig, filmisch überraschend dramatisch. Die M5-Unterlegscheiben verlangen seitdem eine eigene Fortsetzung.", "author": "demo", "createdAt": "2026-08-18T08:05:00Z" }
+      ],
+      "learnings": [
+        { "id": "demo-slider-learning-1", "title": "Riemenspannung beeinflusst Richtungswechsel", "description": "Zu loser Riemen erzeugt beim Umkehren mehrere Millimeter Spiel.", "futureUse": "Antriebskonzepte früh in beide Richtungen unter Last testen.", "author": "demo", "createdAt": "2026-08-17T19:20:00Z" }
+      ],
+      "notes": [
+        { "id": "demo-slider-note-1", "title": "Zielwerte", "description": "Nutzweg 650 mm, Zuladung 2,5 kg, langsamste Fahrt 45 Minuten über den gesamten Weg.", "author": "demo", "createdAt": "2026-07-21T12:10:00Z" }
+      ]
+    },
+    {
+      "id": "demo-filament-trockner",
+      "title": "Filament-Trockner aus Kühlbox",
+      "description": "Umbau einer kleinen Kühlbox zum temperaturgeregelten Trockner für zwei Filamentrollen mit Umluft.",
+      "status": "paused", "priority": "Mittel", "flagged": false, "icon": "thermometer", "iconInherited": false,
+      "createdAt": "2026-03-14", "dueDate": "", "createdBy": "demo", "tagIds": ["demo-tag-3d-druck", "demo-tag-elektronik", "demo-tag-upcycling"], "folderId": null,
+      "entries": [
+        { "id": "demo-trockner-entry-1", "date": "2026-06-04", "title": "Projekt aus Sicherheitsgründen pausiert", "body": "Die vorhandene Heizmatte wird am Rand deutlich wärmer als erwartet. Vor einem unbeaufsichtigten Betrieb braucht es eine zweite, unabhängige Temperaturabschaltung.", "nextStep": "Geeigneten Thermoschalter auswählen.", "author": "demo", "createdAt": "2026-06-04T17:00:00Z" }
+      ],
+      "tasks": [
+        { "id": "demo-trockner-task-1", "title": "Mechanischen Thermoschalter beschaffen", "description": "Öffner mit Rückstellung und passender Schaltschwelle zwischen 75 und 85 °C suchen.", "status": "Offen", "priority": "Hoch", "dueDate": "", "author": "demo", "createdAt": "2026-06-04T17:10:00Z" },
+        { "id": "demo-trockner-task-2", "title": "Temperaturverteilung neu messen", "description": "Nach Umbau fünf Messpunkte über zwei Stunden protokollieren.", "status": "Offen", "priority": "Normal", "dueDate": "", "author": "demo", "createdAt": "2026-06-04T17:11:00Z" }
+      ],
+      "materials": [
+        { "id": "demo-trockner-material-1", "name": "Gebrauchte Kühlbox", "quantity": "1", "status": "Vorhanden", "price": "0 €", "url": "", "properties": "Innenraum 18 Liter", "author": "demo", "createdAt": "2026-03-14T10:00:00Z" },
+        { "id": "demo-trockner-material-2", "name": "PTC-Heizelement", "quantity": "1", "status": "Nicht verwenden", "price": "12 €", "url": "", "properties": "Erreicht lokal zu hohe Temperaturen", "author": "demo", "createdAt": "2026-03-18T10:00:00Z" }
+      ],
+      "contacts": [
+        { "id": "demo-trockner-contact-1", "name": "Sam Beispiel", "role": "Prüfung Netzspannung und Brandschutz", "company": "Repair-Café", "email": "sam@example.com", "phone": "", "notes": "Vor Wiederaufnahme gemeinsam den Schaltplan prüfen.", "author": "demo", "createdAt": "2026-06-04T17:15:00Z" }
+      ],
+      "links": [
+        { "id": "demo-trockner-link-1", "title": "Temperaturbereiche gängiger Filamente", "url": "https://example.com/maker/filament-trocknung", "notes": "Nur als Ausgangspunkt; Herstellerangaben haben Vorrang.", "author": "demo", "createdAt": "2026-03-15T10:00:00Z" }
+      ],
+      "ideas": [
+        { "id": "demo-trockner-idea-1", "title": "Silicagel-Schublade", "status": "Prüfen", "description": "Unter den Rollen eine herausnehmbare Schublade für regenerierbares Trockenmittel vorsehen.", "author": "demo", "createdAt": "2026-04-12T08:00:00Z" }
+      ],
+      "learnings": [
+        { "id": "demo-trockner-learning-1", "title": "Regelung ersetzt keine Schutzabschaltung", "description": "Ein einzelner Sensor und Software sind für eine Heizquelle in einer Kunststoffbox nicht ausreichend.", "futureUse": "Thermische Projekte von Anfang an mit unabhängiger Hardwareabschaltung planen.", "author": "demo", "createdAt": "2026-06-04T17:20:00Z" }
+      ],
+      "notes": [
+        { "id": "demo-trockner-note-1", "title": "Pausengrund", "description": "Keine weiteren Heiztests, bis Thermoschalter, Sicherung und Zugentlastung vollständig montiert sind.", "author": "demo", "createdAt": "2026-06-04T17:25:00Z" },
+        { "id": "demo-trockner-note-egg", "title": "Wichtige Abgrenzung", "description": "Filament-Trockner, kein Dörrautomat. Der Gummibärchen-Versuch gilt offiziell als nicht genehmigte Grundlagenforschung.", "author": "demo", "createdAt": "2026-06-04T17:26:00Z" }
+      ]
+    },
+    {
+      "id": "demo-cnc-staubsensor",
+      "title": "Feinstaubsensor für die CNC-Ecke",
+      "description": "Lokale Anzeige für Feinstaub und Filterzustand in der Werkstatt, gekoppelt mit einer Warnleuchte.",
+      "status": "paused", "priority": "Gering", "flagged": false, "icon": "gauge", "iconInherited": false,
+      "createdAt": "2026-02-08", "dueDate": "", "createdBy": "demo", "tagIds": ["demo-tag-werkstatt", "demo-tag-elektronik", "demo-tag-esp32"], "folderId": "demo-folder-elektronik",
+      "entries": [
+        { "id": "demo-staubsensor-entry-1", "date": "2026-05-22", "title": "Messort liefert falsche Spitzen", "body": "Direkt am Abluftstutzen zeigt der Sensor nach dem Abschalten Kondensat- und Staubspitzen. Das Gehäuse muss an eine ruhigere Stelle umziehen.", "nextStep": "Nach Werkstattumbau neuen Messort festlegen.", "author": "demo", "createdAt": "2026-05-22T18:00:00Z" }
+      ],
+      "tasks": [
+        { "id": "demo-staubsensor-task-1", "title": "Messorte vergleichen", "description": "Raummitte, Türbereich und CNC-Ecke jeweils während derselben Fräsarbeit messen.", "status": "Offen", "priority": "Normal", "dueDate": "", "author": "demo", "createdAt": "2026-05-22T18:10:00Z" },
+        { "id": "demo-staubsensor-task-2", "title": "Warnschwellen dokumentieren", "description": "Anzeige soll Messwert, Trend und verständliche Handlungsempfehlung zeigen.", "status": "Offen", "priority": "Niedrig", "dueDate": "", "author": "demo", "createdAt": "2026-05-22T18:11:00Z" }
+      ],
+      "materials": [
+        { "id": "demo-staubsensor-material-1", "name": "Partikelsensor", "quantity": "1", "status": "Testaufbau", "price": "28 €", "url": "", "properties": "PM1, PM2.5 und PM10 per UART", "author": "demo", "createdAt": "2026-02-08T11:00:00Z" }
       ],
       "contacts": [],
       "links": [
-        {
-          "id": "kamera-slider-link-1",
-          "title": "Motion-Control-Grundlagen",
-          "url": "https://example.com/motion-control",
-          "notes": "Berechnung von Rampen und Schrittfrequenzen.",
-          "createdAt": "2025-12-05"
-        }
+        { "id": "demo-staubsensor-link-1", "title": "Sensor-Protokoll", "url": "https://example.com/maker/partikelsensor-protokoll", "notes": "Rahmenformat und Reinigungsintervall.", "author": "demo", "createdAt": "2026-02-09T11:00:00Z" }
       ],
       "ideas": [
-        {
-          "id": "kamera-slider-idea-1",
-          "title": "Pan-Achse ergänzen",
-          "status": "Offen",
-          "description": "Kamerakopf während der Fahrt auf ein Motiv ausrichten.",
-          "createdAt": "2025-12-05"
-        },
-        {
-          "id": "kamera-slider-idea-2",
-          "title": "Austauschbarer Akku",
-          "status": "Prüfen",
-          "description": "Werkzeugakku über Adapter verwenden.",
-          "createdAt": "2025-12-05"
-        }
+        { "id": "demo-staubsensor-idea-1", "title": "Ampel statt Zahlen", "status": "Prüfen", "description": "Für den schnellen Blick eine diffuse RGB-Leuchte nutzen; genaue Werte bleiben im Detailbildschirm.", "author": "demo", "createdAt": "2026-03-01T08:00:00Z" }
       ],
-      "entryCount": 7,
-      "latestEntryId": "kamera-slider-entry-7",
-      "latestEntryDate": "2026-08-01",
-      "latestEntryTitle": "Zeitraffer getestet",
-      "latestEntryBody": "Eine zweistündige Fahrt mit 600 Auslösungen ohne Positionsverlust absolviert.",
-      "latestNextStep": ""
+      "learnings": [
+        { "id": "demo-staubsensor-learning-1", "title": "Messort gehört zum Messsystem", "description": "Ein präziser Sensor liefert am ungeeigneten Ort keine hilfreiche Aussage über die Raumluft.", "futureUse": "Vor dem Gehäusebau mehrere Positionen unter identischen Bedingungen vergleichen.", "author": "demo", "createdAt": "2026-05-22T18:20:00Z" },
+        { "id": "demo-staubsensor-learning-egg", "title": "Rot ist keine Diagnose", "description": "Eine dramatisch rote Anzeige sagt nur, dass der Sensor aufgeregt ist. Für Menschen braucht es zusätzlich eine verständliche Handlungsempfehlung.", "futureUse": "Neben Messwerten immer auch ‚Absaugung prüfen‘ oder ‚Werkstatt lüften‘ anzeigen.", "author": "demo", "createdAt": "2026-05-22T18:21:00Z" }
+      ],
+      "notes": [
+        { "id": "demo-staubsensor-note-1", "title": "Pausiert bis Werkstattumbau", "description": "Die CNC-Ecke wird im Herbst neu angeordnet. Erst danach sind Kabelführung und endgültiger Messort sinnvoll planbar.", "author": "demo", "createdAt": "2026-05-23T08:00:00Z" }
+      ]
     },
     {
-      "id": "solar-usb-station",
-      "title": "Solar-USB-Ladestation",
-      "description": "Eine wetterfeste Insel-Ladestation für Smartphone, Fahrradlicht und Messgeräte im Garten.",
-      "status": "active",
-      "createdAt": "2026-04-06",
-      "tagIds": ["tag-solar", "tag-elektronik"],
+      "id": "demo-solar-ladestation",
+      "title": "Solare Ladestation für den Balkon",
+      "description": "Wettergeschützte Kleinspannungsstation zum Laden von Werkzeugakkus und USB-Geräten aus einem Solarmodul.",
+      "status": "completed", "priority": "Mittel", "flagged": false, "icon": "sun", "iconInherited": false,
+      "createdAt": "2025-09-06", "dueDate": "2026-05-01", "completedAt": "2026-04-26T16:30:00Z", "createdBy": "demo", "tagIds": ["demo-tag-solar", "demo-tag-elektronik", "demo-tag-holzwerken"], "folderId": null,
       "entries": [
-        {
-          "id": "solar-usb-station-entry-1",
-          "date": "2026-04-06",
-          "title": "Energiebedarf abgeschätzt",
-          "body": "Typische Tagesverbräuche und Reserven für drei bewölkte Tage berechnet.",
-          "nextStep": "Solarmodul vermessen",
-          "author": "admin"
-        },
-        {
-          "id": "solar-usb-station-entry-2",
-          "date": "2026-04-20",
-          "title": "Solarmodul vermessen",
-          "body": "Leerlaufspannung und Ladeleistung bei verschiedenen Neigungswinkeln aufgenommen.",
-          "nextStep": "Akkuschutz aufgebaut",
-          "author": "admin"
-        },
-        {
-          "id": "solar-usb-station-entry-3",
-          "date": "2026-05-18",
-          "title": "Akkuschutz aufgebaut",
-          "body": "LiFePO₄-Akku, Sicherung und Tiefentladeschutz verdrahtet.",
-          "nextStep": "USB-C-Modul getestet",
-          "author": "admin"
-        },
-        {
-          "id": "solar-usb-station-entry-4",
-          "date": "2026-06-22",
-          "title": "USB-C-Modul getestet",
-          "body": "Spannungsprofile und Wirkungsgrad mit mehreren Endgeräten geprüft.",
-          "nextStep": "Gehäuse abgedichtet",
-          "author": "admin"
-        },
-        {
-          "id": "solar-usb-station-entry-5",
-          "date": "2026-07-20",
-          "title": "Gehäuse abgedichtet",
-          "body": "Kabelverschraubungen und Deckeldichtung mit Sprühwasser getestet.",
-          "nextStep": "",
-          "author": "admin"
-        }
+        { "id": "demo-solar-entry-1", "date": "2026-04-26", "title": "Station in Betrieb genommen", "body": "Gehäuse montiert, Kabel verschraubt und Schutzabschaltung getestet. Zwei bedeckte Tage reichen für mehrere USB-Ladungen.", "nextStep": "Ertrag nach dem ersten Sommer auswerten.", "author": "demo", "createdAt": "2026-04-26T16:30:00Z" }
+      ],
+      "tasks": [
+        { "id": "demo-solar-task-1", "title": "Ertragsdaten nach sechs Monaten prüfen", "description": "Tiefentladung, Spitzenleistung und nutzbare Kapazität notieren.", "status": "Offen", "priority": "Niedrig", "dueDate": "2026-10-26", "author": "demo", "createdAt": "2026-04-26T16:40:00Z" },
+        { "id": "demo-solar-task-2", "title": "Dichtungen vor dem Winter kontrollieren", "description": "Kabelverschraubungen und Deckeldichtung auf Versprödung prüfen.", "status": "Offen", "priority": "Normal", "dueDate": "2026-11-01", "author": "demo", "createdAt": "2026-04-26T16:41:00Z" }
       ],
       "materials": [
-        {
-          "id": "solar-usb-station-material-1",
-          "name": "Solarmodul 30 W",
-          "quantity": "1",
-          "status": "Verbaut",
-          "price": "42,00 €",
-          "properties": "Monokristallin",
-          "url": "",
-          "createdAt": "2026-04-06"
-        },
-        {
-          "id": "solar-usb-station-material-2",
-          "name": "LiFePO₄-Akku 12 V",
-          "quantity": "1",
-          "status": "Verbaut",
-          "price": "69,00 €",
-          "properties": "10 Ah",
-          "url": "",
-          "createdAt": "2026-04-06"
-        },
-        {
-          "id": "solar-usb-station-material-3",
-          "name": "USB-C-PD-Wandler",
-          "quantity": "1",
-          "status": "Verbaut",
-          "price": "18,90 €",
-          "properties": "Bis 45 W",
-          "url": "",
-          "createdAt": "2026-04-06"
-        }
+        { "id": "demo-solar-material-1", "name": "Solarmodul 50 W", "quantity": "1", "status": "Verbaut", "price": "62 €", "url": "", "properties": "Rahmenmodul, Leerlaufspannung 22 V", "author": "demo", "createdAt": "2025-09-06T09:00:00Z" },
+        { "id": "demo-solar-material-2", "name": "LiFePO4-Akku", "quantity": "1", "status": "Verbaut", "price": "78 €", "url": "", "properties": "12,8 V, 12 Ah, integriertes BMS", "author": "demo", "createdAt": "2025-09-06T09:02:00Z" }
+      ],
+      "contacts": [
+        { "id": "demo-solar-contact-1", "name": "Robin Beispiel", "role": "Elektrische Abnahme", "company": "Makerspace Beispielstadt", "email": "robin@example.com", "phone": "", "notes": "Hat Sicherungsdimensionierung und Leitungsquerschnitte gegengeprüft.", "author": "demo", "createdAt": "2026-04-20T10:00:00Z" }
+      ],
+      "links": [
+        { "id": "demo-solar-link-1", "title": "Laderegler-Handbuch", "url": "https://example.com/maker/solar-laderegler", "notes": "Abschnitt zu LiFePO4-Ladeschlussspannung markiert.", "author": "demo", "createdAt": "2025-09-08T10:00:00Z" }
+      ],
+      "ideas": [
+        { "id": "demo-solar-idea-1", "title": "Außensteckdose für Arbeitslicht", "status": "Prüfen", "description": "Zusätzlichen abgesicherten 12-V-Ausgang an der Unterseite ergänzen.", "author": "demo", "createdAt": "2026-05-03T08:00:00Z" }
+      ],
+      "learnings": [
+        { "id": "demo-solar-learning-1", "title": "Kabelwege vor dem Holzbau planen", "description": "Die nachträgliche Durchführung durch die schräge Rückwand war unnötig aufwendig.", "futureUse": "Elektrik als 1:1-Pappmodell auf die Gehäuseteile übertragen.", "author": "demo", "createdAt": "2026-04-26T16:45:00Z" }
+      ],
+      "notes": [
+        { "id": "demo-solar-note-1", "title": "Sicherungen", "description": "15 A direkt am Akku, 5 A für USB-Wandler, 7,5 A für den Werkzeugakku-Ausgang.", "author": "demo", "createdAt": "2026-04-20T10:30:00Z" },
+        { "id": "demo-solar-note-egg", "title": "Prioritäten bei Stromausfall", "description": "1. Arbeitslicht. 2. Telefon. 3. Kaffeewaage. Die Reihenfolge wurde nach einer kontroversen Werkstattabstimmung so protokolliert.", "author": "demo", "createdAt": "2026-04-20T10:31:00Z" }
+      ]
+    },
+    {
+      "id": "demo-retro-radio-bluetooth",
+      "title": "Retro-Radio mit Bluetooth",
+      "description": "Defektes Kofferradio äußerlich erhalten und mit neuem Verstärker, Bluetooth-Empfänger und warmweißer Skalenbeleuchtung wieder nutzbar gemacht.",
+      "status": "completed", "priority": "Gering", "flagged": false, "icon": "radio", "iconInherited": false,
+      "createdAt": "2025-10-12", "dueDate": "2026-02-14", "completedAt": "2026-02-07T18:00:00Z", "createdBy": "demo", "tagIds": ["demo-tag-elektronik", "demo-tag-upcycling", "demo-tag-holzwerken"], "folderId": null,
+      "entries": [
+        { "id": "demo-radio-entry-1", "date": "2026-02-07", "title": "Radio fertiggestellt", "body": "Originalknöpfe steuern Lautstärke und Eingang. Das alte Chassis bleibt reversibel im Gehäuse, alle neuen Teile sitzen auf einer separaten Trägerplatte.", "nextStep": "Nach einigen Monaten Akkulaufzeit bewerten.", "author": "demo", "createdAt": "2026-02-07T18:00:00Z" }
+      ],
+      "tasks": [
+        { "id": "demo-radio-task-1", "title": "Akkuzustand kontrollieren", "description": "Nach längerer Lagerung Ruhestrom und Zellspannung messen.", "status": "Offen", "priority": "Niedrig", "dueDate": "2026-09-01", "author": "demo", "createdAt": "2026-02-07T18:10:00Z" },
+        { "id": "demo-radio-task-2", "title": "Schaltplan sauber nachzeichnen", "description": "Endgültige Kabelfarben und Steckverbinder in die Dokumentation übernehmen.", "status": "Offen", "priority": "Niedrig", "dueDate": "", "author": "demo", "createdAt": "2026-02-07T18:11:00Z" }
+      ],
+      "materials": [
+        { "id": "demo-radio-material-1", "name": "Class-D-Verstärkermodul", "quantity": "1", "status": "Verbaut", "price": "9,90 €", "url": "", "properties": "2 × 15 W, Versorgung 12 V", "author": "demo", "createdAt": "2025-10-20T10:00:00Z" },
+        { "id": "demo-radio-material-2", "name": "Warmweiße LED", "quantity": "3", "status": "Verbaut", "price": "1,20 €", "url": "", "properties": "Mit Vorwiderstand stark gedimmt", "author": "demo", "createdAt": "2025-10-20T10:02:00Z" }
+      ],
+      "contacts": [
+        { "id": "demo-radio-contact-1", "name": "Repair-Café Beispielstadt", "role": "Hilfe bei der Gehäusereinigung", "company": "Repair-Café", "email": "radio@example.com", "phone": "", "notes": "Empfehlung: Skalenbeschriftung nur trocken reinigen.", "author": "demo", "createdAt": "2025-10-18T10:00:00Z" }
+      ],
+      "links": [
+        { "id": "demo-radio-link-1", "title": "Historischer Schaltplan", "url": "https://example.com/maker/retro-radio-schaltplan", "notes": "Nur für die Zuordnung der ursprünglichen Bedienelemente verwendet.", "author": "demo", "createdAt": "2025-10-14T10:00:00Z" }
+      ],
+      "ideas": [
+        { "id": "demo-radio-idea-1", "title": "Bluetooth-Status über Skalenlicht", "status": "Verworfen", "description": "Blinksignal wäre praktisch, stört aber die ruhige Originaloptik.", "author": "demo", "createdAt": "2026-01-05T08:00:00Z" }
+      ],
+      "learnings": [
+        { "id": "demo-radio-learning-1", "title": "Reversible Einbauten lohnen sich", "description": "Die neue Elektronik ließ sich außerhalb des empfindlichen Gehäuses vollständig testen.", "futureUse": "Bei Upcycling-Projekten neue Technik auf einer eigenen Trägerplatte aufbauen.", "author": "demo", "createdAt": "2026-02-07T18:15:00Z" }
+      ],
+      "notes": [
+        { "id": "demo-radio-note-1", "title": "Originalteile", "description": "Ausgebauter Lautsprecher und Netztrafo liegen beschriftet in einer Schachtel; nichts wurde entsorgt.", "author": "demo", "createdAt": "2026-02-07T18:20:00Z" },
+        { "id": "demo-radio-note-egg", "title": "Werkstattfunk 88,3", "description": "Die kleine Markierung auf der Skala ist kein geheimer Sender. Dort steht lediglich der Bluetooth-Klang besonders überzeugend – sagt zumindest die Werkstattlegende.", "author": "demo", "createdAt": "2026-02-07T18:21:00Z" }
+      ]
+    },
+    {
+      "id": "demo-bohrschablone-moebelbau",
+      "title": "Bohrschablone für Möbelverbinder",
+      "description": "Parametrische, 3D-gedruckte Schablone für wiederholgenaue Dübel- und Beschlagbohrungen im kleinen Möbelbau.",
+      "status": "completed", "priority": "Mittel", "flagged": false, "icon": "ruler", "iconInherited": false,
+      "createdAt": "2026-01-09", "dueDate": "2026-03-01", "completedAt": "2026-02-22T15:00:00Z", "createdBy": "demo", "tagIds": ["demo-tag-holzwerken", "demo-tag-3d-druck", "demo-tag-werkstatt"], "folderId": "demo-folder-werkstatt",
+      "entries": [
+        { "id": "demo-bohrschablone-entry-1", "date": "2026-02-22", "title": "Serientest bestanden", "body": "Zwölf Bohrungen in Reststücken lagen innerhalb von 0,3 mm. Die austauschbaren Stahlbuchsen zeigen keine sichtbare Abnutzung.", "nextStep": "Variante für 18-mm-Platten ableiten.", "author": "demo", "createdAt": "2026-02-22T15:00:00Z" }
+      ],
+      "tasks": [
+        { "id": "demo-bohrschablone-task-1", "title": "18-mm-Variante exportieren", "description": "Parameter anpassen, Teststück bohren und STL im Archiv ergänzen.", "status": "Offen", "priority": "Normal", "dueDate": "2026-09-30", "author": "demo", "createdAt": "2026-02-22T15:10:00Z" },
+        { "id": "demo-bohrschablone-task-2", "title": "Buchsen nach 100 Bohrungen prüfen", "description": "Spiel und Erwärmung dokumentieren.", "status": "Offen", "priority": "Niedrig", "dueDate": "", "author": "demo", "createdAt": "2026-02-22T15:11:00Z" }
+      ],
+      "materials": [
+        { "id": "demo-bohrschablone-material-1", "name": "Bohrbuchsen 8 mm", "quantity": "4", "status": "Verbaut", "price": "11 €", "url": "", "properties": "Gehärteter Stahl, Bundausführung", "author": "demo", "createdAt": "2026-01-09T10:00:00Z" },
+        { "id": "demo-bohrschablone-material-2", "name": "PETG", "quantity": "180 g", "status": "Verbraucht", "price": "4,50 €", "url": "", "properties": "Vier Perimeter, 40 % Infill", "author": "demo", "createdAt": "2026-01-09T10:02:00Z" }
       ],
       "contacts": [],
       "links": [
-        {
-          "id": "solar-usb-station-link-1",
-          "title": "LiFePO₄-Ladeprofil",
-          "url": "https://example.com/lifepo4-laden",
-          "notes": "Grenzwerte für Ladung und Lagerung.",
-          "createdAt": "2026-04-06"
-        }
+        { "id": "demo-bohrschablone-link-1", "title": "Maßtabelle Möbelverbinder", "url": "https://example.com/maker/moebelverbinder-masse", "notes": "Vor jedem neuen Beschlag mit Herstellerzeichnung abgleichen.", "author": "demo", "createdAt": "2026-01-10T10:00:00Z" }
       ],
       "ideas": [
-        {
-          "id": "solar-usb-station-idea-1",
-          "title": "Ladestand außen anzeigen",
-          "status": "Offen",
-          "description": "E-Paper-Anzeige mit sehr niedrigem Ruhestrom einsetzen.",
-          "createdAt": "2026-04-06"
-        },
-        {
-          "id": "solar-usb-station-idea-2",
-          "title": "Bewegungsmelder für Licht",
-          "status": "Prüfen",
-          "description": "Kleine Orientierungsleuchte am Standort ergänzen.",
-          "createdAt": "2026-04-06"
-        }
+        { "id": "demo-bohrschablone-idea-1", "title": "Anschlag magnetisch halten", "status": "Offen", "description": "Kleine Magnete könnten den seitlichen Anschlag schnell umsetzbar machen.", "author": "demo", "createdAt": "2026-02-23T08:00:00Z" },
+        { "id": "demo-bohrschablone-idea-egg", "title": "Schablone für die Schablone", "status": "Prüfen", "description": "Eine Montagehilfe bauen, mit der die Bohrbuchsen exakt in die Bohrschablone gesetzt werden. Danach vorsorglich keine weitere Rekursion zulassen.", "author": "demo", "createdAt": "2026-02-23T08:01:00Z" }
       ],
-      "entryCount": 5,
-      "latestEntryId": "solar-usb-station-entry-5",
-      "latestEntryDate": "2026-07-20",
-      "latestEntryTitle": "Gehäuse abgedichtet",
-      "latestEntryBody": "Kabelverschraubungen und Deckeldichtung mit Sprühwasser getestet.",
-      "latestNextStep": ""
+      "learnings": [
+        { "id": "demo-bohrschablone-learning-1", "title": "Kunststoff ist nicht die Verschleißfläche", "description": "Direkt im PETG geführte Bohrer weiteten die ersten Prototypen sehr schnell auf.", "futureUse": "Gedruckte Bohrhilfen immer mit austauschbaren Metallbuchsen konstruieren.", "author": "demo", "createdAt": "2026-02-22T15:20:00Z" }
+      ],
+      "notes": [
+        { "id": "demo-bohrschablone-note-1", "title": "Druckeinstellungen", "description": "0,2-mm-Schichten, 5 Top- und Bottom-Layer, Buchsensitze 0,15 mm Untermaß und warm eingepresst.", "author": "demo", "createdAt": "2026-02-15T12:00:00Z" }
+      ]
     },
     {
-      "id": "drucker-einhausung",
-      "title": "3D-Drucker-Einhausung",
-      "description": "Eine brandsichere, leise Einhausung mit Filterung, Beleuchtung und kontrollierter Bauraumtemperatur.",
-      "status": "active",
-      "createdAt": "2025-08-02",
-      "tagIds": ["tag-3d-druck", "tag-holzwerken", "tag-werkstatt"],
+      "id": "demo-led-matrix-uhr",
+      "title": "LED-Matrix-Uhr fürs Regal",
+      "description": "Abgeschlossener Prototyp einer WLAN-Uhr mit 32×8-LED-Matrix, Holzrahmen und automatisch gedimmter Anzeige.",
+      "status": "archived", "priority": "Gering", "flagged": false, "icon": "clock", "iconInherited": false,
+      "createdAt": "2024-11-03", "dueDate": "", "createdBy": "demo", "tagIds": ["demo-tag-elektronik", "demo-tag-esp32", "demo-tag-holzwerken"], "folderId": null,
       "entries": [
-        {
-          "id": "drucker-einhausung-entry-1",
-          "date": "2025-08-02",
-          "title": "Bauraum vermessen",
-          "body": "Druckerbewegungen, Rollenhalter und Wartungszugang vollständig vermessen.",
-          "nextStep": "Rahmen geplant",
-          "author": "admin"
-        },
-        {
-          "id": "drucker-einhausung-entry-2",
-          "date": "2025-08-16",
-          "title": "Rahmen geplant",
-          "body": "Aluprofilrahmen und Plattenzuschnitte in CAD aufgebaut.",
-          "nextStep": "Rahmen montiert",
-          "author": "admin"
-        },
-        {
-          "id": "drucker-einhausung-entry-3",
-          "date": "2025-09-13",
-          "title": "Rahmen montiert",
-          "body": "Profile rechtwinklig verschraubt und Stellfüße angebracht.",
-          "nextStep": "Seitenwände eingesetzt",
-          "author": "admin"
-        },
-        {
-          "id": "drucker-einhausung-entry-4",
-          "date": "2025-10-11",
-          "title": "Seitenwände eingesetzt",
-          "body": "Schwer entflammbare Verbundplatten zugeschnitten und abgedichtet.",
-          "nextStep": "Fronttür gebaut",
-          "author": "admin"
-        },
-        {
-          "id": "drucker-einhausung-entry-5",
-          "date": "2025-11-08",
-          "title": "Fronttür gebaut",
-          "body": "Tür aus Polycarbonat mit verdeckten Scharnieren montiert.",
-          "nextStep": "Beleuchtung installiert",
-          "author": "admin"
-        },
-        {
-          "id": "drucker-einhausung-entry-6",
-          "date": "2025-12-06",
-          "title": "Beleuchtung installiert",
-          "body": "Blendfreie LED-Profile oben und seitlich eingebaut.",
-          "nextStep": "Abluftkanal ergänzt",
-          "author": "admin"
-        },
-        {
-          "id": "drucker-einhausung-entry-7",
-          "date": "2026-01-31",
-          "title": "Abluftkanal ergänzt",
-          "body": "Regelbaren Lüfter und kombinierte HEPA-/Kohlekassette montiert.",
-          "nextStep": "Temperaturen gemessen",
-          "author": "admin"
-        },
-        {
-          "id": "drucker-einhausung-entry-8",
-          "date": "2026-03-21",
-          "title": "Temperaturen gemessen",
-          "body": "Bauraum und Elektronikfach bei langen ABS-Drucken überwacht.",
-          "nextStep": "Elektronik ausgelagert",
-          "author": "admin"
-        },
-        {
-          "id": "drucker-einhausung-entry-9",
-          "date": "2026-04-19",
-          "title": "Elektronik ausgelagert",
-          "body": "Netzteil und Steuerung in ein belüftetes Seitenfach versetzt.",
-          "nextStep": "Türkontakt eingebaut",
-          "author": "admin"
-        },
-        {
-          "id": "drucker-einhausung-entry-10",
-          "date": "2026-05-24",
-          "title": "Türkontakt eingebaut",
-          "body": "Beleuchtung und Pausefunktion mit einem Magnetschalter gekoppelt.",
-          "nextStep": "Schall gedämmt",
-          "author": "admin"
-        },
-        {
-          "id": "drucker-einhausung-entry-11",
-          "date": "2026-07-12",
-          "title": "Schall gedämmt",
-          "body": "Boden entkoppelt und Resonanzflächen mit Dämmmatten beruhigt.",
-          "nextStep": "Sicherheitscheck abgeschlossen",
-          "author": "admin"
-        },
-        {
-          "id": "drucker-einhausung-entry-12",
-          "date": "2026-08-12",
-          "title": "Sicherheitscheck abgeschlossen",
-          "body": "Kabel, Sicherungen, Erdung und maximale Temperaturen dokumentiert.",
-          "nextStep": "",
-          "author": "admin"
-        }
+        { "id": "demo-matrixuhr-entry-1", "date": "2025-03-16", "title": "Projekt archiviert", "body": "Die Uhr läuft stabil, wird aber nicht weiterentwickelt. Quellcode, Schaltplan und Gehäusemaße sind vollständig dokumentiert.", "nextStep": "Nur bei Defekt wieder aufnehmen.", "author": "demo", "createdAt": "2025-03-16T18:00:00Z" }
+      ],
+      "tasks": [
+        { "id": "demo-matrixuhr-task-1", "title": "Ersatz-RTC beschriften", "description": "Vorhandenes Ersatzmodul zusammen mit Pinbelegung in die Projektbox legen.", "status": "Offen", "priority": "Niedrig", "dueDate": "", "author": "demo", "createdAt": "2025-03-16T18:10:00Z" },
+        { "id": "demo-matrixuhr-task-2", "title": "Firmware bei nächster Wartung sichern", "description": "Kompilierte Version und verwendete Bibliotheksstände ergänzen.", "status": "Offen", "priority": "Niedrig", "dueDate": "", "author": "demo", "createdAt": "2025-03-16T18:11:00Z" }
       ],
       "materials": [
-        {
-          "id": "drucker-einhausung-material-1",
-          "name": "Aluprofil 20 × 20 mm",
-          "quantity": "12 m",
-          "status": "Verbaut",
-          "price": "96,00 €",
-          "properties": "Schwarz eloxiert",
-          "url": "",
-          "createdAt": "2025-08-02"
-        },
-        {
-          "id": "drucker-einhausung-material-2",
-          "name": "Polycarbonat 4 mm",
-          "quantity": "1 Platte",
-          "status": "Verbaut",
-          "price": "48,00 €",
-          "properties": "Fronttür",
-          "url": "",
-          "createdAt": "2025-08-02"
-        },
-        {
-          "id": "drucker-einhausung-material-3",
-          "name": "HEPA-/Aktivkohlefilter",
-          "quantity": "2",
-          "status": "Gekauft",
-          "price": "31,80 €",
-          "properties": "Wechselkassetten",
-          "url": "",
-          "createdAt": "2025-08-02"
-        }
+        { "id": "demo-matrixuhr-material-1", "name": "LED-Matrix 32×8", "quantity": "1", "status": "Verbaut", "price": "18 €", "url": "", "properties": "MAX7219, vier Module", "author": "demo", "createdAt": "2024-11-03T10:00:00Z" },
+        { "id": "demo-matrixuhr-material-2", "name": "Nussbaumleiste", "quantity": "0,8 m", "status": "Verbaut", "price": "9 €", "url": "", "properties": "Mit Hartwachsöl behandelt", "author": "demo", "createdAt": "2024-11-03T10:02:00Z" }
       ],
-      "contacts": [],
+      "contacts": [
+        { "id": "demo-matrixuhr-contact-1", "name": "Jo Beispiel", "role": "Code-Review", "company": "Makerspace Beispielstadt", "email": "jo@example.com", "phone": "", "notes": "Hat die Offline-Zeitkorrektur vereinfacht.", "author": "demo", "createdAt": "2025-02-02T10:00:00Z" }
+      ],
       "links": [
-        {
-          "id": "drucker-einhausung-link-1",
-          "title": "Materialverhalten im Bauraum",
-          "url": "https://example.com/drucker-einhausung",
-          "notes": "Temperaturhinweise für PLA, PETG und ABS.",
-          "createdAt": "2025-08-02"
-        }
+        { "id": "demo-matrixuhr-link-1", "title": "Matrix-Bibliothek Dokumentation", "url": "https://example.com/maker/led-matrix-bibliothek", "notes": "Version im Firmware-Archiv festgehalten.", "author": "demo", "createdAt": "2024-11-04T10:00:00Z" }
       ],
       "ideas": [
-        {
-          "id": "drucker-einhausung-idea-1",
-          "title": "Kamera automatisch beleuchten",
-          "status": "Offen",
-          "description": "Licht für Zeitraffer unabhängig dimmen.",
-          "createdAt": "2025-08-02"
-        },
-        {
-          "id": "drucker-einhausung-idea-2",
-          "title": "Feuerlöschmodul",
-          "status": "Prüfen",
-          "description": "Geeignetes passives System ohne Rückstände recherchieren.",
-          "createdAt": "2025-08-02"
-        }
+        { "id": "demo-matrixuhr-idea-1", "title": "Wetteranzeige ergänzen", "status": "Verworfen", "description": "Würde eine externe Datenquelle benötigen und passt nicht zum bewusst lokalen Aufbau.", "author": "demo", "createdAt": "2025-03-01T08:00:00Z" }
       ],
-      "entryCount": 12,
-      "latestEntryId": "drucker-einhausung-entry-12",
-      "latestEntryDate": "2026-08-12",
-      "latestEntryTitle": "Sicherheitscheck abgeschlossen",
-      "latestEntryBody": "Kabel, Sicherungen, Erdung und maximale Temperaturen dokumentiert.",
-      "latestNextStep": ""
+      "learnings": [
+        { "id": "demo-matrixuhr-learning-1", "title": "Diffusor braucht Abstand", "description": "Erst ab etwa 12 mm Abstand verschmelzen die einzelnen LED-Punkte zu ruhigen Zeichen.", "futureUse": "Optische Schichten früh mit einem verstellbaren Provisorium testen.", "author": "demo", "createdAt": "2025-03-16T18:20:00Z" }
+      ],
+      "notes": [
+        { "id": "demo-matrixuhr-note-1", "title": "Archivort", "description": "Ersatzteile und Programmierschnittstelle liegen in Werkstattbox E-14.", "author": "demo", "createdAt": "2025-03-16T18:25:00Z" },
+        { "id": "demo-matrixuhr-note-egg", "title": "Helligkeitswert 42", "description": "Sieht nachts zufällig am besten aus und beantwortet damit gleichzeitig mehr Fragen, als die Firmware eigentlich gestellt hat.", "author": "demo", "createdAt": "2025-03-16T18:26:00Z" }
+      ]
     },
     {
-      "id": "balkon-bewaesserung",
-      "title": "Balkon-Bewässerungssteuerung",
-      "description": "Mehrere Pflanzkästen bedarfsgerecht aus einem Vorratsbehälter bewässern und Trockenlauf verhindern.",
-      "status": "active",
-      "createdAt": "2026-05-10",
-      "tagIds": ["tag-esp32", "tag-elektronik"],
-      "entries": [
-        {
-          "id": "balkon-bewaesserung-entry-1",
-          "date": "2026-05-10",
-          "title": "Wasserbedarf erfasst",
-          "body": "Verbrauch der Pflanzkästen über eine warme Woche abgeschätzt.",
-          "nextStep": "Tropfer verglichen",
-          "author": "admin"
-        },
-        {
-          "id": "balkon-bewaesserung-entry-2",
-          "date": "2026-05-24",
-          "title": "Tropfer verglichen",
-          "body": "Druckkompensierte und einstellbare Tropfer bei verschiedenen Schlauchlängen getestet.",
-          "nextStep": "Pumpenbox aufgebaut",
-          "author": "admin"
-        },
-        {
-          "id": "balkon-bewaesserung-entry-3",
-          "date": "2026-06-14",
-          "title": "Pumpenbox aufgebaut",
-          "body": "Pumpe, Filter, Rückschlagventil und Sicherung in einer Box montiert.",
-          "nextStep": "Feuchtesteuerung programmiert",
-          "author": "admin"
-        },
-        {
-          "id": "balkon-bewaesserung-entry-4",
-          "date": "2026-07-06",
-          "title": "Feuchtesteuerung programmiert",
-          "body": "Bewässerungsfenster, Mindestpause und Trockenlaufschutz implementiert.",
-          "nextStep": "Urlaubsbetrieb getestet",
-          "author": "admin"
-        },
-        {
-          "id": "balkon-bewaesserung-entry-5",
-          "date": "2026-08-07",
-          "title": "Urlaubsbetrieb getestet",
-          "body": "Zehn Tage automatisch bewässert und Tankreichweite dokumentiert.",
-          "nextStep": "",
-          "author": "admin"
-        }
-      ],
-      "materials": [
-        {
-          "id": "balkon-bewaesserung-material-1",
-          "name": "Membranpumpe 12 V",
-          "quantity": "1",
-          "status": "Verbaut",
-          "price": "24,50 €",
-          "properties": "Selbstansaugend",
-          "url": "",
-          "createdAt": "2026-05-10"
-        },
-        {
-          "id": "balkon-bewaesserung-material-2",
-          "name": "Tropfschlauch 4/6 mm",
-          "quantity": "15 m",
-          "status": "Verbaut",
-          "price": "17,00 €",
-          "properties": "UV-beständig",
-          "url": "",
-          "createdAt": "2026-05-10"
-        },
-        {
-          "id": "balkon-bewaesserung-material-3",
-          "name": "Kapazitiver Füllstandssensor",
-          "quantity": "1",
-          "status": "Verbaut",
-          "price": "8,60 €",
-          "properties": "Außen am Tank",
-          "url": "",
-          "createdAt": "2026-05-10"
-        }
-      ],
-      "contacts": [],
-      "links": [
-        {
-          "id": "balkon-bewaesserung-link-1",
-          "title": "Tropfbewässerung auslegen",
-          "url": "https://example.com/tropfbewaesserung",
-          "notes": "Druckverlust und maximale Leitungslängen.",
-          "createdAt": "2026-05-10"
-        }
-      ],
-      "ideas": [
-        {
-          "id": "balkon-bewaesserung-idea-1",
-          "title": "Wetterprognose berücksichtigen",
-          "status": "Prüfen",
-          "description": "Bei angekündigtem Regen eine Bewässerung auslassen.",
-          "createdAt": "2026-05-10"
-        },
-        {
-          "id": "balkon-bewaesserung-idea-2",
-          "title": "Durchfluss messen",
-          "status": "Offen",
-          "description": "Verstopfte Tropfer über Abweichungen erkennen.",
-          "createdAt": "2026-05-10"
-        }
-      ],
-      "entryCount": 5,
-      "latestEntryId": "balkon-bewaesserung-entry-5",
-      "latestEntryDate": "2026-08-07",
-      "latestEntryTitle": "Urlaubsbetrieb getestet",
-      "latestEntryBody": "Zehn Tage automatisch bewässert und Tankreichweite dokumentiert.",
-      "latestNextStep": ""
-    },
-    {
-      "id": "led-matrix-uhr",
-      "title": "LED-Matrix-Wanduhr",
-      "description": "Große Wanduhr mit weichen Übergängen, automatischer Helligkeit und lokalen Wetterdaten.",
-      "status": "archived",
-      "createdAt": "2024-11-09",
-      "tagIds": ["tag-elektronik", "tag-esp32", "tag-3d-druck"],
-      "entries": [
-        {
-          "id": "led-matrix-uhr-entry-1",
-          "date": "2024-11-09",
-          "title": "Matrixlayout festgelegt",
-          "body": "Auflösung und Gehäuseformat anhand des vorgesehenen Wandplatzes bestimmt.",
-          "nextStep": "LED-Panels getestet",
-          "author": "admin"
-        },
-        {
-          "id": "led-matrix-uhr-entry-2",
-          "date": "2024-12-01",
-          "title": "LED-Panels getestet",
-          "body": "Farben, Stromaufnahme und Pixelfehler aller Module geprüft.",
-          "nextStep": "Rahmen gebaut",
-          "author": "admin"
-        },
-        {
-          "id": "led-matrix-uhr-entry-3",
-          "date": "2025-01-18",
-          "title": "Rahmen gebaut",
-          "body": "Flachen Holzrahmen mit abnehmbarer Rückwand gefertigt.",
-          "nextStep": "Diffusor abgestimmt",
-          "author": "admin"
-        },
-        {
-          "id": "led-matrix-uhr-entry-4",
-          "date": "2025-02-22",
-          "title": "Diffusor abgestimmt",
-          "body": "Abstand und Material für gleichmäßig leuchtende Pixel ermittelt.",
-          "nextStep": "Uhrsoftware fertiggestellt",
-          "author": "admin"
-        },
-        {
-          "id": "led-matrix-uhr-entry-5",
-          "date": "2025-04-05",
-          "title": "Uhrsoftware fertiggestellt",
-          "body": "Zeitsynchronisation, Helligkeitsregelung und Wetteransicht umgesetzt.",
-          "nextStep": "Projekt abgeschlossen",
-          "author": "admin"
-        },
-        {
-          "id": "led-matrix-uhr-entry-6",
-          "date": "2025-05-17",
-          "title": "Projekt abgeschlossen",
-          "body": "Uhr montiert, Stromaufnahme dokumentiert und Quelldaten gesichert.",
-          "nextStep": "",
-          "author": "admin"
-        }
-      ],
-      "materials": [
-        {
-          "id": "led-matrix-uhr-material-1",
-          "name": "RGB-Matrix 64 × 32",
-          "quantity": "2",
-          "status": "Verbaut",
-          "price": "76,00 €",
-          "properties": "HUB75",
-          "url": "",
-          "createdAt": "2024-11-09"
-        },
-        {
-          "id": "led-matrix-uhr-material-2",
-          "name": "Acrylglas opal 3 mm",
-          "quantity": "1 Platte",
-          "status": "Verbaut",
-          "price": "22,00 €",
-          "properties": "Diffusor",
-          "url": "",
-          "createdAt": "2024-11-09"
-        },
-        {
-          "id": "led-matrix-uhr-material-3",
-          "name": "Netzteil 5 V / 20 A",
-          "quantity": "1",
-          "status": "Verbaut",
-          "price": "31,00 €",
-          "properties": "Geschlossenes Gehäuse",
-          "url": "",
-          "createdAt": "2024-11-09"
-        }
-      ],
-      "contacts": [],
-      "links": [
-        {
-          "id": "led-matrix-uhr-link-1",
-          "title": "HUB75-Ansteuerung",
-          "url": "https://example.com/hub75",
-          "notes": "Timing und Verkabelung der Panels.",
-          "createdAt": "2024-11-09"
-        }
-      ],
-      "ideas": [
-        {
-          "id": "led-matrix-uhr-idea-1",
-          "title": "Geburtstage anzeigen",
-          "status": "Umgesetzt",
-          "description": "Kalenderdaten werden als kleine Symbole eingeblendet.",
-          "createdAt": "2024-11-09"
-        },
-        {
-          "id": "led-matrix-uhr-idea-2",
-          "title": "Sekundenanimation",
-          "status": "Verworfen",
-          "description": "War aus der Entfernung zu unruhig.",
-          "createdAt": "2024-11-09"
-        }
-      ],
-      "entryCount": 6,
-      "latestEntryId": "led-matrix-uhr-entry-6",
-      "latestEntryDate": "2025-05-17",
-      "latestEntryTitle": "Projekt abgeschlossen",
-      "latestEntryBody": "Uhr montiert, Stromaufnahme dokumentiert und Quelldaten gesichert.",
-      "latestNextStep": ""
-    },
-    {
-      "id": "fahrradlicht-akkupack",
-      "title": "Fahrradlicht-Akkupack",
-      "description": "Defekten proprietären Akku durch ein reparierbares, geschütztes 18650-Pack ersetzen.",
-      "status": "archived",
-      "createdAt": "2025-03-08",
-      "tagIds": ["tag-elektronik", "tag-upcycling"],
-      "entries": [
-        {
-          "id": "fahrradlicht-akkupack-entry-1",
-          "date": "2025-03-08",
-          "title": "Originalakku analysiert",
-          "body": "Steckerbelegung, Abschaltspannung und Stromaufnahme der Lampe gemessen.",
-          "nextStep": "Zellen selektiert",
-          "author": "admin"
-        },
-        {
-          "id": "fahrradlicht-akkupack-entry-2",
-          "date": "2025-03-22",
-          "title": "Zellen selektiert",
-          "body": "Kapazität und Innenwiderstand von acht Zellen bestimmt.",
-          "nextStep": "Pack verschweißt",
-          "author": "admin"
-        },
-        {
-          "id": "fahrradlicht-akkupack-entry-3",
-          "date": "2025-04-12",
-          "title": "Pack verschweißt",
-          "body": "Zellenhalter, Nickelband und BMS zu einem 2S-Pack aufgebaut.",
-          "nextStep": "Gehäuse gedruckt",
-          "author": "admin"
-        },
-        {
-          "id": "fahrradlicht-akkupack-entry-4",
-          "date": "2025-05-03",
-          "title": "Gehäuse gedruckt",
-          "body": "Spritzwassergeschütztes Gehäuse mit Rahmenhalterung gefertigt.",
-          "nextStep": "Reichweitentest abgeschlossen",
-          "author": "admin"
-        },
-        {
-          "id": "fahrradlicht-akkupack-entry-5",
-          "date": "2025-06-01",
-          "title": "Reichweitentest abgeschlossen",
-          "body": "Drei Helligkeitsstufen bis zur BMS-Abschaltung vermessen.",
-          "nextStep": "",
-          "author": "admin"
-        }
-      ],
-      "materials": [
-        {
-          "id": "fahrradlicht-akkupack-material-1",
-          "name": "18650-Zellen",
-          "quantity": "8",
-          "status": "Verbaut",
-          "price": "32,00 €",
-          "properties": "Kapazitätsselektiert",
-          "url": "",
-          "createdAt": "2025-03-08"
-        },
-        {
-          "id": "fahrradlicht-akkupack-material-2",
-          "name": "2S-BMS 10 A",
-          "quantity": "1",
-          "status": "Verbaut",
-          "price": "6,90 €",
-          "properties": "Balancing",
-          "url": "",
-          "createdAt": "2025-03-08"
-        },
-        {
-          "id": "fahrradlicht-akkupack-material-3",
-          "name": "Wasserdichter Stecker",
-          "quantity": "2 Paare",
-          "status": "Verbaut",
-          "price": "8,40 €",
-          "properties": "Zweipolig",
-          "url": "",
-          "createdAt": "2025-03-08"
-        }
-      ],
-      "contacts": [],
-      "links": [
-        {
-          "id": "fahrradlicht-akkupack-link-1",
-          "title": "Sicherer Aufbau von Akkupacks",
-          "url": "https://example.com/akkupack-sicherheit",
-          "notes": "Sicherung, Isolation und Zellabstände.",
-          "createdAt": "2025-03-08"
-        }
-      ],
-      "ideas": [
-        {
-          "id": "fahrradlicht-akkupack-idea-1",
-          "title": "Ladezustand per LED",
-          "status": "Umgesetzt",
-          "description": "Vierstufige Anzeige im Gehäusedeckel.",
-          "createdAt": "2025-03-08"
-        },
-        {
-          "id": "fahrradlicht-akkupack-idea-2",
-          "title": "USB-Ausgang",
-          "status": "Verworfen",
-          "description": "Zusätzliche Öffnung hätte Abdichtung verschlechtert.",
-          "createdAt": "2025-03-08"
-        }
-      ],
-      "entryCount": 5,
-      "latestEntryId": "fahrradlicht-akkupack-entry-5",
-      "latestEntryDate": "2025-06-01",
-      "latestEntryTitle": "Reichweitentest abgeschlossen",
-      "latestEntryBody": "Drei Helligkeitsstufen bis zur BMS-Abschaltung vermessen.",
-      "latestNextStep": ""
-    },
-    {
-      "id": "mini-arcade-controller",
-      "title": "Mini-Arcade-Controller",
-      "description": "Kompakter USB-Controller mit echten Arcade-Tastern für Retrospiele und Workshops.",
-      "status": "archived",
-      "createdAt": "2024-07-13",
-      "tagIds": ["tag-elektronik", "tag-3d-druck"],
-      "entries": [
-        {
-          "id": "mini-arcade-controller-entry-1",
-          "date": "2024-07-13",
-          "title": "Layout aus Pappe getestet",
-          "body": "Abstände von Stick und Tastern mit mehreren Handgrößen erprobt.",
-          "nextStep": "Gehäuse konstruiert",
-          "author": "admin"
-        },
-        {
-          "id": "mini-arcade-controller-entry-2",
-          "date": "2024-08-03",
-          "title": "Gehäuse konstruiert",
-          "body": "Zweiteiliges Gehäuse mit verschraubter Acryloberseite gezeichnet.",
-          "nextStep": "Taster montiert",
-          "author": "admin"
-        },
-        {
-          "id": "mini-arcade-controller-entry-3",
-          "date": "2024-08-24",
-          "title": "Taster montiert",
-          "body": "Bohrungen gesetzt und Mikroschalter einheitlich ausgerichtet.",
-          "nextStep": "USB-Controller programmiert",
-          "author": "admin"
-        },
-        {
-          "id": "mini-arcade-controller-entry-4",
-          "date": "2024-09-14",
-          "title": "USB-Controller programmiert",
-          "body": "Mikrocontroller als standardkonformes Gamepad eingerichtet.",
-          "nextStep": "Kabelbaum gefertigt",
-          "author": "admin"
-        },
-        {
-          "id": "mini-arcade-controller-entry-5",
-          "date": "2024-10-05",
-          "title": "Kabelbaum gefertigt",
-          "body": "Steckbaren Kabelbaum beschriftet und Zugentlastung ergänzt.",
-          "nextStep": "Spieltest durchgeführt",
-          "author": "admin"
-        },
-        {
-          "id": "mini-arcade-controller-entry-6",
-          "date": "2024-11-02",
-          "title": "Spieltest durchgeführt",
-          "body": "Tastenbelegung und Diagonalen in mehreren Spielen geprüft.",
-          "nextStep": "Workshop-Unterlagen erstellt",
-          "author": "admin"
-        },
-        {
-          "id": "mini-arcade-controller-entry-7",
-          "date": "2024-11-23",
-          "title": "Workshop-Unterlagen erstellt",
-          "body": "Montagefolge und Fehlersuche auf zwei Seiten zusammengefasst.",
-          "nextStep": "",
-          "author": "admin"
-        }
-      ],
-      "materials": [
-        {
-          "id": "mini-arcade-controller-material-1",
-          "name": "Arcade-Taster 30 mm",
-          "quantity": "8",
-          "status": "Verbaut",
-          "price": "19,20 €",
-          "properties": "Verschiedene Farben",
-          "url": "",
-          "createdAt": "2024-07-13"
-        },
-        {
-          "id": "mini-arcade-controller-material-2",
-          "name": "Digitaler Joystick",
-          "quantity": "1",
-          "status": "Verbaut",
-          "price": "18,50 €",
-          "properties": "Kurzer Schaft",
-          "url": "",
-          "createdAt": "2024-07-13"
-        },
-        {
-          "id": "mini-arcade-controller-material-3",
-          "name": "RP2040-Board",
-          "quantity": "1",
-          "status": "Verbaut",
-          "price": "7,90 €",
-          "properties": "USB HID",
-          "url": "",
-          "createdAt": "2024-07-13"
-        }
-      ],
-      "contacts": [],
-      "links": [
-        {
-          "id": "mini-arcade-controller-link-1",
-          "title": "USB-HID-Gamepad",
-          "url": "https://example.com/usb-hid-gamepad",
-          "notes": "Descriptor und Tastenbelegung.",
-          "createdAt": "2024-07-13"
-        }
-      ],
-      "ideas": [
-        {
-          "id": "mini-arcade-controller-idea-1",
-          "title": "Wechselbare Beschriftung",
-          "status": "Umgesetzt",
-          "description": "Papier-Inlays liegen unter der Acrylplatte.",
-          "createdAt": "2024-07-13"
-        },
-        {
-          "id": "mini-arcade-controller-idea-2",
-          "title": "Kabelloser Betrieb",
-          "status": "Verworfen",
-          "description": "USB ist für Workshops robuster.",
-          "createdAt": "2024-07-13"
-        }
-      ],
-      "entryCount": 7,
-      "latestEntryId": "mini-arcade-controller-entry-7",
-      "latestEntryDate": "2024-11-23",
-      "latestEntryTitle": "Workshop-Unterlagen erstellt",
-      "latestEntryBody": "Montagefolge und Fehlersuche auf zwei Seiten zusammengefasst.",
-      "latestNextStep": ""
-    },
-    {
-      "id": "schreibtisch-kabelkanal",
-      "title": "Schreibtisch-Kabelkanal",
-      "description": "Netzteile und Kabel unter dem höhenverstellbaren Tisch geordnet und wartbar befestigen.",
-      "status": "archived",
-      "createdAt": "2025-10-12",
-      "tagIds": ["tag-holzwerken", "tag-werkstatt"],
-      "entries": [
-        {
-          "id": "schreibtisch-kabelkanal-entry-1",
-          "date": "2025-10-12",
-          "title": "Kabelwege geplant",
-          "body": "Bewegungsreserve im Steh- und Sitzbetrieb markiert.",
-          "nextStep": "Kanäle montiert",
-          "author": "admin"
-        },
-        {
-          "id": "schreibtisch-kabelkanal-entry-2",
-          "date": "2025-10-18",
-          "title": "Kanäle montiert",
-          "body": "Zwei getrennte Kanäle für Netz- und Signalkabel verschraubt.",
-          "nextStep": "Beschriftung abgeschlossen",
-          "author": "admin"
-        },
-        {
-          "id": "schreibtisch-kabelkanal-entry-3",
-          "date": "2025-10-25",
-          "title": "Beschriftung abgeschlossen",
-          "body": "Netzteile fixiert, Kabel beschriftet und alle Tischpositionen getestet.",
-          "nextStep": "",
-          "author": "admin"
-        }
-      ],
-      "materials": [
-        {
-          "id": "schreibtisch-kabelkanal-material-1",
-          "name": "Drahtgitter-Kabelkanal",
-          "quantity": "2 × 80 cm",
-          "status": "Verbaut",
-          "price": "27,00 €",
-          "properties": "Untertischmontage",
-          "url": "",
-          "createdAt": "2025-10-12"
-        },
-        {
-          "id": "schreibtisch-kabelkanal-material-2",
-          "name": "Klettband",
-          "quantity": "5 m",
-          "status": "Verbaut",
-          "price": "9,90 €",
-          "properties": "Wiederlösbar",
-          "url": "",
-          "createdAt": "2025-10-12"
-        },
-        {
-          "id": "schreibtisch-kabelkanal-material-3",
-          "name": "Kabeletiketten",
-          "quantity": "1 Satz",
-          "status": "Verbaut",
-          "price": "6,50 €",
-          "properties": "Laminierbar",
-          "url": "",
-          "createdAt": "2025-10-12"
-        }
-      ],
-      "contacts": [],
-      "links": [
-        {
-          "id": "schreibtisch-kabelkanal-link-1",
-          "title": "Biegeradien von Datenkabeln",
-          "url": "https://example.com/kabel-biegeradius",
-          "notes": "Hinweise für Netz- und Displaykabel.",
-          "createdAt": "2025-10-12"
-        }
-      ],
-      "ideas": [
-        {
-          "id": "schreibtisch-kabelkanal-idea-1",
-          "title": "Dockingstation-Halter",
-          "status": "Umgesetzt",
-          "description": "Gedruckte Halterung direkt am Kanal.",
-          "createdAt": "2025-10-12"
-        },
-        {
-          "id": "schreibtisch-kabelkanal-idea-2",
-          "title": "Steckdosenleiste schaltbar",
-          "status": "Verworfen",
-          "description": "Standby-Verbrauch bereits gering.",
-          "createdAt": "2025-10-12"
-        }
-      ],
-      "entryCount": 3,
-      "latestEntryId": "schreibtisch-kabelkanal-entry-3",
-      "latestEntryDate": "2025-10-25",
-      "latestEntryTitle": "Beschriftung abgeschlossen",
-      "latestEntryBody": "Netzteile fixiert, Kabel beschriftet und alle Tischpositionen getestet.",
-      "latestNextStep": ""
-    },
-    {
-      "id": "akkuschrauber-zellentausch",
-      "title": "Akkuschrauber-Zellentausch",
-      "description": "Einen mechanisch guten Akkuschrauber durch neue Zellen und ein modernes Schutzboard weiterverwenden.",
-      "status": "archived",
-      "createdAt": "2025-01-11",
-      "tagIds": ["tag-elektronik", "tag-upcycling", "tag-werkstatt"],
-      "entries": [
-        {
-          "id": "akkuschrauber-zellentausch-entry-1",
-          "date": "2025-01-11",
-          "title": "Defekten Akku geöffnet",
-          "body": "Zellanordnung und Temperatursensor dokumentiert.",
-          "nextStep": "Ersatzzellen geprüft",
-          "author": "admin"
-        },
-        {
-          "id": "akkuschrauber-zellentausch-entry-2",
-          "date": "2025-01-25",
-          "title": "Ersatzzellen geprüft",
-          "body": "Hochstromzellen vermessen und paarweise sortiert.",
-          "nextStep": "Zellblock erneuert",
-          "author": "admin"
-        },
-        {
-          "id": "akkuschrauber-zellentausch-entry-3",
-          "date": "2025-02-08",
-          "title": "Zellblock erneuert",
-          "body": "Neuen Block punktgeschweißt, isoliert und mit Sicherung versehen.",
-          "nextStep": "Belastungstest bestanden",
-          "author": "admin"
-        },
-        {
-          "id": "akkuschrauber-zellentausch-entry-4",
-          "date": "2025-02-22",
-          "title": "Belastungstest bestanden",
-          "body": "Drehmomenttest und zwei vollständige Ladezyklen ohne Auffälligkeiten absolviert.",
-          "nextStep": "",
-          "author": "admin"
-        }
-      ],
-      "materials": [
-        {
-          "id": "akkuschrauber-zellentausch-material-1",
-          "name": "Hochstromzellen 18650",
-          "quantity": "10",
-          "status": "Verbaut",
-          "price": "45,00 €",
-          "properties": "20 A Dauerstrom",
-          "url": "",
-          "createdAt": "2025-01-11"
-        },
-        {
-          "id": "akkuschrauber-zellentausch-material-2",
-          "name": "Isolierringe",
-          "quantity": "10",
-          "status": "Verbaut",
-          "price": "2,50 €",
-          "properties": "Selbstklebend",
-          "url": "",
-          "createdAt": "2025-01-11"
-        },
-        {
-          "id": "akkuschrauber-zellentausch-material-3",
-          "name": "Nickelband 0,15 mm",
-          "quantity": "1 m",
-          "status": "Verbaut",
-          "price": "4,80 €",
-          "properties": "Reinnickel",
-          "url": "",
-          "createdAt": "2025-01-11"
-        }
-      ],
-      "contacts": [],
-      "links": [
-        {
-          "id": "akkuschrauber-zellentausch-link-1",
-          "title": "Punktverschweißen von Zellen",
-          "url": "https://example.com/zellen-punktschweissen",
-          "notes": "Elektrodenabstand und Prüfmethoden.",
-          "createdAt": "2025-01-11"
-        }
-      ],
-      "ideas": [
-        {
-          "id": "akkuschrauber-zellentausch-idea-1",
-          "title": "Kapazität außen markieren",
-          "status": "Umgesetzt",
-          "description": "Datum und gemessene Kapazität auf dem Gehäuse notiert.",
-          "createdAt": "2025-01-11"
-        },
-        {
-          "id": "akkuschrauber-zellentausch-idea-2",
-          "title": "USB-C-Ladegerät bauen",
-          "status": "Verworfen",
-          "description": "Original-Ladegerät arbeitet zuverlässig.",
-          "createdAt": "2025-01-11"
-        }
-      ],
-      "entryCount": 4,
-      "latestEntryId": "akkuschrauber-zellentausch-entry-4",
-      "latestEntryDate": "2025-02-22",
-      "latestEntryTitle": "Belastungstest bestanden",
-      "latestEntryBody": "Drehmomenttest und zwei vollständige Ladezyklen ohne Auffälligkeiten absolviert.",
-      "latestNextStep": ""
-    },
-    {
-      "id": "smart-mirror-prototyp",
+      "id": "demo-smart-mirror",
       "title": "Smart-Mirror-Prototyp",
-      "description": "Informationsdisplay hinter einem Spionspiegel für Uhrzeit, Termine und Wetter erproben.",
-      "status": "archived",
-      "createdAt": "2024-09-07",
-      "tagIds": ["tag-elektronik", "tag-holzwerken"],
+      "description": "Versuch eines beleuchteten Informationsspiegels aus altem Monitor und Holzrahmen; wegen schlechter Ablesbarkeit und hohem Standbyverbrauch verworfen.",
+      "status": "trashed", "priority": "Gering", "flagged": false, "icon": "monitor", "iconInherited": false,
+      "createdAt": "2025-06-14", "dueDate": "", "deletedAt": 1787000000, "createdBy": "demo", "tagIds": ["demo-tag-upcycling", "demo-tag-holzwerken", "demo-tag-elektronik"], "folderId": null,
       "entries": [
-        {
-          "id": "smart-mirror-prototyp-entry-1",
-          "date": "2024-09-07",
-          "title": "Spiegelmuster verglichen",
-          "body": "Helligkeit und Reflexion von drei Spionspiegelmaterialien getestet.",
-          "nextStep": "Display ausgewählt",
-          "author": "admin"
-        },
-        {
-          "id": "smart-mirror-prototyp-entry-2",
-          "date": "2024-09-28",
-          "title": "Display ausgewählt",
-          "body": "Gebrauchten 24-Zoll-Monitor zerlegt und Einbautiefe bestimmt.",
-          "nextStep": "Holzrahmen gebaut",
-          "author": "admin"
-        },
-        {
-          "id": "smart-mirror-prototyp-entry-3",
-          "date": "2024-10-19",
-          "title": "Holzrahmen gebaut",
-          "body": "Rahmen mit Hinterlüftung und abnehmbarer Technikklappe gefertigt.",
-          "nextStep": "Oberfläche eingerichtet",
-          "author": "admin"
-        },
-        {
-          "id": "smart-mirror-prototyp-entry-4",
-          "date": "2024-11-16",
-          "title": "Oberfläche eingerichtet",
-          "body": "Uhr, Kalender und Wetterdaten in einem dunklen Layout angeordnet.",
-          "nextStep": "Bewegungssensor ergänzt",
-          "author": "admin"
-        },
-        {
-          "id": "smart-mirror-prototyp-entry-5",
-          "date": "2025-01-04",
-          "title": "Bewegungssensor ergänzt",
-          "body": "Display schaltet bei Annäherung ein und zeitverzögert wieder aus.",
-          "nextStep": "Prototyp ausgewertet",
-          "author": "admin"
-        },
-        {
-          "id": "smart-mirror-prototyp-entry-6",
-          "date": "2025-02-15",
-          "title": "Prototyp ausgewertet",
-          "body": "Stromverbrauch und Lesbarkeit dokumentiert; Projekt zugunsten eines E-Paper-Boards beendet.",
-          "nextStep": "",
-          "author": "admin"
-        }
+        { "id": "demo-smartmirror-entry-1", "date": "2025-09-28", "title": "Prototyp verworfen", "body": "Bei Tageslicht ist die Anzeige hinter dem Spiegel kaum lesbar. Der alte Monitor benötigt im Bereitschaftsbetrieb mehr Energie als vertretbar.", "nextStep": "Brauchbare Teile ausbauen und Rest fachgerecht trennen.", "author": "demo", "createdAt": "2025-09-28T17:00:00Z" }
+      ],
+      "tasks": [
+        { "id": "demo-smartmirror-task-1", "title": "Einplatinencomputer ausbauen", "description": "Speicherkarte löschen und das Board in den Elektronikbestand zurücklegen.", "status": "Offen", "priority": "Normal", "dueDate": "", "author": "demo", "createdAt": "2025-09-28T17:10:00Z" },
+        { "id": "demo-smartmirror-task-2", "title": "Monitor zum Wertstoffhof bringen", "description": "Netzteil und Display nicht über den Hausmüll entsorgen.", "status": "Offen", "priority": "Normal", "dueDate": "", "author": "demo", "createdAt": "2025-09-28T17:11:00Z" }
       ],
       "materials": [
-        {
-          "id": "smart-mirror-prototyp-material-1",
-          "name": "Spionspiegel-Acryl",
-          "quantity": "1 Platte",
-          "status": "Verbaut",
-          "price": "38,00 €",
-          "properties": "40 × 60 cm",
-          "url": "",
-          "createdAt": "2024-09-07"
-        },
-        {
-          "id": "smart-mirror-prototyp-material-2",
-          "name": "24-Zoll-Monitor",
-          "quantity": "1",
-          "status": "Vorhanden",
-          "price": "",
-          "properties": "Gebrauchtgerät",
-          "url": "",
-          "createdAt": "2024-09-07"
-        },
-        {
-          "id": "smart-mirror-prototyp-material-3",
-          "name": "PIR-Sensor",
-          "quantity": "1",
-          "status": "Verbaut",
-          "price": "4,20 €",
-          "properties": "Weitwinkel",
-          "url": "",
-          "createdAt": "2024-09-07"
-        }
+        { "id": "demo-smartmirror-material-1", "name": "Alter 22-Zoll-Monitor", "quantity": "1", "status": "Zur Entsorgung", "price": "0 €", "url": "", "properties": "Hoher Standbyverbrauch, starkes Backlight-Bleeding", "author": "demo", "createdAt": "2025-06-14T10:00:00Z" },
+        { "id": "demo-smartmirror-material-2", "name": "Spionspiegel-Acryl", "quantity": "1 Platte", "status": "Einlagern", "price": "34 €", "url": "", "properties": "Für kleineres Anzeigeprojekt wiederverwendbar", "author": "demo", "createdAt": "2025-06-14T10:02:00Z" }
       ],
       "contacts": [],
       "links": [
-        {
-          "id": "smart-mirror-prototyp-link-1",
-          "title": "Display hinter Spionspiegel",
-          "url": "https://example.com/smart-mirror-optik",
-          "notes": "Kontrast und notwendige Displayhelligkeit.",
-          "createdAt": "2024-09-07"
-        }
+        { "id": "demo-smartmirror-link-1", "title": "Notizen zum Displayaufbau", "url": "https://example.com/maker/smart-mirror-test", "notes": "Nur Referenz für den damaligen Versuchsaufbau.", "author": "demo", "createdAt": "2025-06-15T10:00:00Z" }
       ],
       "ideas": [
-        {
-          "id": "smart-mirror-prototyp-idea-1",
-          "title": "Sprachsteuerung",
-          "status": "Verworfen",
-          "description": "Mikrofon im Wohnraum nicht gewünscht.",
-          "createdAt": "2024-09-07"
-        },
-        {
-          "id": "smart-mirror-prototyp-idea-2",
-          "title": "E-Paper-Nachfolger",
-          "status": "Offen",
-          "description": "Weniger Energie und bessere Lesbarkeit bei Tageslicht.",
-          "createdAt": "2024-09-07"
-        }
+        { "id": "demo-smartmirror-idea-1", "title": "Kleines E-Paper statt Monitor", "status": "Prüfen", "description": "Die Grundidee später eventuell als energiesparende Statusanzeige ohne Spiegel neu beginnen.", "author": "demo", "createdAt": "2025-09-29T08:00:00Z" }
       ],
-      "entryCount": 6,
-      "latestEntryId": "smart-mirror-prototyp-entry-6",
-      "latestEntryDate": "2025-02-15",
-      "latestEntryTitle": "Prototyp ausgewertet",
-      "latestEntryBody": "Stromverbrauch und Lesbarkeit dokumentiert; Projekt zugunsten eines E-Paper-Boards beendet.",
-      "latestNextStep": ""
+      "learnings": [
+        { "id": "demo-smartmirror-learning-1", "title": "Display zuerst unter realem Licht testen", "description": "Der Aufbau wirkte in der dunklen Werkstatt gut, scheiterte aber am vorgesehenen hellen Standort.", "futureUse": "Kritische Komponenten vor dem Gehäusebau am Einsatzort erproben.", "author": "demo", "createdAt": "2025-09-28T17:20:00Z" },
+        { "id": "demo-smartmirror-learning-egg", "title": "Der Spiegel blieb erstaunlich ehrlich", "description": "Auch mit Software zeigte er morgens weiterhin zuverlässig zerzauste Haare. Dieses Problem lag außerhalb des Projektumfangs.", "futureUse": "Anforderungen früh gegen die physikalische Realität prüfen.", "author": "demo", "createdAt": "2025-09-28T17:21:00Z" }
+      ],
+      "notes": [
+        { "id": "demo-smartmirror-note-1", "title": "Verwertbare Teile", "description": "Holzrahmen, Einplatinencomputer, Bewegungsmelder und Spiegelplatte können wiederverwendet werden.", "author": "demo", "createdAt": "2025-09-28T17:25:00Z" }
+      ]
     }
   ]
 }

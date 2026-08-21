@@ -1,0 +1,85 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: read
+  packages: write
+  id-token: write
+  attestations: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: pdo_sqlite, mbstring, openssl
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: find app public tools -name '*.php' -print0 | xargs -0 -n1 php -l
+      - name: Version prüfen
+        env:
+          UPDATE_SIGNING_PRIVATE_KEY: ${{ secrets.UPDATE_SIGNING_PRIVATE_KEY }}
+        run: |
+          test "v$(tr -d '\n' < VERSION)" = "$GITHUB_REF_NAME"
+          test -n "$UPDATE_SIGNING_PRIVATE_KEY"
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        name: Image-Metadaten
+        run: |
+          image="ghcr.io/${GITHUB_REPOSITORY,,}"
+          version="${GITHUB_REF_NAME#v}"
+          echo "image=$image" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - id: image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: |
+            ${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.version }}
+            ${{ steps.meta.outputs.image }}:stable
+      - name: Release-Paket bauen und signieren
+        env:
+          UPDATE_SIGNING_PRIVATE_KEY: ${{ secrets.UPDATE_SIGNING_PRIVATE_KEY }}
+          MAKELOG_RELEASE_REPOSITORY: johannesboernsen/make-log-releases
+        run: |
+          node tools/build-release.mjs "${{ steps.meta.outputs.version }}" "${{ steps.meta.outputs.image }}" "${{ steps.image.outputs.digest }}"
+          printf '%s' "$UPDATE_SIGNING_PRIVATE_KEY" > "$RUNNER_TEMP/update-private.pem"
+          openssl dgst -sha256 -sign "$RUNNER_TEMP/update-private.pem" -out "$RUNNER_TEMP/update-manifest.sig.bin" dist/update-manifest.json
+          base64 -w0 "$RUNNER_TEMP/update-manifest.sig.bin" > dist/update-manifest.sig
+      - uses: actions/attest@v4
+        with:
+          subject-path: dist/makelog-web-${{ steps.meta.outputs.version }}.tar
+      - uses: actions/attest@v4
+        with:
+          subject-name: ${{ steps.meta.outputs.image }}
+          subject-digest: ${{ steps.image.outputs.digest }}
+          push-to-registry: true
+      - name: GitHub Release veröffentlichen
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_REPOSITORY_TOKEN }}
+        run: |
+          test -n "$GH_TOKEN"
+          gh release create "$GITHUB_REF_NAME" \
+            --repo johannesboernsen/make-log-releases \
+            --title "Make:Log ${{ steps.meta.outputs.version }}" \
+            --notes "Signiertes Update für Make:Log ${{ steps.meta.outputs.version }}." \
+            "dist/makelog-web-${{ steps.meta.outputs.version }}.tar" \
+            dist/update-manifest.json dist/update-manifest.sig dist/checksums.txt

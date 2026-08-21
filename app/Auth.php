@@ -150,6 +150,16 @@ final class Auth
         $this->db->prepare('DELETE FROM sessions WHERE user_id = :id AND id <> :session')->execute(['id' => $user['id'], 'session' => $user['sessionId']]);
     }
 
+    public function verifyPassword(array $user, string $password): void
+    {
+        $statement = $this->db->prepare('SELECT password_hash FROM users WHERE id = :id AND active = 1');
+        $statement->execute(['id' => $user['id']]);
+        $hash = (string) $statement->fetchColumn();
+        if ($password === '' || $hash === '' || !password_verify($password, $hash)) {
+            throw new HttpError(401, 'Das Administratorpasswort ist falsch.');
+        }
+    }
+
     public function publicUser(array $row): array
     {
         $storedPreferences = json_decode((string) ($row['preferences_json'] ?? '{}'), true);
@@ -177,6 +187,10 @@ final class Auth
                     $normalizedOrder[] = $normalizedSection;
                 }
             }
+        }
+        if (!in_array('marked', $normalizedOrder, true)) {
+            $insertAfter = array_search('recentlyEdited', $normalizedOrder, true);
+            array_splice($normalizedOrder, $insertAfter === false ? 0 : $insertAfter + 1, 0, ['marked']);
         }
         $preferences['overviewOrder'] = array_merge($normalizedOrder, array_values(array_diff($allowedOrder, $normalizedOrder)));
         unset($preferences['showOverviewFocus'], $preferences['overviewFocusRows']);
@@ -206,6 +220,7 @@ final class Auth
             'showOverviewRecent' => true,
             'showOverviewNext' => true,
             'showOverviewRecentlyEdited' => true,
+            'showOverviewMarked' => true,
             'showOverviewDueSoon' => true,
             'showOverviewHighPriority' => true,
             'showOverviewActivity' => true,
@@ -213,9 +228,10 @@ final class Auth
             'overviewRecentRows' => 2,
             'overviewNextRows' => 2,
             'overviewRecentlyEditedRows' => 1,
+            'overviewMarkedRows' => 1,
             'overviewDueSoonRows' => 2,
             'overviewHighPriorityRows' => 2,
-            'overviewOrder' => ['summary', 'recentlyEdited', 'dueSoon', 'highPriority', 'next', 'recent', 'activity', 'timeline'],
+            'overviewOrder' => ['summary', 'recentlyEdited', 'marked', 'dueSoon', 'highPriority', 'next', 'recent', 'activity', 'timeline'],
         ];
     }
 

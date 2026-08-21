@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#f6f7f9">
   <title>Make:Log einrichten</title>
   <link rel="icon" href="/favicon.svg?v=20260819-4" type="image/svg+xml">
-  <link rel="stylesheet" href="/install.css?v=20260819-3">
+  <link rel="stylesheet" href="/install.css?v=20260820-4">
 </head>
 <body>
   <main class="install-shell">
@@ -25,11 +25,12 @@
         <label>Benutzername<input name="adminUser" value="admin" minlength="3" maxlength="40" pattern="[A-Za-z0-9._-]+" autocomplete="username" required></label>
         <label>Passwort<input name="adminPassword" type="password" minlength="10" maxlength="128" autocomplete="new-password" required><small>Mindestens 10 Zeichen.</small></label>
         <label>Passwort wiederholen<input name="confirmPassword" type="password" minlength="10" maxlength="128" autocomplete="new-password" required></label>
+        <label class="check-option"><input name="demoData" type="checkbox"><span><strong>Beispielprojekte einspielen</strong><small>Fügt elf typische Maker-Projekte zum Ausprobieren hinzu. Sie lassen sich später unabhängig von eigenen Projekten entfernen.</small></span></label>
         <p id="install-error" class="error" role="alert"></p>
         <button type="submit">Make:Log einrichten</button>
       </form>
     </section>
   </main>
-  <script src="/install.js" defer></script>
+  <script src="/install.js?v=20260820-1" defer></script>
 </body>
 </html>

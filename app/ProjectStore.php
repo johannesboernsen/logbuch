@@ -228,6 +228,19 @@ final class ProjectStore
         return count($projects);
     }
 
+    public function removeByIds(array $ids): int
+    {
+        $removed = 0;
+        foreach (array_values(array_unique($ids)) as $id) {
+            if (!is_string($id) || !validId($id) || !$this->exists($id)) {
+                continue;
+            }
+            removeTree($this->projectDirectory($id));
+            ++$removed;
+        }
+        return $removed;
+    }
+
     public function saveImported(array $project, bool $replace): array
     {
         $id = (string) ($project['id'] ?? '');
@@ -280,6 +293,11 @@ final class ProjectStore
 
     public function createEntry(string $projectId, array $input, string $actor): array
     {
+        foreach (['date', 'title', 'body', 'nextStep'] as $field) {
+            if (isset($input[$field]) && !is_scalar($input[$field])) {
+                throw new HttpError(422, 'Ungültiger Feldwert.');
+            }
+        }
         $date = (string) ($input['date'] ?? '');
         if (!validDate($date)) {
             throw new HttpError(422, 'Ein gültiges Eintragsdatum ist erforderlich.');
@@ -313,18 +331,12 @@ final class ProjectStore
             'learnings' => 'learning',
             'notes' => 'note',
         ][$collection];
-        $item = ['id' => $singular . '-' . gmdate('YmdHis') . '-' . bin2hex(random_bytes(3)), ...$input, 'createdAt' => $input['createdAt'] ?? nowIso(), 'author' => $input['author'] ?? $actor];
-        if ($collection === 'tasks') {
-            $status = (string) ($input['status'] ?? 'Offen');
-            $priority = (string) ($input['priority'] ?? 'Normal');
-            $dueDate = trim((string) ($input['dueDate'] ?? ''));
-            if (!in_array($status, ['Offen', 'In Arbeit'], true) || !in_array($priority, ['Normal', 'Hoch', 'Niedrig'], true) || ($dueDate !== '' && !validDate($dueDate))) {
-                throw new HttpError(422, 'Ungültiger Status, ungültige Priorität oder ungültige Fälligkeit.');
-            }
-            $item['status'] = $status;
-            $item['priority'] = $priority;
-            $item['dueDate'] = $dueDate;
-        }
+        $item = [
+            'id' => $singular . '-' . gmdate('YmdHis') . '-' . bin2hex(random_bytes(3)),
+            ...$this->normalizeItemInput($collection, $input),
+            'createdAt' => nowIso(),
+            'author' => $actor,
+        ];
         $this->saveItem($projectId, $collection, $item);
         return $item;
     }
@@ -335,25 +347,13 @@ final class ProjectStore
         if ($collection === 'entries' && isset($input['date']) && !validDate((string) $input['date'])) {
             throw new HttpError(422, 'Ein gültiges Eintragsdatum ist erforderlich.');
         }
-        if ($collection === 'tasks') {
-            if (array_key_exists('status', $input) && !in_array($input['status'], ['Offen', 'In Arbeit'], true)) {
-                throw new HttpError(422, 'Ungültiger Arbeitsschrittstatus.');
-            }
-            if (array_key_exists('priority', $input) && !in_array($input['priority'], ['Normal', 'Hoch', 'Niedrig'], true)) {
-                throw new HttpError(422, 'Ungültige Arbeitsschrittpriorität.');
-            }
-            if (array_key_exists('dueDate', $input)) {
-                $input['dueDate'] = trim((string) $input['dueDate']);
-                if ($input['dueDate'] !== '' && !validDate($input['dueDate'])) {
-                    throw new HttpError(422, 'Ungültige Fälligkeit des Arbeitsschritts.');
-                }
-            }
-        }
-        unset($input['id'], $input['author'], $input['createdAt']);
-        $item = array_replace($item, $input, ['updatedAt' => nowIso()]);
+        $changes = $collection === 'entries'
+            ? $this->normalizeEntryChanges($input)
+            : $this->normalizeItemInput($collection, $input, true);
+        $item = array_replace($item, $changes, ['updatedAt' => nowIso()]);
         $this->saveItem($projectId, $collection, $item);
-        if ($collection === 'entries' && isset($input['date'])) {
-            $this->adjustStartDate($projectId, (string) $input['date']);
+        if ($collection === 'entries' && isset($changes['date'])) {
+            $this->adjustStartDate($projectId, (string) $changes['date']);
         }
         return $item;
     }
@@ -596,6 +596,83 @@ final class ProjectStore
             }
         }
         return $valid;
+    }
+
+    private function normalizeItemInput(string $collection, array $input, bool $partial = false): array
+    {
+        $definitions = [
+            'tasks' => ['title' => 160, 'description' => 10000, 'status' => 20, 'priority' => 20, 'dueDate' => 10],
+            'materials' => ['name' => 160, 'quantity' => 100, 'status' => 40, 'price' => 100, 'url' => 2048, 'properties' => 10000],
+            'contacts' => ['name' => 160, 'role' => 160, 'company' => 160, 'email' => 254, 'phone' => 100, 'notes' => 10000],
+            'links' => ['title' => 160, 'url' => 2048, 'notes' => 10000],
+            'ideas' => ['title' => 160, 'status' => 20, 'description' => 10000],
+            'learnings' => ['title' => 160, 'description' => 10000, 'futureUse' => 10000],
+            'notes' => ['title' => 160, 'description' => 50000],
+        ];
+        if (!isset($definitions[$collection])) {
+            throw new HttpError(404, 'Bereich nicht gefunden.');
+        }
+
+        $result = [];
+        foreach ($definitions[$collection] as $field => $maxLength) {
+            if (!array_key_exists($field, $input)) {
+                continue;
+            }
+            if (!is_scalar($input[$field]) && $input[$field] !== null) {
+                throw new HttpError(422, 'Ungültiger Feldwert.');
+            }
+            $result[$field] = mb_substr(trim((string) ($input[$field] ?? '')), 0, $maxLength);
+        }
+
+        $required = in_array($collection, ['materials', 'contacts'], true) ? 'name' : 'title';
+        if ((!$partial || array_key_exists($required, $input)) && ($result[$required] ?? '') === '') {
+            throw new HttpError(422, 'Eine Bezeichnung ist erforderlich.');
+        }
+        if ($collection === 'tasks') {
+            if (array_key_exists('flagged', $input)) {
+                if (!is_bool($input['flagged'])) throw new HttpError(422, 'Ungültige Arbeitsschrittmarkierung.');
+                $result['flagged'] = $input['flagged'];
+            } elseif (!$partial) {
+                $result['flagged'] = false;
+            }
+            $result['status'] ??= $partial ? null : 'Offen';
+            $result['priority'] ??= $partial ? null : 'Normal';
+            $result['dueDate'] ??= $partial ? null : '';
+            foreach (['status', 'priority', 'dueDate'] as $field) {
+                if ($partial && $result[$field] === null) unset($result[$field]);
+            }
+            if (isset($result['status']) && !in_array($result['status'], ['Offen', 'In Arbeit'], true)) throw new HttpError(422, 'Ungültiger Arbeitsschrittstatus.');
+            if (isset($result['priority']) && !in_array($result['priority'], ['Normal', 'Hoch', 'Niedrig'], true)) throw new HttpError(422, 'Ungültige Arbeitsschrittpriorität.');
+            if (isset($result['dueDate']) && $result['dueDate'] !== '' && !validDate($result['dueDate'])) throw new HttpError(422, 'Ungültige Fälligkeit des Arbeitsschritts.');
+        }
+        if ($collection === 'ideas' && isset($result['status']) && !in_array($result['status'], ['Offen', 'Prüfen', 'Umgesetzt', 'Verworfen'], true)) {
+            throw new HttpError(422, 'Ungültiger Ideenstatus.');
+        }
+        if (isset($result['url']) && $result['url'] !== '') {
+            $scheme = strtolower((string) parse_url($result['url'], PHP_URL_SCHEME));
+            if (!filter_var($result['url'], FILTER_VALIDATE_URL) || !in_array($scheme, ['http', 'https'], true)) {
+                throw new HttpError(422, 'Ungültige Webadresse.');
+            }
+        }
+        if (isset($result['email']) && $result['email'] !== '' && !filter_var($result['email'], FILTER_VALIDATE_EMAIL)) {
+            throw new HttpError(422, 'Ungültige E-Mail-Adresse.');
+        }
+        return $result;
+    }
+
+    private function normalizeEntryChanges(array $input): array
+    {
+        $result = [];
+        foreach (['title' => 160, 'body' => 50000, 'nextStep' => 10000] as $field => $maxLength) {
+            if (!array_key_exists($field, $input)) continue;
+            if (!is_scalar($input[$field]) && $input[$field] !== null) throw new HttpError(422, 'Ungültiger Feldwert.');
+            $result[$field] = mb_substr((string) ($input[$field] ?? ''), 0, $maxLength);
+        }
+        if (array_key_exists('date', $input)) {
+            if (!is_string($input['date']) || !validDate($input['date'])) throw new HttpError(422, 'Ein gültiges Eintragsdatum ist erforderlich.');
+            $result['date'] = $input['date'];
+        }
+        return $result;
     }
 
     private function validFolderId(mixed $id): ?string

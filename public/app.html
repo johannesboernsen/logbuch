@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#f6f7f9">
   <title>Make:Log</title>
   <link rel="icon" href="/favicon.svg?v=20260819-4" type="image/svg+xml">
-  <link rel="stylesheet" href="/styles.css?v=20260820-83">
+  <link rel="stylesheet" href="/styles.css?v=20260821-104">
 </head>
 <body>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
@@ -47,7 +47,7 @@
           </div>
         </div>
         <div class="settings-menu">
-          <button id="settings-toggle" class="nav-item bare settings-toggle" type="button" data-route="settings" aria-expanded="false" aria-controls="settings-subnav"><span>⚙</span><b>Einstellungen</b></button>
+          <button id="settings-toggle" class="nav-item bare settings-toggle" type="button" data-route="settings" aria-expanded="false" aria-controls="settings-subnav"><span aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.09a2 2 0 0 1 1 1.74v.5a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.38a2 2 0 0 0-.73-2.73l-.15-.09a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2Z"></path><circle cx="12" cy="12" r="3"></circle></svg></span><b>Einstellungen</b><i id="update-badge" class="update-nav-badge" hidden>Update</i></button>
           <div id="settings-subnav" class="settings-subnav" hidden>
             <a href="/#/settings/general" data-settings-route="general">Allgemein</a>
             <a href="/#/settings/tags" data-settings-route="tags" data-admin-setting>Tags</a>
@@ -59,7 +59,7 @@
             <a href="/#/settings/system" data-settings-route="system" data-admin-setting>System</a>
           </div>
         </div>
-        <button id="logout" class="nav-item bare"><span>↪</span> Abmelden</button>
+        <button id="logout" class="nav-item bare"><span aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><path d="m16 17 5-5-5-5M21 12H9"></path></svg></span> Abmelden</button>
       </nav>
       <div class="sidebar-bottom">
         <div class="device-state"><span class="pulse"></span><div><strong>Make:Log online</strong><small id="device-host">Server</small></div></div>
@@ -155,6 +155,16 @@
     </form>
   </dialog>
 
+  <dialog id="update-dialog">
+    <form id="update-form" method="dialog">
+      <div class="dialog-head"><div><h2>Make:Log aktualisieren</h2></div><button class="icon-button" value="cancel" formmethod="dialog" formnovalidate aria-label="Schließen">×</button></div>
+      <p id="update-dialog-copy" class="dialog-copy"></p>
+      <label>Administratorpasswort<input name="password" type="password" autocomplete="current-password" required></label>
+      <p id="update-error" class="form-error"></p>
+      <div class="dialog-actions"><button class="button secondary" value="cancel" formmethod="dialog" formnovalidate>Abbrechen</button><button class="button primary" type="submit">Update installieren</button></div>
+    </form>
+  </dialog>
+
   <dialog id="tag-dialog">
     <form id="tag-form" method="dialog">
       <input type="hidden" name="tagId">
@@ -175,6 +185,6 @@
     </form>
   </dialog>
 
-  <script src="/app.js?v=20260820-101" defer></script>
+  <script src="/app.js?v=20260821-125" defer></script>
 </body>
 </html>
