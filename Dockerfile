@@ -21,6 +21,8 @@ COPY VERSION SCHEMA_VERSION /var/www/html/
 COPY storage/.htaccess /var/www/html/storage/.htaccess
 
 RUN chmod +x /usr/local/bin/makelog-entrypoint \
+    && chmod -R a+rX /var/www/html/app /var/www/html/public /var/www/html/config /var/www/html/database \
+    && chmod a+r /var/www/html/VERSION /var/www/html/SCHEMA_VERSION \
     && chown -R www-data:www-data /var/www/html/storage
 
 VOLUME ["/var/www/html/storage"]
