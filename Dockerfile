@@ -1,6 +1,9 @@
 FROM php:8.4-apache@sha256:5f8050825b2f3de4efb0d81149c86643a9ee9c0a74ed4595ca2ad69ebfeb35fb
 
-RUN a2enmod headers rewrite \
+RUN apt-get update \
+    && apt-get upgrade -y \
+    && rm -rf /var/lib/apt/lists/* \
+    && a2enmod headers rewrite \
     && printf 'ServerName localhost\n' > /etc/apache2/conf-available/servername.conf \
     && a2enconf servername
 

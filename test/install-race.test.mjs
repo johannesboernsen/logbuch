@@ -9,12 +9,14 @@ const root = new URL('..', import.meta.url).pathname;
 
 test('parallele Ersteinrichtung erzeugt genau einen Administrator', async () => {
   const storage = await mkdtemp(join(tmpdir(), 'makelog-install-race-'));
+  let serverErrors = '';
   const ports = Array.from({ length:6 }, (_, index) => 4210 + index);
   const servers = ports.map(port => spawn('php', ['-S', `127.0.0.1:${port}`, '-t', 'public', 'public/router.php'], {
     cwd:root,
     env:{ ...process.env, MAKELOG_STORAGE_PATH:storage, MAKELOG_PLATFORM:'test' },
-    stdio:'ignore',
+    stdio:['ignore', 'ignore', 'pipe'],
   }));
+  servers.forEach(server => server.stderr.on('data', chunk => { serverErrors += chunk.toString(); }));
   try {
     for (let attempt = 0; attempt < 50; attempt += 1) {
       const ready = await Promise.all(ports.map(port => fetch(`http://127.0.0.1:${port}/api/install/status`).then(response => response.ok).catch(() => false)));
@@ -27,7 +29,8 @@ test('parallele Ersteinrichtung erzeugt genau einen Administrator', async () => 
       headers:{ 'Content-Type':'application/json' },
       body:JSON.stringify({ siteName:'Race-Test', timezone:'Europe/Berlin', adminUser:`raceadmin${index}`, adminPassword:'sicheres-race-passwort' }),
     })));
-    assert.equal(responses.filter(response => response.status === 201).length, 1);
+    const responseSummary = await Promise.all(responses.map(async response => `${response.status} ${await response.text()}`));
+    assert.equal(responses.filter(response => response.status === 201).length, 1, `${responseSummary.join('\n')}\n${serverErrors.slice(-8000)}`);
     assert.equal(responses.filter(response => response.status === 409).length, ports.length - 1);
   } finally {
     servers.forEach(server => server.kill('SIGTERM'));

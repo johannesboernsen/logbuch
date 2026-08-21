@@ -10,11 +10,13 @@ const baseUrl = 'http://127.0.0.1:4230';
 
 test('Installer kann den mitgelieferten Beispieldatensatz aktivieren', async () => {
   const storage = await mkdtemp(join(tmpdir(), 'makelog-installer-demo-'));
+  let serverErrors = '';
   const server = spawn('php', ['-S', '127.0.0.1:4230', '-t', 'public', 'public/router.php'], {
     cwd: root,
     env: { ...process.env, MAKELOG_STORAGE_PATH: storage, MAKELOG_PLATFORM: 'test' },
-    stdio: 'ignore',
+    stdio: ['ignore', 'ignore', 'pipe'],
   });
+  server.stderr.on('data', chunk => { serverErrors += chunk.toString(); });
   try {
     for (let attempt = 0; attempt < 50; attempt += 1) {
       if (await fetch(`${baseUrl}/api/install/status`).then(response => response.ok).catch(() => false)) break;
@@ -26,7 +28,8 @@ test('Installer kann den mitgelieferten Beispieldatensatz aktivieren', async () 
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ siteName: 'Demo-Test', timezone: 'Europe/Berlin', adminUser: 'admin', adminPassword: 'sicheres-demo-passwort', demoData: true }),
     });
-    assert.equal(installed.status, 201);
+    const installBody = await installed.clone().text();
+    assert.equal(installed.status, 201, `${installBody}\n${serverErrors.slice(-4000)}`);
 
     const login = await fetch(`${baseUrl}/api/login`, {
       method: 'POST',

@@ -9,6 +9,7 @@ const root = new URL('..', import.meta.url).pathname;
 const baseUrl = 'http://127.0.0.1:4191';
 let storage;
 let server;
+let serverErrors = '';
 let cookie = '';
 let csrf = '';
 let adminCookie = '';
@@ -30,6 +31,7 @@ before(async () => {
     env: { ...process.env, MAKELOG_STORAGE_PATH: storage, MAKELOG_PLATFORM: 'test' },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
+  server.stderr.on('data', chunk => { serverErrors += chunk.toString(); });
   for (let attempt = 0; attempt < 40; attempt += 1) {
     try {
       const response = await fetch(`${baseUrl}/api/install/status`);
@@ -52,7 +54,7 @@ test('Installer prüft die Umgebung und legt genau einen Admin an', async () => 
   assert.equal(status.data.installed, false);
 
   const installed = await request('/api/install', { method: 'POST', body: JSON.stringify({ siteName: 'Make:Log Test', timezone: 'Europe/Berlin', adminUser: 'admin', adminPassword: 'ein-langes-Testpasswort', demoData: false }) });
-  assert.equal(installed.response.status, 201);
+  assert.equal(installed.response.status, 201, `${JSON.stringify(installed.data)}\n${serverErrors.slice(-4000)}`);
   const repeated = await request('/api/install', { method: 'POST', body: JSON.stringify({ siteName: 'Zweites Make:Log', timezone: 'UTC', adminUser: 'other', adminPassword: 'ein-anderes-Testpasswort' }) });
   assert.equal(repeated.response.status, 409);
 });
