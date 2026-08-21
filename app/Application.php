@@ -44,6 +44,7 @@ final class Application
         $withDemoData = ($input['demoData'] ?? false) === true;
         $demo = $withDemoData ? $this->demoManifest() : null;
         $this->db->exec('BEGIN IMMEDIATE');
+        $transactionActive = true;
         try {
             if ($this->installed()) {
                 throw new HttpError(409, 'Make:Log ist bereits eingerichtet.');
@@ -54,10 +55,16 @@ final class Application
                 $this->installDemoData((string) $input['adminUser'], $demo);
             }
             $this->audit((string) $input['adminUser'], 'system.installed', $siteName);
-            $this->db->commit();
+            // A transaction started with raw SQLite SQL is not reported by
+            // PDO::inTransaction() on every supported PHP 8.2 build.
+            $this->db->exec('COMMIT');
+            $transactionActive = false;
         } catch (\Throwable $error) {
-            if ($this->db->inTransaction()) {
-                $this->db->rollBack();
+            if ($transactionActive) {
+                try {
+                    $this->db->exec('ROLLBACK');
+                } catch (\Throwable) {
+                }
             }
             throw $error;
         }

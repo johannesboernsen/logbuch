@@ -242,6 +242,7 @@ final class UpdateService
             writeJsonFile($maintenancePath, ['version' => $version, 'startedAt' => nowIso(), 'actor' => $actor]);
 
             $this->db->exec('BEGIN IMMEDIATE');
+            $transactionActive = true;
             try {
                 $this->applyMigrations($stagePath, (int) ($manifest['database']['schemaVersion'] ?? \makelog_schema_version()));
                 $ordered = array_keys($newFiles);
@@ -255,10 +256,14 @@ final class UpdateService
                     }
                 }
                 writeJsonFile($this->rootPath . '/RELEASE_FILES.json', ['version' => $version, 'files' => $newFiles]);
-                $this->db->commit();
+                $this->db->exec('COMMIT');
+                $transactionActive = false;
             } catch (\Throwable $error) {
-                if ($this->db->inTransaction()) {
-                    $this->db->rollBack();
+                if ($transactionActive) {
+                    try {
+                        $this->db->exec('ROLLBACK');
+                    } catch (\Throwable) {
+                    }
                 }
                 if ($backupPath !== '') {
                     $this->restoreProgramBackup($backupPath, array_keys($newFiles));
