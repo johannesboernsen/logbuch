@@ -58,6 +58,6 @@ In Docker endet die Verantwortung der Anwendung beim Schreiben einer Update-Anfo
 
 ## Backups
 
-Projekt- und Benutzerbackups bleiben getrennt. Benutzerarchive enthalten Passwort-Hashes, aber keine Klartextpasswörter oder Sitzungen, und müssen deshalb wie Geheimnisse behandelt werden.
+Projekt- und Benutzerbackups bleiben getrennt. Projektarchive enthalten Projekte, verwendete Tags, Projektordner und Servereinstellungen; Benutzerarchive enthalten Konten, Projektfreigaben, persönliche Einstellungen und Passwort-Hashes. Klartextpasswörter und Sitzungen werden nicht exportiert. Benutzerarchive müssen deshalb wie Geheimnisse behandelt werden. Für eine vollständige Wiederherstellung wird zuerst das Benutzer- und danach das Projektarchiv eingespielt; ältere Archive bleiben importierbar, können aber nur Daten wiederherstellen, die sie bereits enthielten.
 
 Backups werden bewusst manuell heruntergeladen und wieder eingespielt. Das Logbuch speichert keine SMTP-Zugangsdaten und führt keine Hintergrundjobs aus.

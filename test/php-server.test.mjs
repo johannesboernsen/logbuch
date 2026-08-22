@@ -384,3 +384,59 @@ test('Rollen und Positivlisten werden auch bei direktem API-Zugriff erzwungen', 
   cookie = adminCookie;
   csrf = adminCsrf;
 });
+
+test('Backup-Metadaten stellen Ordnerhierarchie und Servereinstellungen transaktional wieder her', async () => {
+  const tag = await request('/api/tags', { method:'POST', body:JSON.stringify({ name:'Backupstruktur' }) });
+  assert.equal(tag.response.status, 201);
+  const restored = await request('/api/import/backup-metadata', { method:'POST', body:JSON.stringify({
+    tags:[{ id:tag.data.id, name:tag.data.name, createdAt:tag.data.createdAt }],
+    folders:[
+      { id:'backup-folder-child', parentId:'backup-folder-root', name:'Unterordner', description:'Zweite Ebene', priority:'Gering', flagged:false, icon:'folder', tagIds:[], createdAt:'2026-08-20T10:00:00Z' },
+      { id:'backup-folder-root', parentId:null, name:'Backupordner', description:'Erste Ebene', priority:'Hoch', flagged:true, icon:'archive', tagIds:[tag.data.id], createdAt:'2026-08-20T09:00:00Z' },
+    ],
+    serverSettings:{ siteName:'Restauriertes Logbuch', baseUrl:'https://logbuch.example.test', timezone:'Europe/Berlin' },
+    replace:true,
+  }) });
+  assert.equal(restored.response.status, 200);
+  assert.equal(restored.data.foldersImported, 2);
+  assert.equal(restored.data.settingsRestored, true);
+  const folders = (await request('/api/folders')).data.folders;
+  assert.equal(folders.find(folder => folder.id === 'backup-folder-child')?.parentId, 'backup-folder-root');
+  assert.deepEqual(folders.find(folder => folder.id === 'backup-folder-root')?.tagIds, [tag.data.id]);
+  const settings = await request('/api/settings/server');
+  assert.equal(settings.data.siteName, 'Restauriertes Logbuch');
+  assert.equal(settings.data.baseUrl, 'https://logbuch.example.test');
+
+  const cyclic = await request('/api/import/backup-metadata', { method:'POST', body:JSON.stringify({ folders:[
+    { id:'backup-cycle-a', parentId:'backup-cycle-b', name:'Kreis A', priority:'Mittel', flagged:false, icon:'folder', tagIds:[] },
+    { id:'backup-cycle-b', parentId:'backup-cycle-a', name:'Kreis B', priority:'Mittel', flagged:false, icon:'folder', tagIds:[] },
+  ] }) });
+  assert.equal(cyclic.response.status, 422);
+  const afterFailure = (await request('/api/folders')).data.folders;
+  assert.ok(!afterFailure.some(folder => folder.id.startsWith('backup-cycle-')));
+});
+
+test('Benutzerbackups erhalten validierte Präferenzen und bleiben ohne Präferenzen kompatibel', async () => {
+  const backup = await request('/api/backup/users');
+  assert.equal(backup.response.status, 200);
+  const admin = backup.data.accounts.find(account => account.id === 'admin');
+  assert.equal(admin.preferences.defaultProjectIcon, 'rocket');
+  assert.equal(admin.preferences.showProjectFolders, false);
+
+  const restored = await request('/api/import/users', { method:'POST', body:JSON.stringify({ accounts:[{ ...admin, preferences:{ startPage:'archive', showProjectFolders:true } }], replace:true }) });
+  assert.equal(restored.response.status, 200);
+  const users = (await request('/api/users')).data.users;
+  const restoredAdmin = users.find(user => user.id === 'admin');
+  assert.equal(restoredAdmin.startPage, 'archive');
+  assert.equal(restoredAdmin.showProjectFolders, true);
+  assert.equal(restoredAdmin.defaultProjectIcon, 'box');
+
+  const invalid = await request('/api/import/users', { method:'POST', body:JSON.stringify({ accounts:[{ ...admin, preferences:{ showProjectFolders:'ja' } }], replace:true }) });
+  assert.equal(invalid.response.status, 422);
+  const legacy = { ...admin };
+  delete legacy.preferences;
+  const compatible = await request('/api/import/users', { method:'POST', body:JSON.stringify({ accounts:[legacy], replace:true }) });
+  assert.equal(compatible.response.status, 200);
+  const legacyAdmin = (await request('/api/users')).data.users.find(user => user.id === 'admin');
+  assert.equal(legacyAdmin.startPage, 'home');
+});

@@ -1376,11 +1376,11 @@ function dataContent() {
   const projectCount = state.projects.length;
   const userCount = state.users.length;
   return `<div class="settings-group data-settings">
-    <section class="backup-area"><div class="backup-area-head"><div><h2>Backup herunterladen</h2><p>Projektdaten und Benutzerkonten getrennt als Archiv herunterladen.</p></div></div><div class="backup-export-grid">
-      <article class="backup-card"><div><h3>Projekte herunterladen</h3><p>${projectCount} ${projectCount === 1 ? 'Projekt' : 'Projekte'} mit Logbucheinträgen, Material, Kontakten, Links und Ideen. Markdown und JSON bleiben offen lesbar; stabile IDs erhalten bestehende NFC-Links.</p></div><button class="button primary" data-export-projects>Projektdaten herunterladen</button></article>
-      <article class="backup-card sensitive-backup"><div><h3>Benutzer herunterladen</h3><p>${userCount} ${userCount === 1 ? 'Benutzerkonto' : 'Benutzerkonten'} mit Rollen, Status, Projektfreigaben und Passwort-Hashes. Klartextpasswörter und aktive Sitzungen werden nicht exportiert.</p><small>Dieses Archiv ist sicherheitskritisch. Bewahre es geschützt auf.</small></div><button class="button primary" data-export-users>Benutzerkonten herunterladen</button></article>
+    <section class="backup-area"><div class="backup-area-head"><div><h2>Backup herunterladen</h2><p>Projektdaten und Benutzerkonten getrennt als Archiv herunterladen. Für eine vollständige Wiederherstellung werden beide Archive benötigt.</p></div></div><div class="backup-export-grid">
+      <article class="backup-card"><div><h3>Projekte herunterladen</h3><p>${projectCount} ${projectCount === 1 ? 'Projekt' : 'Projekte'} mit Ordnerstruktur, Logbucheinträgen, Material, Kontakten, Links, Ideen und Servereinstellungen. Markdown und JSON bleiben offen lesbar; stabile IDs erhalten bestehende NFC-Links.</p></div><button class="button primary" data-export-projects>Projektdaten herunterladen</button></article>
+      <article class="backup-card sensitive-backup"><div><h3>Benutzer herunterladen</h3><p>${userCount} ${userCount === 1 ? 'Benutzerkonto' : 'Benutzerkonten'} mit Rollen, Status, Projektfreigaben, persönlichen Einstellungen und Passwort-Hashes. Klartextpasswörter und aktive Sitzungen werden nicht exportiert.</p><small>Dieses Archiv ist sicherheitskritisch. Bewahre es geschützt auf.</small></div><button class="button primary" data-export-users>Benutzerkonten herunterladen</button></article>
     </div></section>
-    <section class="backup-area"><div class="backup-area-head"><div><h2>Backup einspielen</h2><p>Ein vorhandenes Projekt- oder Benutzerarchiv prüfen und wiederherstellen.</p></div></div><div class="backup-import-grid">
+    <section class="backup-area"><div class="backup-area-head"><div><h2>Backup einspielen</h2><p>Bei einer vollständigen Wiederherstellung zuerst das Benutzerarchiv und danach das Projektarchiv einspielen. Archive älterer Versionen werden weiterhin akzeptiert.</p></div></div><div class="backup-import-grid">
       <article class="backup-card backup-import-card"><div><h3>Projektarchiv einspielen</h3></div><div class="backup-restore-form"><label>Projektarchiv<input id="project-backup-file" type="file" accept=".tar,application/x-tar"></label><label>Bei vorhandenen Projekten<select id="project-backup-conflict"><option value="skip">Vorhandenes Projekt überspringen</option><option value="replace">Vorhandenes Projekt ersetzen</option></select></label><div id="project-backup-preview" class="backup-preview">Noch kein Projektarchiv ausgewählt.</div><button class="button secondary" data-import-projects disabled>Projektdaten einspielen</button></div></article>
       <article class="backup-card backup-import-card sensitive-backup"><div><h3>Benutzerarchiv einspielen</h3></div><div class="backup-restore-form"><label>Benutzerarchiv<input id="user-backup-file" type="file" accept=".tar,application/x-tar"></label><label>Bei vorhandenen Benutzern<select id="user-backup-conflict"><option value="skip">Vorhandenen Benutzer überspringen</option><option value="replace">Vorhandenen Benutzer ersetzen</option></select></label><div id="user-backup-preview" class="backup-preview">Noch kein Benutzerarchiv ausgewählt.</div><button class="button secondary" data-import-users disabled>Benutzerkonten einspielen</button></div></article>
     </div></section>
@@ -1556,7 +1556,7 @@ async function renderSettings() {
   const [, title, description] = settingsSections.find(([id]) => id === active);
   if (active === 'users' && state.user?.admin) await Promise.all([loadUsers(), loadProjects()]);
   if (active === 'tags' && state.user?.admin) await loadTags();
-  if (active === 'data' && state.user?.admin) await Promise.all([loadUsers(), loadProjects(), loadTags()]);
+  if (active === 'data' && state.user?.admin) await Promise.all([loadUsers(), loadProjects(), loadTags(), loadServerSettings()]);
   if (active === 'profile') await loadProjects();
   if (active === 'security' && !state.user.mustChangePassword) await loadSessions();
   if (active === 'audit' && state.user?.admin) await loadAudit();
@@ -1657,7 +1657,7 @@ function parseTar(buffer) {
 }
 
 function validateProjectBackup(manifest) {
-  if (!['logbuch-projects','logbuch-backup'].includes(manifest?.format) || manifest.version !== 1 || !Array.isArray(manifest.projects)) throw new Error('Kein unterstütztes Logbuch-Projektarchiv');
+  if (!LogbuchBackupFormat.isProjectManifest(manifest) || !Array.isArray(manifest.projects)) throw new Error('Kein unterstütztes Logbuch-Projektarchiv');
   for (const project of manifest.projects) {
     if (!project?.id || !project?.title || !Array.isArray(project.entries)) throw new Error('Das Backup enthält unvollständige Projektdaten');
     for (const collection of backupCollections) {
@@ -1666,12 +1666,16 @@ function validateProjectBackup(manifest) {
     }
   }
   if (manifest.tags != null && !Array.isArray(manifest.tags)) throw new Error('Die Tag-Definitionen im Backup sind ungültig');
+  if (manifest.folders != null && (!Array.isArray(manifest.folders) || manifest.folders.length > 1000)) throw new Error('Die Projektordner im Backup sind ungültig');
+  if (manifest.serverSettings != null && (typeof manifest.serverSettings !== 'object' || Array.isArray(manifest.serverSettings))) throw new Error('Die Servereinstellungen im Backup sind ungültig');
   manifest.tags ||= [];
+  manifest.folders ||= [];
+  manifest.serverSettings ||= null;
   return manifest;
 }
 
 function validateUserBackup(manifest) {
-  if (manifest?.format !== 'logbuch-users' || manifest.version !== 1 || !Array.isArray(manifest.accounts)) throw new Error('Kein unterstütztes Logbuch-Benutzerarchiv');
+  if (!LogbuchBackupFormat.isUserManifest(manifest) || !Array.isArray(manifest.accounts)) throw new Error('Kein unterstütztes Logbuch-Benutzerarchiv');
   for (const account of manifest.accounts) {
     const phpBackup = account?.passwordAlgorithm === 'php-password-hash' && account?.passwordHash;
     const legacyBackup = account?.passwordHash && account?.salt;
@@ -1684,9 +1688,11 @@ async function buildProjectBackup() {
   const fullProjects = await Promise.all(state.projects.map(project => api(`/projects/${encodeURIComponent(project.id)}`)));
   const metadataUsers = state.users.map(({ id, name, role, active, projectAccessMode, projectIds }) => ({ id, name, role, active, projectAccessMode, projectIds }));
   const projects = fullProjects.map(project => ({ ...project, accessUsers:metadataUsers.filter(user => user.role !== 'admin' && user.projectIds?.includes(project.id)).map(user => user.id) }));
-  const usedTagIds = new Set(projects.flatMap(project => project.tagIds || []));
+  const folders = state.folders.map(({ id, parentId, name, description, priority, flagged, icon, tagIds, createdAt, updatedAt }) => ({ id, parentId, name, description, priority, flagged, icon, tagIds, createdAt, updatedAt }));
+  const usedTagIds = new Set([...projects.flatMap(project => project.tagIds || []), ...folders.flatMap(folder => folder.tagIds || [])]);
   const tags = state.tags.filter(tag => usedTagIds.has(tag.id)).map(({ id, name, createdAt }) => ({ id, name, createdAt }));
-  const manifest = { format:'logbuch-projects', version:1, exportedAt:new Date().toISOString(), source:{ name:'Logbuch', host:location.host }, tags, projects };
+  const serverSettings = state.server ? { siteName:state.server.siteName, baseUrl:state.server.baseUrl, timezone:state.server.timezone } : null;
+  const manifest = { format:'logbuch-projects', version:1, exportedAt:new Date().toISOString(), source:{ name:'Logbuch', host:location.host }, tags, folders, serverSettings, projects };
   const files = [['manifest.json', JSON.stringify(manifest, null, 2)]];
   for (const project of projects) {
     const root = `projects/${project.id}`;
@@ -1771,8 +1777,14 @@ function bindDataActions() {
     projectImport.disabled = true; projectImport.textContent = 'Import läuft …';
     let imported = 0; let skipped = 0;
     try {
+      if (selectedProjects.folders.length || selectedProjects.serverSettings) {
+        await api('/import/backup-metadata', { method:'POST', body:JSON.stringify({ tags:selectedProjects.tags || [], folders:selectedProjects.folders, serverSettings:selectedProjects.serverSettings, replace }) });
+        await loadProjects();
+      }
+      const knownFolderIds = new Set(state.folders.map(folder => folder.id));
       for (const project of selectedProjects.projects) {
-        const result = await api('/import/project', { method:'POST', body:JSON.stringify({ project, tags:selectedProjects.tags || [], accessUsers:project.accessUsers || [], replace }) });
+        const importedProject = project.folderId && !knownFolderIds.has(project.folderId) ? { ...project, folderId:null } : project;
+        const result = await api('/import/project', { method:'POST', body:JSON.stringify({ project:importedProject, tags:selectedProjects.tags || [], accessUsers:project.accessUsers || [], replace }) });
         result.skipped ? skipped++ : imported++;
       }
       toast(`${imported} Projekte importiert${skipped ? `, ${skipped} übersprungen` : ''}`);

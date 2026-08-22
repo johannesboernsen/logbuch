@@ -353,6 +353,10 @@ final class Application
                 $this->requireAdmin($user);
                 $this->json(200, $this->updateServerSettings($user, $input));
             }
+            if ($path === '/api/import/backup-metadata' && $method === 'POST') {
+                $this->requireAdmin($user);
+                $this->json(200, $this->importBackupMetadata($user, $input));
+            }
             if ($path === '/api/backup/users' && $method === 'GET') {
                 $this->requireAdmin($user);
                 $this->json(200, ['accounts' => $this->exportUsers()]);
@@ -366,7 +370,7 @@ final class Application
                 $result = $this->projects->saveImported((array) ($input['project'] ?? []), (bool) ($input['replace'] ?? false));
                 $this->importTagDefinitions((array) ($input['tags'] ?? []));
                 foreach ((array) ($input['accessUsers'] ?? []) as $accessUser) {
-                    if (is_string($accessUser)) {
+                    if (is_string($accessUser) && $this->userExists($accessUser)) {
                         $this->setUserProject($accessUser, $result['id'], true);
                     }
                 }
@@ -695,6 +699,13 @@ final class Application
         $statement->execute(['user' => $userId, 'project' => $projectId]);
     }
 
+    private function userExists(string $id): bool
+    {
+        $statement = $this->db->prepare('SELECT 1 FROM users WHERE id = :id');
+        $statement->execute(['id' => $id]);
+        return (bool) $statement->fetchColumn();
+    }
+
     private function replaceUserProjects(string $userId, array $projectIds): void
     {
         $this->db->prepare('DELETE FROM user_projects WHERE user_id = :user')->execute(['user' => $userId]);
@@ -994,10 +1005,95 @@ final class Application
         return ['saved' => true, ...$this->serverSettings()];
     }
 
+    private function importBackupMetadata(array $actor, array $input): array
+    {
+        $folders = $input['folders'] ?? [];
+        $settings = $input['serverSettings'] ?? null;
+        if (!is_array($folders) || count($folders) > 1000 || ($settings !== null && !is_array($settings))) {
+            throw new HttpError(422, 'Ungültige Metadaten im Backup.');
+        }
+        $replace = (bool) ($input['replace'] ?? false);
+        $this->db->beginTransaction();
+        try {
+            $this->importTagDefinitions((array) ($input['tags'] ?? []));
+            $pending = array_values($folders);
+            $seen = [];
+            foreach ($pending as $folder) {
+                $id = is_array($folder) ? (string) ($folder['id'] ?? '') : '';
+                if (!validId($id) || isset($seen[$id])) throw new HttpError(422, 'Ungültige oder doppelte Projektordner im Backup.');
+                $seen[$id] = true;
+            }
+            $imported = 0;
+            $skipped = 0;
+            while ($pending) {
+                $remaining = [];
+                $progress = false;
+                foreach ($pending as $folder) {
+                    $id = (string) $folder['id'];
+                    $parentId = trim((string) ($folder['parentId'] ?? ''));
+                    if ($parentId !== '' && !$this->folders->exists($parentId)) {
+                        $remaining[] = $folder;
+                        continue;
+                    }
+                    if ($this->folders->exists($id) && !$replace) {
+                        ++$skipped;
+                    } else {
+                        $this->folders->saveImported($folder, $actor['id']);
+                        ++$imported;
+                    }
+                    $progress = true;
+                }
+                if (!$progress) throw new HttpError(422, 'Die Ordnerhierarchie im Backup ist unvollständig oder zyklisch.');
+                $pending = $remaining;
+            }
+            $restoredSettings = false;
+            if ($settings !== null) {
+                $this->updateServerSettings($actor, $settings);
+                $restoredSettings = true;
+            }
+            $this->audit($actor['id'], 'data.metadata_imported', (string) $imported, 'skipped=' . $skipped);
+            $this->db->commit();
+            return ['foldersImported' => $imported, 'foldersSkipped' => $skipped, 'settingsRestored' => $restoredSettings];
+        } catch (\Throwable $error) {
+            if ($this->db->inTransaction()) $this->db->rollBack();
+            throw $error;
+        }
+    }
+
+    private function importedPreferences(mixed $input): array
+    {
+        $defaults = $this->auth->defaultPreferences();
+        if ($input === null) return $defaults;
+        if (!is_array($input)) throw new HttpError(422, 'Ungültige Benutzereinstellungen im Backup.');
+        $preferences = $defaults;
+        $allowedStartPages = ['home', 'projects', 'archive'];
+        $projectSorts = ['status:asc', 'priority:desc', 'priority:asc', 'dueDate:asc', 'dueDate:desc', 'createdAt:desc', 'createdAt:asc', 'latestEntryDate:desc', 'latestEntryDate:asc', 'title:asc', 'title:desc'];
+        $archiveSorts = array_values(array_filter($projectSorts, static fn(string $sort): bool => $sort !== 'status:asc'));
+        if (isset($input['startPage']) && !in_array($input['startPage'], $allowedStartPages, true)) throw new HttpError(422, 'Ungültige Startseite im Backup.');
+        if (isset($input['projectSort']) && !in_array($input['projectSort'], $projectSorts, true)) throw new HttpError(422, 'Ungültige Projektsortierung im Backup.');
+        if (isset($input['archiveSort']) && !in_array($input['archiveSort'], $archiveSorts, true)) throw new HttpError(422, 'Ungültige Archivsortierung im Backup.');
+        if (isset($input['defaultProjectIcon']) && (!is_string($input['defaultProjectIcon']) || !preg_match('/^[a-z0-9][a-z0-9-]{0,63}$/', $input['defaultProjectIcon']))) throw new HttpError(422, 'Ungültiges Projektsymbol im Backup.');
+        foreach (['showProjectFolders', 'showOverviewSummary', 'showOverviewRecent', 'showOverviewNext', 'showOverviewRecentlyEdited', 'showOverviewMarked', 'showOverviewDueSoon', 'showOverviewHighPriority', 'showOverviewActivity', 'showOverviewTimeline'] as $flag) {
+            if (array_key_exists($flag, $input) && !is_bool($input[$flag])) throw new HttpError(422, 'Ungültige Übersichts-Einstellung im Backup.');
+        }
+        foreach (['overviewRecentRows', 'overviewNextRows', 'overviewRecentlyEditedRows', 'overviewMarkedRows', 'overviewDueSoonRows', 'overviewHighPriorityRows'] as $rowSetting) {
+            if (isset($input[$rowSetting]) && (!is_int($input[$rowSetting]) || $input[$rowSetting] < 1 || $input[$rowSetting] > 6)) throw new HttpError(422, 'Ungültige Zeilenanzahl im Backup.');
+        }
+        if (array_key_exists('overviewOrder', $input)) {
+            $allowedOrder = $defaults['overviewOrder'];
+            $order = $input['overviewOrder'];
+            if (!is_array($order) || count($order) !== count($allowedOrder) || count(array_filter($order, 'is_string')) !== count($allowedOrder) || count(array_unique($order)) !== count($allowedOrder) || array_diff($order, $allowedOrder)) throw new HttpError(422, 'Ungültige Übersichtsreihenfolge im Backup.');
+        }
+        foreach (array_keys($defaults) as $key) if (array_key_exists($key, $input)) $preferences[$key] = $input[$key];
+        return $preferences;
+    }
+
     private function exportUsers(): array
     {
         $accounts = [];
         foreach ($this->db->query('SELECT * FROM users ORDER BY id')->fetchAll() as $row) {
+            $public = $this->auth->publicUser($row);
+            $preferences = array_intersect_key($public, $this->auth->defaultPreferences());
             $accounts[] = [
                 'id' => $row['id'],
                 'name' => $row['id'],
@@ -1010,6 +1106,7 @@ final class Application
                 'passwordAlgorithm' => 'php-password-hash',
                 'passwordHash' => $row['password_hash'],
                 'projectIds' => $row['role'] === 'admin' ? array_column($this->projects->list(), 'id') : $this->userProjectIds($row['id']),
+                'preferences' => $preferences,
             ];
         }
         return $accounts;
@@ -1041,8 +1138,8 @@ final class Application
             if ($id === $actor['id'] && ($account['role'] !== 'admin' || ($account['active'] ?? true) === false)) {
                 throw new HttpError(422, 'Der angemeldete Administrator muss aktiv bleiben.');
             }
-            $statement = $this->db->prepare('INSERT INTO users (id, role, active, access_mode, password_hash, must_change_password, preferences_json, created_at, last_login_at) VALUES (:id, :role, :active, :access, :hash, :change, :preferences, :created, :last) ON CONFLICT(id) DO UPDATE SET role = excluded.role, active = excluded.active, access_mode = excluded.access_mode, password_hash = excluded.password_hash, must_change_password = excluded.must_change_password, created_at = excluded.created_at, last_login_at = excluded.last_login_at');
-            $statement->execute(['id' => $id, 'role' => $account['role'], 'active' => (int) ($account['active'] ?? true), 'access' => $account['projectAccessMode'] ?? 'include', 'hash' => $account['passwordHash'], 'change' => (int) ($account['mustChangePassword'] ?? false), 'preferences' => json_encode($this->auth->defaultPreferences()), 'created' => $account['createdAt'] ?? nowIso(), 'last' => $account['lastLoginAt'] ?? '']);
+            $statement = $this->db->prepare('INSERT INTO users (id, role, active, access_mode, password_hash, must_change_password, preferences_json, created_at, last_login_at) VALUES (:id, :role, :active, :access, :hash, :change, :preferences, :created, :last) ON CONFLICT(id) DO UPDATE SET role = excluded.role, active = excluded.active, access_mode = excluded.access_mode, password_hash = excluded.password_hash, must_change_password = excluded.must_change_password, preferences_json = excluded.preferences_json, created_at = excluded.created_at, last_login_at = excluded.last_login_at');
+            $statement->execute(['id' => $id, 'role' => $account['role'], 'active' => (int) ($account['active'] ?? true), 'access' => $account['projectAccessMode'] ?? 'include', 'hash' => $account['passwordHash'], 'change' => (int) ($account['mustChangePassword'] ?? false), 'preferences' => json_encode($this->importedPreferences($account['preferences'] ?? null)), 'created' => $account['createdAt'] ?? nowIso(), 'last' => $account['lastLoginAt'] ?? '']);
             $this->replaceUserProjects($id, (array) ($account['projectIds'] ?? []));
             ++$imported;
         }
