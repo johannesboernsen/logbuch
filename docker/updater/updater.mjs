@@ -22,6 +22,8 @@ const appEnvPath = `${dataPath}/image.env`;
 const updaterEnvPath = `${dataPath}/updater-image.env`;
 const updaterPreviousEnvPath = `${dataPath}/updater-image.previous.env`;
 const lockPath = `${dataPath}/updater.lock`;
+const sharedUid = Number.parseInt(process.env.LOGBUCH_SHARED_UID || '33', 10);
+const sharedGid = Number.parseInt(process.env.LOGBUCH_SHARED_GID || '33', 10);
 
 const VERSION_PATTERN = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
 const DIGEST_PATTERN = /^sha256:[a-f0-9]{64}$/;
@@ -99,7 +101,8 @@ async function exists(path) {
 
 async function atomicWrite(path, content) {
   const temporary = `${path}.tmp-${process.pid}`;
-  await fs.writeFile(temporary, content, { mode: 0o600 });
+  await fs.writeFile(temporary, content, { mode: 0o660 });
+  await fs.chown(temporary, sharedUid, sharedGid);
   await fs.rename(temporary, path);
 }
 
@@ -160,7 +163,12 @@ function config() {
 }
 
 async function initialize(configuration) {
-  await fs.mkdir(dataPath, { recursive: true, mode: 0o700 });
+  if (!Number.isInteger(sharedUid) || sharedUid < 1 || !Number.isInteger(sharedGid) || sharedGid < 1) {
+    throw new Error('Die UID oder GID für den gemeinsamen Datenspeicher ist ungültig.');
+  }
+  await fs.mkdir(dataPath, { recursive: true, mode: 0o770 });
+  await fs.chown(dataPath, sharedUid, sharedGid);
+  await fs.chmod(dataPath, 0o770);
   await atomicWrite(baseEnvPath,
     `LOGBUCH_BIND_ADDRESS=${configuration.bindAddress}\n` +
     `LOGBUCH_PORT=${configuration.port}\n` +

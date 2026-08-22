@@ -1,7 +1,7 @@
 import test, { after, before } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -72,6 +72,20 @@ test('Anmeldung setzt eine sichere Sitzung und liefert CSRF-Schutz', async () =>
   csrf = login.data.csrfToken;
   adminCookie = cookie;
   adminCsrf = csrf;
+});
+
+test('Systemstatus bleibt bei einem unlesbaren Laufzeitverzeichnis verfügbar', async () => {
+  const inaccessible = join(storage, 'runtime-unlesbar');
+  await mkdir(inaccessible);
+  await chmod(inaccessible, 0o000);
+  try {
+    const status = await request('/api/system');
+    assert.equal(status.response.status, 200, `${JSON.stringify(status.data)}\n${serverErrors.slice(-4000)}`);
+    assert.equal(status.data.version, '0.3.2');
+  } finally {
+    await chmod(inaccessible, 0o700);
+    await rm(inaccessible, { recursive: true, force: true });
+  }
 });
 
 test('Schreibzugriffe werden ohne korrektes CSRF-Token abgewiesen', async () => {

@@ -1273,10 +1273,23 @@ final class Application
         if (!is_dir($directory)) {
             return 0;
         }
-        foreach (new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($directory, \FilesystemIterator::SKIP_DOTS)) as $file) {
-            if ($file->isFile()) {
-                $bytes += $file->getSize();
+        try {
+            $files = new \RecursiveIteratorIterator(
+                new \RecursiveDirectoryIterator($directory, \FilesystemIterator::SKIP_DOTS),
+                \RecursiveIteratorIterator::LEAVES_ONLY,
+                \RecursiveIteratorIterator::CATCH_GET_CHILD,
+            );
+            foreach ($files as $file) {
+                try {
+                    if ($file->isFile()) {
+                        $bytes += $file->getSize();
+                    }
+                } catch (\Throwable) {
+                    // An inaccessible runtime file must not break the system page.
+                }
             }
+        } catch (\Throwable) {
+            // Storage metrics are informational and may be incomplete.
         }
         return $bytes;
     }
