@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace MakeLog;
+namespace Logbuch;
 
 use PDO;
 use PharData;
@@ -13,8 +13,9 @@ final class UpdateService
     private const CACHE_SECONDS = 21600;
     private const MAX_MANIFEST_BYTES = 2097152;
     private const MAX_ARCHIVE_BYTES = 104857600;
-    private const DEFAULT_MANIFEST_URL = 'https://github.com/johannesboernsen/make-log-releases/releases/latest/download/update-manifest.json';
-    private const DEFAULT_IMAGE = 'ghcr.io/johannesboernsen/make-log';
+    private const DEFAULT_MANIFEST_URL = 'https://github.com/johannesboernsen/logbuch/releases/latest/download/update-manifest.json';
+    private const DEFAULT_IMAGE = 'ghcr.io/johannesboernsen/logbuch';
+    private const DEFAULT_UPDATER_IMAGE = 'ghcr.io/johannesboernsen/logbuch-updater';
 
     private string $updatesPath;
 
@@ -74,7 +75,7 @@ final class UpdateService
         try {
             [$manifestRaw, $signature] = $this->downloadManifest();
             $manifest = $this->verifyManifest($manifestRaw, $signature);
-            if (!version_compare((string) $manifest['version'], \makelog_version(), '>')) {
+            if (!version_compare((string) $manifest['version'], \logbuch_version(), '>')) {
                 throw new HttpError(409, 'Es ist kein neueres Update verfügbar.');
             }
             if ($this->platform === 'docker') {
@@ -90,7 +91,7 @@ final class UpdateService
     private function publicStatus(array $manifest, string $checkedAt): array
     {
         $latest = (string) $manifest['version'];
-        $current = \makelog_version();
+        $current = \logbuch_version();
         $available = version_compare($latest, $current, '>');
         $state = readJsonFile($this->updatesPath . '/state.json');
         $dockerResult = readJsonFile($this->updatesPath . '/docker-result.json');
@@ -109,7 +110,7 @@ final class UpdateService
             'checkedAt' => $checkedAt,
             'platform' => $this->platform,
             'installSupported' => $supported,
-            'installReason' => $supported ? '' : 'Der Webserver darf die Make:Log-Programmdateien nicht verändern.',
+            'installReason' => $supported ? '' : 'Der Webserver darf die Logbuch-Programmdateien nicht verändern.',
             'state' => (string) ($state['status'] ?? 'idle'),
             'stateMessage' => (string) ($state['message'] ?? ''),
             'requestedVersion' => (string) ($state['version'] ?? ''),
@@ -119,7 +120,7 @@ final class UpdateService
     private function unavailableStatus(string $message): array
     {
         return [
-            'currentVersion' => \makelog_version(),
+            'currentVersion' => \logbuch_version(),
             'latestVersion' => '',
             'available' => false,
             'checkedAt' => '',
@@ -134,8 +135,8 @@ final class UpdateService
 
     private function downloadManifest(): array
     {
-        $manifestUrl = $this->environment('MAKELOG_UPDATE_MANIFEST_URL', self::DEFAULT_MANIFEST_URL);
-        $signatureUrl = $this->environment('MAKELOG_UPDATE_SIGNATURE_URL', preg_replace('/\.json(?:\?.*)?$/', '.sig', $manifestUrl) ?: $manifestUrl . '.sig');
+        $manifestUrl = $this->environment('LOGBUCH_UPDATE_MANIFEST_URL', self::DEFAULT_MANIFEST_URL);
+        $signatureUrl = $this->environment('LOGBUCH_UPDATE_SIGNATURE_URL', preg_replace('/\.json(?:\?.*)?$/', '.sig', $manifestUrl) ?: $manifestUrl . '.sig');
         return [
             $this->download($manifestUrl, self::MAX_MANIFEST_BYTES),
             trim($this->download($signatureUrl, 16384)),
@@ -147,14 +148,14 @@ final class UpdateService
         if ($raw === '' || strlen($raw) > self::MAX_MANIFEST_BYTES) {
             throw new HttpError(502, 'Das Update-Manifest ist leer oder zu groß.');
         }
-        $publicKeyPath = $this->environment('MAKELOG_UPDATE_PUBLIC_KEY_PATH', $this->rootPath . '/config/update-public-key.pem');
+        $publicKeyPath = $this->environment('LOGBUCH_UPDATE_PUBLIC_KEY_PATH', $this->rootPath . '/config/update-public-key.pem');
         $publicKey = @file_get_contents($publicKeyPath);
         $decodedSignature = base64_decode($signature, true);
         if (!is_string($publicKey) || $publicKey === '' || $decodedSignature === false || openssl_verify($raw, $decodedSignature, $publicKey, OPENSSL_ALGO_SHA256) !== 1) {
             throw new HttpError(502, 'Die Signatur des Update-Manifests ist ungültig.');
         }
         $manifest = json_decode($raw, true);
-        if (!is_array($manifest) || ($manifest['format'] ?? '') !== 'make-log-update' || ($manifest['manifestVersion'] ?? null) !== 1) {
+        if (!is_array($manifest) || ($manifest['format'] ?? '') !== 'logbuch-update' || ($manifest['manifestVersion'] ?? null) !== 1) {
             throw new HttpError(502, 'Das Update-Manifest hat ein unbekanntes Format.');
         }
         $version = (string) ($manifest['version'] ?? '');
@@ -170,9 +171,13 @@ final class UpdateService
         if (!is_array($web) || !is_array($docker) || !filter_var($web['url'] ?? '', FILTER_VALIDATE_URL) || !preg_match('/^[a-f0-9]{64}$/', (string) ($web['sha256'] ?? ''))) {
             throw new HttpError(502, 'Das Update-Manifest enthält kein gültiges Webpaket.');
         }
-        $expectedImage = $this->environment('MAKELOG_UPDATE_IMAGE', self::DEFAULT_IMAGE);
-        if (($docker['image'] ?? '') !== $expectedImage || !preg_match('/^sha256:[a-f0-9]{64}$/', (string) ($docker['digest'] ?? ''))) {
-            throw new HttpError(502, 'Das Update-Manifest enthält kein freigegebenes Docker-Image.');
+        $expectedImage = $this->environment('LOGBUCH_UPDATE_IMAGE', self::DEFAULT_IMAGE);
+        $expectedUpdaterImage = $this->environment('LOGBUCH_UPDATE_UPDATER_IMAGE', self::DEFAULT_UPDATER_IMAGE);
+        $updater = $docker['updater'] ?? null;
+        if (($docker['image'] ?? '') !== $expectedImage || !preg_match('/^sha256:[a-f0-9]{64}$/', (string) ($docker['digest'] ?? ''))
+            || !is_array($updater) || ($updater['image'] ?? '') !== $expectedUpdaterImage
+            || !preg_match('/^sha256:[a-f0-9]{64}$/', (string) ($updater['digest'] ?? ''))) {
+            throw new HttpError(502, 'Das Update-Manifest enthält keine freigegebenen Docker-Images.');
         }
         $files = $web['files'] ?? null;
         if (!is_array($files) || count($files) < 4 || count($files) > 5000) {
@@ -195,10 +200,12 @@ final class UpdateService
     {
         $version = (string) $manifest['version'];
         $request = [
-            'format' => 'make-log-docker-update-request',
+            'format' => 'logbuch-docker-update-request',
             'version' => $version,
             'image' => (string) $manifest['docker']['image'],
             'digest' => (string) $manifest['docker']['digest'],
+            'updaterImage' => (string) $manifest['docker']['updater']['image'],
+            'updaterDigest' => (string) $manifest['docker']['updater']['digest'],
             'requestedAt' => nowIso(),
             'requestedBy' => $actor,
             'nonce' => bin2hex(random_bytes(16)),
@@ -206,7 +213,7 @@ final class UpdateService
             'signature' => $signature,
         ];
         writeJsonFile($this->updatesPath . '/docker-request.json', $request);
-        $state = ['status' => 'queued', 'version' => $version, 'message' => 'Das Docker-Update wartet auf den Host-Helfer.', 'updatedAt' => nowIso()];
+        $state = ['status' => 'queued', 'version' => $version, 'message' => 'Das Docker-Update wurde an den AIO-Updater übergeben.', 'updatedAt' => nowIso()];
         writeJsonFile($this->updatesPath . '/state.json', $state);
         return $state + ['platform' => 'docker'];
     }
@@ -214,11 +221,11 @@ final class UpdateService
     private function installWebRelease(array $manifest, string $actor): array
     {
         if (!$this->webInstallSupported()) {
-            throw new HttpError(409, 'Der Webserver darf die Make:Log-Programmdateien nicht verändern.');
+            throw new HttpError(409, 'Der Webserver darf die Logbuch-Programmdateien nicht verändern.');
         }
         @set_time_limit(180);
         $version = (string) $manifest['version'];
-        $workPath = $this->rootPath . '/.makelog-update';
+        $workPath = $this->rootPath . '/.logbuch-update';
         $stagePath = $workPath . '/stage-' . bin2hex(random_bytes(6));
         $archivePath = $workPath . '/release-' . bin2hex(random_bytes(6)) . '.tar';
         if (!is_dir($workPath) && !mkdir($workPath, 0770, true) && !is_dir($workPath)) {
@@ -244,7 +251,7 @@ final class UpdateService
             $this->db->exec('BEGIN IMMEDIATE');
             $transactionActive = true;
             try {
-                $this->applyMigrations($stagePath, (int) ($manifest['database']['schemaVersion'] ?? \makelog_schema_version()));
+                $this->applyMigrations($stagePath, (int) ($manifest['database']['schemaVersion'] ?? \logbuch_schema_version()));
                 $ordered = array_keys($newFiles);
                 usort($ordered, static fn(string $left, string $right): int => ($left === 'public/index.php' ? 1 : 0) <=> ($right === 'public/index.php' ? 1 : 0) ?: strcmp($left, $right));
                 foreach ($ordered as $path) {
@@ -272,7 +279,7 @@ final class UpdateService
             }
 
             @unlink($maintenancePath);
-            $state = ['status' => 'success', 'version' => $version, 'message' => 'Make:Log wurde erfolgreich aktualisiert.', 'updatedAt' => nowIso()];
+            $state = ['status' => 'success', 'version' => $version, 'message' => 'Das Logbuch wurde erfolgreich aktualisiert.', 'updatedAt' => nowIso()];
             writeJsonFile($this->updatesPath . '/state.json', $state);
             $this->pruneBackups();
             return $state + ['platform' => 'webhosting', 'reload' => true];
@@ -313,7 +320,7 @@ final class UpdateService
 
     private function createBackup(array $oldFiles): string
     {
-        $backupPath = $this->updatesPath . '/backups/' . gmdate('Ymd-His') . '-' . \makelog_version();
+        $backupPath = $this->updatesPath . '/backups/' . gmdate('Ymd-His') . '-' . \logbuch_version();
         if (!mkdir($backupPath . '/program', 0770, true) && !is_dir($backupPath . '/program')) {
             throw new HttpError(507, 'Die Update-Sicherung konnte nicht angelegt werden.');
         }
@@ -322,7 +329,7 @@ final class UpdateService
                 $this->copyFile($this->rootPath . '/' . $path, $backupPath . '/program/' . $path);
             }
         }
-        writeJsonFile($backupPath . '/backup.json', ['version' => \makelog_version(), 'files' => array_keys($oldFiles), 'createdAt' => nowIso()]);
+        writeJsonFile($backupPath . '/backup.json', ['version' => \logbuch_version(), 'files' => array_keys($oldFiles), 'createdAt' => nowIso()]);
         $databaseBackup = $backupPath . '/database.sqlite';
         $this->db->exec('PRAGMA wal_checkpoint(FULL)');
         $this->db->exec("VACUUM INTO '" . str_replace("'", "''", $databaseBackup) . "'");
@@ -440,7 +447,7 @@ final class UpdateService
             'timeout' => 8,
             'follow_location' => 1,
             'max_redirects' => 5,
-            'header' => "Accept: application/octet-stream\r\nUser-Agent: MakeLog-Updater/" . \makelog_version() . "\r\n",
+            'header' => "Accept: application/octet-stream\r\nUser-Agent: Logbuch-Updater/" . \logbuch_version() . "\r\n",
         ]]);
         $handle = @fopen($url, 'rb', false, $context);
         if ($handle === false) throw new HttpError(502, 'GitHub konnte für die Update-Prüfung nicht erreicht werden.');

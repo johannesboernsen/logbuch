@@ -1,9 +1,9 @@
 .git
-.makelog-update-private.pem
-.makelog-update
+.logbuch-update-private.pem
+.logbuch-update
 dist
 .pio
-makelog-data
+logbuch-data
 storage/*
 !storage/.htaccess
 include

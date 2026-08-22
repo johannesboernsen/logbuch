@@ -17,7 +17,7 @@ let adminCsrf = '';
 let projectId = '';
 
 async function request(path, options = {}) {
-  const headers = { Accept: 'application/json', ...(options.body ? { 'Content-Type': 'application/json' } : {}), ...(cookie ? { Cookie: cookie } : {}), ...(csrf && !['GET', 'HEAD'].includes(options.method || 'GET') ? { 'X-MakeLog-CSRF': csrf } : {}), ...options.headers };
+  const headers = { Accept: 'application/json', ...(options.body ? { 'Content-Type': 'application/json' } : {}), ...(cookie ? { Cookie: cookie } : {}), ...(csrf && !['GET', 'HEAD'].includes(options.method || 'GET') ? { 'X-Logbuch-CSRF': csrf } : {}), ...options.headers };
   const response = await fetch(`${baseUrl}${path}`, { ...options, headers });
   const text = await response.text();
   const data = text ? JSON.parse(text) : null;
@@ -25,10 +25,10 @@ async function request(path, options = {}) {
 }
 
 before(async () => {
-  storage = await mkdtemp(join(tmpdir(), 'makelog-test-'));
+  storage = await mkdtemp(join(tmpdir(), 'logbuch-test-'));
   server = spawn('php', ['-S', '127.0.0.1:4191', '-t', 'public', 'public/router.php'], {
     cwd: root,
-    env: { ...process.env, MAKELOG_STORAGE_PATH: storage, MAKELOG_PLATFORM: 'test' },
+    env: { ...process.env, LOGBUCH_STORAGE_PATH: storage, LOGBUCH_PLATFORM: 'test' },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   server.stderr.on('data', chunk => { serverErrors += chunk.toString(); });
@@ -53,9 +53,9 @@ test('Installer prüft die Umgebung und legt genau einen Admin an', async () => 
   assert.equal(status.data.ready, true);
   assert.equal(status.data.installed, false);
 
-  const installed = await request('/api/install', { method: 'POST', body: JSON.stringify({ siteName: 'Make:Log Test', timezone: 'Europe/Berlin', adminUser: 'admin', adminPassword: 'ein-langes-Testpasswort', demoData: false }) });
+  const installed = await request('/api/install', { method: 'POST', body: JSON.stringify({ siteName: 'Logbuch Test', timezone: 'Europe/Berlin', adminUser: 'admin', adminPassword: 'ein-langes-Testpasswort', demoData: false }) });
   assert.equal(installed.response.status, 201, `${JSON.stringify(installed.data)}\n${serverErrors.slice(-4000)}`);
-  const repeated = await request('/api/install', { method: 'POST', body: JSON.stringify({ siteName: 'Zweites Make:Log', timezone: 'UTC', adminUser: 'other', adminPassword: 'ein-anderes-Testpasswort' }) });
+  const repeated = await request('/api/install', { method: 'POST', body: JSON.stringify({ siteName: 'Zweites Logbuch', timezone: 'UTC', adminUser: 'other', adminPassword: 'ein-anderes-Testpasswort' }) });
   assert.equal(repeated.response.status, 409);
 });
 
@@ -65,7 +65,7 @@ test('Anmeldung setzt eine sichere Sitzung und liefert CSRF-Schutz', async () =>
   assert.equal(login.data.admin, true);
   assert.match(login.data.csrfToken, /^[a-f0-9]{64}$/);
   const setCookie = login.response.headers.get('set-cookie');
-  assert.match(setCookie, /makerlog_session=/);
+  assert.match(setCookie, /logbuch_session=/);
   assert.match(setCookie, /HttpOnly/i);
   assert.match(setCookie, /SameSite=Strict/i);
   cookie = setCookie.split(';', 1)[0];
@@ -75,7 +75,7 @@ test('Anmeldung setzt eine sichere Sitzung und liefert CSRF-Schutz', async () =>
 });
 
 test('Schreibzugriffe werden ohne korrektes CSRF-Token abgewiesen', async () => {
-  const invalid = await request('/api/projects', { method: 'POST', headers: { 'X-MakeLog-CSRF': 'falsch' }, body: JSON.stringify({ title: 'Nicht speichern', createdAt: '2026-08-19' }) });
+  const invalid = await request('/api/projects', { method: 'POST', headers: { 'X-Logbuch-CSRF': 'falsch' }, body: JSON.stringify({ title: 'Nicht speichern', createdAt: '2026-08-19' }) });
   assert.equal(invalid.response.status, 403);
 });
 

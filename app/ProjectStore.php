@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace MakeLog;
+namespace Logbuch;
 
 final class ProjectStore
 {
@@ -482,7 +482,7 @@ final class ProjectStore
         $id = (string) $project['id'];
         writeJsonFile($this->projectPath($id), $project);
         $markdown = frontmatter([
-            'format' => 'make-log-project',
+            'format' => 'logbuch-project',
             'version' => 1,
             'id' => $id,
             'title' => $project['title'] ?? '',
@@ -517,7 +517,7 @@ final class ProjectStore
     {
         $title = (string) ($item['title'] ?? $item['name'] ?? 'Eintrag');
         $body = (string) ($item['body'] ?? $item['description'] ?? $item['notes'] ?? $item['properties'] ?? '');
-        $fields = ['format' => 'make-log-' . $collection, 'version' => 1];
+        $fields = ['format' => 'logbuch-' . $collection, 'version' => 1];
         foreach ($item as $key => $value) {
             if (is_scalar($value) || $value === null) {
                 $fields[$key] = $value;

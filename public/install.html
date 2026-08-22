@@ -4,22 +4,22 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#f6f7f9">
-  <title>Make:Log einrichten</title>
-  <link rel="icon" href="/favicon.svg?v=20260819-4" type="image/svg+xml">
+  <title>Das Logbuch einrichten</title>
+  <link rel="icon" href="/favicon.svg?v=20260822-2" type="image/svg+xml">
   <link rel="stylesheet" href="/install.css?v=20260820-4">
 </head>
 <body>
   <main class="install-shell">
     <header>
-      <div class="brand" aria-label="Make:Log"><img src="/makelog-logo.svg" alt=""></div>
-      <p>In wenigen Schritten ist dein Projekttagebuch startklar.</p>
+      <div class="brand" aria-label="Logbuch"><img src="/logbuch-logo.svg?v=20260822-3" alt=""></div>
+      <p>In wenigen Schritten ist dein Logbuch startklar.</p>
     </header>
     <section class="install-card">
-      <div class="step"><span>1</span><div><strong>Systemprüfung</strong><small>Make:Log prüft den Speicher und die benötigten PHP-Erweiterungen.</small></div></div>
+      <div class="step"><span>1</span><div><strong>Systemprüfung</strong><small>Das Logbuch prüft den Speicher und die benötigten PHP-Erweiterungen.</small></div></div>
       <div id="requirements" class="requirements" aria-live="polite"><p>Voraussetzungen werden geprüft …</p></div>
       <form id="install-form" hidden>
         <div class="step"><span>2</span><div><strong>Instanz einrichten</strong><small>Diese Angaben können später in den Einstellungen geändert werden.</small></div></div>
-        <label>Name der Instanz<input name="siteName" value="Make:Log" minlength="2" maxlength="80" required></label>
+        <label>Name der Instanz<input name="siteName" value="Logbuch" minlength="2" maxlength="80" required></label>
         <label>Zeitzone<select name="timezone"><option value="Europe/Berlin">Europe/Berlin</option><option value="Europe/Vienna">Europe/Vienna</option><option value="Europe/Zurich">Europe/Zurich</option><option value="UTC">UTC</option></select></label>
         <div class="step account"><span>3</span><div><strong>Administratorkonto</strong><small>Weitere Benutzer werden später ausschließlich durch Administratoren angelegt.</small></div></div>
         <label>Benutzername<input name="adminUser" value="admin" minlength="3" maxlength="40" pattern="[A-Za-z0-9._-]+" autocomplete="username" required></label>
@@ -27,7 +27,7 @@
         <label>Passwort wiederholen<input name="confirmPassword" type="password" minlength="10" maxlength="128" autocomplete="new-password" required></label>
         <label class="check-option"><input name="demoData" type="checkbox"><span><strong>Beispielprojekte einspielen</strong><small>Fügt elf typische Maker-Projekte zum Ausprobieren hinzu. Sie lassen sich später unabhängig von eigenen Projekten entfernen.</small></span></label>
         <p id="install-error" class="error" role="alert"></p>
-        <button type="submit">Make:Log einrichten</button>
+        <button type="submit">Das Logbuch einrichten</button>
       </form>
     </section>
   </main>

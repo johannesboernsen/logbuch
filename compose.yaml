@@ -1,13 +1,37 @@
+name: logbuch
+
 services:
-  makelog:
-    image: ${MAKELOG_IMAGE:-makelog:local}
-    build: .
-    container_name: makelog
+  logbuch:
+    image: ${LOGBUCH_IMAGE:-ghcr.io/johannesboernsen/logbuch:stable}
+    container_name: logbuch
     restart: unless-stopped
     ports:
-      - "${MAKELOG_BIND_ADDRESS:-0.0.0.0}:${MAKELOG_PORT:-8080}:80"
+      - "${LOGBUCH_BIND_ADDRESS:-0.0.0.0}:${LOGBUCH_PORT:-8080}:80"
     volumes:
-      - ./makelog-data:/var/www/html/storage
+      - logbuch-data:/var/www/html/storage
     environment:
-      TZ: ${MAKELOG_TIMEZONE:-Europe/Berlin}
-      MAKELOG_PLATFORM: docker
+      TZ: ${LOGBUCH_TIMEZONE:-Europe/Berlin}
+      LOGBUCH_PLATFORM: docker
+
+  logbuch-updater:
+    image: ${LOGBUCH_UPDATER_IMAGE:-ghcr.io/johannesboernsen/logbuch-updater:stable}
+    container_name: logbuch-updater
+    restart: unless-stopped
+    depends_on:
+      logbuch:
+        condition: service_healthy
+    volumes:
+      - logbuch-data:/var/lib/logbuch
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      TZ: ${LOGBUCH_TIMEZONE:-Europe/Berlin}
+      LOGBUCH_BIND_ADDRESS: ${LOGBUCH_BIND_ADDRESS:-0.0.0.0}
+      LOGBUCH_PORT: ${LOGBUCH_PORT:-8080}
+      LOGBUCH_TIMEZONE: ${LOGBUCH_TIMEZONE:-Europe/Berlin}
+      LOGBUCH_UPDATE_IMAGE: ${LOGBUCH_UPDATE_IMAGE:-ghcr.io/johannesboernsen/logbuch}
+      LOGBUCH_UPDATE_UPDATER_IMAGE: ${LOGBUCH_UPDATE_UPDATER_IMAGE:-ghcr.io/johannesboernsen/logbuch-updater}
+      LOGBUCH_UPDATE_POLL_SECONDS: ${LOGBUCH_UPDATE_POLL_SECONDS:-5}
+
+volumes:
+  logbuch-data:
+    name: logbuch-data

@@ -1,6 +1,6 @@
-# Make:Log – Projekttagebuch für Maker
+# Logbuch
 
-Make:Log hält Fortschritte, anstehende und erledigte Arbeitsschritte, Materialien, Kontakte, Links und Ideen zu DIY-Projekten fest. Die responsive Weboberfläche läuft mit einem gemeinsamen PHP-Kern sowohl auf normalem Webhosting als auch in einem Docker-Container.
+Das Logbuch hält Fortschritte, anstehende und erledigte Arbeitsschritte, Materialien, Kontakte, Links und Ideen zu DIY-Projekten fest. Die responsive Weboberfläche läuft mit einem gemeinsamen PHP-Kern sowohl auf normalem Webhosting als auch in einem Docker-Container.
 
 Projekte bleiben als Markdown- und JSON-Dateien lesbar. SQLite speichert Benutzer, Sitzungen, Rollen, Freigaben, Tags, Einstellungen und das Änderungsprotokoll.
 
@@ -11,14 +11,14 @@ Projekte bleiben als Markdown- und JSON-Dateien lesbar. SQLite speichert Benutze
 - Apache mit `.htaccess` oder ein anderer Webserver, der Anfragen an `public/index.php` weiterleitet
 - Schreibzugriff auf `storage/`
 
-Make:Log benötigt weder MySQL noch Node.js, einen externen Dienst oder eine Cloud-Datenbank.
+Das Logbuch benötigt weder MySQL noch Node.js, einen externen Dienst oder eine Cloud-Datenbank.
 
 ## Installation auf Webhosting
 
 Die Installation ist für klassisches Shared Hosting ausgelegt:
 
-1. Alle Dateien in einen Ordner auf dem Webspace hochladen, beispielsweise `makelog/`.
-2. Die Subdomain im Hosting-Menü so einstellen, dass ihr Dokumentenstamm auf `makelog/public/` zeigt.
+1. Alle Dateien in einen Ordner auf dem Webspace hochladen, beispielsweise `logbuch/`.
+2. Die Subdomain im Hosting-Menü so einstellen, dass ihr Dokumentenstamm auf `logbuch/public/` zeigt.
 3. Sicherstellen, dass PHP 8.2 oder neuer gewählt ist und `storage/` für PHP beschreibbar ist.
 4. Die Subdomain per HTTPS öffnen.
 5. Im Einrichtungsassistenten Instanzname, Zeitzone und Administratorkonto festlegen. Optional können elf Maker-Beispielprojekte mit installiert werden.
@@ -33,10 +33,10 @@ Voraussetzung ist Docker mit Docker Compose.
 
 ```sh
 cp .env.example .env
-docker compose up -d --build
+docker compose up -d
 ```
 
-Danach Make:Log unter `http://<NAS-IP>:8080` öffnen und den Einrichtungsassistenten abschließen. Port und Zeitzone können in `.env` angepasst werden. Alle dauerhaften Daten liegen auf dem Host in `makelog-data/`; ein neu gebauter Container löscht sie daher nicht.
+Compose legt automatisch die beiden Container `logbuch` und `logbuch-updater` an. In der Oberfläche ist davon nichts weiter zu sehen. Danach das Logbuch unter `http://<NAS-IP>:8080` öffnen und den Einrichtungsassistenten abschließen. Port und Zeitzone können in `.env` angepasst werden. Alle dauerhaften Daten liegen im Docker-Volume `logbuch-data`; neue Container löschen sie daher nicht.
 
 Eine ausführliche NAS-unabhängige Anleitung steht in [docs/INSTALL-DOCKER.md](docs/INSTALL-DOCKER.md).
 
@@ -59,7 +59,7 @@ storage/
         └── notes/
 ```
 
-IDs werden beim Umbenennen nicht geändert. Projekt- und Eintragslinks bleiben dadurch stabil. Links in der Oberfläche verwenden relative Pfade; bei einem Serverumzug muss daher nur die Domain beziehungsweise Subdomain weiter auf Make:Log zeigen.
+IDs werden beim Umbenennen nicht geändert. Projekt- und Eintragslinks bleiben dadurch stabil. Links in der Oberfläche verwenden relative Pfade; bei einem Serverumzug muss daher nur die Domain beziehungsweise Subdomain weiter auf das Logbuch zeigen.
 
 ## Sicherheit
 
@@ -71,11 +71,17 @@ IDs werden beim Umbenennen nicht geändert. Projekt- und Eintragslinks bleiben d
 - Sicherheitsheader sperren fremde Frames, externe Skripte und unnötige Browserberechtigungen.
 - Daten werden atomar über temporäre Dateien geschrieben.
 - Release-Manifeste werden kryptografisch geprüft; Webupdates ersetzen ausschließlich einzeln gehashte Programmdateien.
-- Docker-Updates werden vom Host ausgeführt, ohne den Docker-Socket in den Make:Log-Container einzubinden.
+- Docker-Updates werden vom getrennten AIO-Updater ausgeführt. Nur dieser Hilfscontainer erhält den Docker-Socket; der Logbuch-Container selbst nicht.
 
-Für öffentlich erreichbare Installationen ist HTTPS verpflichtend. PHP, Docker-Image und Make:Log müssen regelmäßig aktualisiert werden. Projekt- und Benutzerbackups sollten außerhalb des Servers aufbewahrt werden.
+Für öffentlich erreichbare Installationen ist HTTPS verpflichtend. PHP, das Docker-Image und das Logbuch müssen regelmäßig aktualisiert werden. Projekt- und Benutzerbackups sollten außerhalb des Servers aufbewahrt werden.
 
 ## Entwicklung und Tests
+
+Lokale Docker-Images bauen und starten:
+
+```sh
+docker compose -f compose.yaml -f compose.dev.yaml up -d --build
+```
 
 Lokalen PHP-Server starten:
 
@@ -103,6 +109,6 @@ Details stehen in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Updates
 
-Administratoren sehen verfügbare Releases unter **Einstellungen → System**. Auf Webhosting kann Make:Log ein signiertes Release nach Passwortbestätigung selbst sichern und installieren. Bei Docker wird eine Update-Anforderung für den optionalen Host-Helfer angelegt; persistente Daten bleiben im Volume.
+Administratoren sehen verfügbare Releases unter **Einstellungen → System**. Auf Webhosting kann das Logbuch ein signiertes Release nach Passwortbestätigung selbst sichern und installieren. Bei Docker übernimmt der automatisch mitgestartete AIO-Updater Download, Healthcheck und bei Bedarf die Wiederherstellung der vorherigen Version; persistente Daten bleiben im Volume.
 
-Releaseprozess, Signierschlüssel, Migrationen und Docker-Helfer sind in [docs/UPDATES.md](docs/UPDATES.md) beschrieben.
+Releaseprozess, Signierschlüssel, Migrationen und AIO-Updater sind in [docs/UPDATES.md](docs/UPDATES.md) beschrieben.

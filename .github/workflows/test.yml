@@ -29,10 +29,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - run: docker build --tag makelog:ci .
+      - run: docker build --tag logbuch:ci .
       - uses: aquasecurity/trivy-action@v0.36.0
         with:
-          image-ref: makelog:ci
+          image-ref: logbuch:ci
           severity: CRITICAL,HIGH
           ignore-unfixed: true
           exit-code: '1'

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace MakeLog;
+namespace Logbuch;
 
 final class HttpError extends \RuntimeException
 {
@@ -123,7 +123,7 @@ function frontmatter(array $fields): string
     foreach ($fields as $key => $value) {
         if ($value === null || $value === '' || is_array($value)) {
             if (is_array($value)) {
-                $lines[] = $key . ': [' . implode(', ', array_map('MakeLog\\yamlScalar', $value)) . ']';
+                $lines[] = $key . ': [' . implode(', ', array_map('Logbuch\\yamlScalar', $value)) . ']';
             }
             continue;
         }

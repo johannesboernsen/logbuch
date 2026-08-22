@@ -1,5 +1,5 @@
 {
-  "format": "make-log-demo",
+  "format": "logbuch-demo",
   "version": 1,
   "tags": [
     { "id": "demo-tag-elektronik", "name": "Elektronik", "createdAt": "2026-01-05T10:00:00Z" },

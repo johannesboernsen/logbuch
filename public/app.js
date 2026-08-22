@@ -3,7 +3,7 @@ const state = { user: null, users: [], sessions: [], audit: [], tags: [], folder
 let iconLibraryPromise = null;
 const api = async (path, options = {}) => {
   const method = (options.method || 'GET').toUpperCase();
-  const csrf = !['GET','HEAD'].includes(method) && state.user?.csrfToken ? { 'X-MakeLog-CSRF': state.user.csrfToken } : {};
+  const csrf = !['GET','HEAD'].includes(method) && state.user?.csrfToken ? { 'X-Logbuch-CSRF': state.user.csrfToken } : {};
   const response = await fetch(`/api${path}`, { ...options, headers: { 'Content-Type': 'application/json', ...csrf, ...(options.headers || {}) } });
   if (response.status === 204) return null;
   const data = await response.json().catch(() => ({}));
@@ -1338,15 +1338,15 @@ async function renderTrash() {
 }
 
 const settingsSections = [
-  ['general','Allgemein','Persönliches Verhalten beim Öffnen von Make:Log und Projektlisten.'],
+  ['general','Allgemein','Persönliches Verhalten beim Öffnen des Logbuchs.'],
   ['tags','Tags','Projektübergreifende Tags ordnen, zusammenführen und verwalten.'],
-  ['profile','Profil','Dein persönlicher Zugang zu Make:Log.'],
+  ['profile','Profil','Dein persönlicher Zugang zum Logbuch.'],
   ['users','Benutzerverwaltung','Konten, Rollen und Projektfreigaben verwalten.'],
   ['data','Daten & Backups','Projektdaten und Benutzerkonten unabhängig voneinander sichern und wiederherstellen.'],
-  ['server','Server','Adresse, Name und Zeitzone dieser Make:Log-Instanz konfigurieren.'],
+  ['server','Server','Adresse, Name und Zeitzone dieser Logbuch-Instanz konfigurieren.'],
   ['security','Sicherheit','Aktive Anmeldungen und verbundene Geräte verwalten.'],
-  ['system','System','Make:Log warten, aktualisieren und Fehler diagnostizieren.'],
-  ['audit','Protokoll','Administrative und sicherheitsrelevante Änderungen an Make:Log nachvollziehen.']
+  ['system','System','Wartung und Aktualisierung des Logbuchs sowie Fehlerdiagnose.'],
+  ['audit','Protokoll','Administrative und sicherheitsrelevante Änderungen am Logbuch nachvollziehen.']
 ];
 
 const settingRow = (title, description, status = 'Geplant') => `<div class="setting-row"><div><strong>${title}</strong><p>${description}</p></div><span class="setting-status">${status}</span></div>`;
@@ -1377,7 +1377,7 @@ function dataContent() {
   const userCount = state.users.length;
   return `<div class="settings-group data-settings">
     <section class="backup-area"><div class="backup-area-head"><div><h2>Backup herunterladen</h2><p>Projektdaten und Benutzerkonten getrennt als Archiv herunterladen.</p></div></div><div class="backup-export-grid">
-      <article class="backup-card"><div><h3>Projekte herunterladen</h3><p>${projectCount} ${projectCount === 1 ? 'Projekt' : 'Projekte'} mit Logbuch, Material, Kontakten, Links und Ideen. Markdown und JSON bleiben offen lesbar; stabile IDs erhalten bestehende NFC-Links.</p></div><button class="button primary" data-export-projects>Projektdaten herunterladen</button></article>
+      <article class="backup-card"><div><h3>Projekte herunterladen</h3><p>${projectCount} ${projectCount === 1 ? 'Projekt' : 'Projekte'} mit Logbucheinträgen, Material, Kontakten, Links und Ideen. Markdown und JSON bleiben offen lesbar; stabile IDs erhalten bestehende NFC-Links.</p></div><button class="button primary" data-export-projects>Projektdaten herunterladen</button></article>
       <article class="backup-card sensitive-backup"><div><h3>Benutzer herunterladen</h3><p>${userCount} ${userCount === 1 ? 'Benutzerkonto' : 'Benutzerkonten'} mit Rollen, Status, Projektfreigaben und Passwort-Hashes. Klartextpasswörter und aktive Sitzungen werden nicht exportiert.</p><small>Dieses Archiv ist sicherheitskritisch. Bewahre es geschützt auf.</small></div><button class="button primary" data-export-users>Benutzerkonten herunterladen</button></article>
     </div></section>
     <section class="backup-area"><div class="backup-area-head"><div><h2>Backup einspielen</h2><p>Ein vorhandenes Projekt- oder Benutzerarchiv prüfen und wiederherstellen.</p></div></div><div class="backup-import-grid">
@@ -1406,20 +1406,20 @@ const deviceLabel = userAgent => {
   if (/Windows/i.test(value)) return 'Windows-PC';
   return value.slice(0, 55);
 };
-const auditLabel = action => ({ 'user.created':'Benutzer angelegt', 'user.updated':'Benutzer geändert', 'user.deleted':'Benutzer gelöscht', 'password.changed':'Passwort geändert', 'session.revoked':'Sitzung beendet', 'log.created':'Log angelegt', 'log.updated':'Log bearbeitet', 'log.deleted':'Log gelöscht', 'tag.created':'Tag angelegt', 'tag.updated':'Tag geändert', 'tag.merged':'Tags zusammengeführt', 'tag.deleted':'Tag gelöscht', 'data.project_imported':'Projekt aus Backup importiert', 'data.users_exported':'Benutzerkonten exportiert', 'data.users_imported':'Benutzerkonten importiert', 'server.settings_updated':'Servereinstellungen geändert', 'system.update_requested':'Make:Log-Update angefordert', 'system.content_cleared':'Alle Projektinhalte gelöscht', 'system.users_cleared':'Benutzerkonten zurückgesetzt', 'demo.installed':'Beispieldaten eingespielt', 'demo.removed':'Beispieldaten entfernt' }[action] || action);
+const auditLabel = action => ({ 'user.created':'Benutzer angelegt', 'user.updated':'Benutzer geändert', 'user.deleted':'Benutzer gelöscht', 'password.changed':'Passwort geändert', 'session.revoked':'Sitzung beendet', 'log.created':'Log angelegt', 'log.updated':'Log bearbeitet', 'log.deleted':'Log gelöscht', 'tag.created':'Tag angelegt', 'tag.updated':'Tag geändert', 'tag.merged':'Tags zusammengeführt', 'tag.deleted':'Tag gelöscht', 'data.project_imported':'Projekt aus Backup importiert', 'data.users_exported':'Benutzerkonten exportiert', 'data.users_imported':'Benutzerkonten importiert', 'server.settings_updated':'Servereinstellungen geändert', 'system.update_requested':'Logbuch-Update angefordert', 'system.content_cleared':'Alle Projektinhalte gelöscht', 'system.users_cleared':'Benutzerkonten zurückgesetzt', 'demo.installed':'Beispieldaten eingespielt', 'demo.removed':'Beispieldaten entfernt' }[action] || action);
 
 function updateCardContent() {
   const update = state.update || {};
   const current = update.currentVersion || state.system?.version || '–';
   const latest = update.latestVersion || '';
   const checkingFailed = Boolean(update.checkError);
-  let title = 'Make:Log ist aktuell';
+  let title = 'Das Logbuch ist aktuell';
   let copy = `Version ${escapeHtml(current)} ist installiert.`;
   let statusClass = 'active';
   let status = 'Aktuell';
   if (update.state === 'queued') {
     title = `Update ${escapeHtml(update.requestedVersion || latest)} angefordert`;
-    copy = 'Der Docker-Host-Helfer übernimmt Download, Neustart und Healthcheck. Die Seite kann dabei kurz nicht erreichbar sein.';
+    copy = 'Der AIO-Updater übernimmt Download, Neustart und Healthcheck. Die Seite kann dabei kurz nicht erreichbar sein.';
     statusClass = '';
     status = 'Wartet';
   } else if (update.state === 'failed') {
@@ -1428,7 +1428,7 @@ function updateCardContent() {
     statusClass = 'inactive';
     status = 'Fehler';
   } else if (update.available) {
-    title = `Make:Log ${escapeHtml(latest)} ist verfügbar`;
+    title = `Logbuch-Version ${escapeHtml(latest)} ist verfügbar`;
     copy = escapeHtml(update.summary || `Installiert ist Version ${current}.`);
     statusClass = '';
     status = 'Verfügbar';
@@ -1449,9 +1449,9 @@ function serverContent() {
   const platform = server.platform === 'docker' ? 'Docker' : server.platform === 'test' ? 'Testumgebung' : 'Webhosting';
   return `<div class="settings-group device-settings">
     <section><div class="settings-section-head"><h2>Instanz</h2><p>Diese Angaben gelten für alle Benutzer und für erzeugte Projektlinks.</p></div><form id="server-form" class="device-form"><div class="device-form-fields">
-      <label>Name der Instanz<input name="siteName" value="${escapeHtml(server.siteName || 'Make:Log')}" minlength="2" maxlength="80" required><small>Wird in Backups und Systeminformationen verwendet.</small></label>
+      <label>Name der Instanz<input name="siteName" value="${escapeHtml(server.siteName || 'Logbuch')}" minlength="2" maxlength="80" required><small>Wird in Backups und Systeminformationen verwendet.</small></label>
       <label>Öffentliche Webadresse<input name="baseUrl" type="url" value="${escapeHtml(server.baseUrl || location.origin)}" maxlength="300" required><small>Beispiel: https://log.example.de. Relative Projektlinks bleiben bei Umzügen erhalten.</small></label>
-      <label>Zeitzone<select name="timezone"><option value="Europe/Berlin" ${server.timezone === 'Europe/Berlin' ? 'selected' : ''}>Europe/Berlin</option><option value="Europe/Vienna" ${server.timezone === 'Europe/Vienna' ? 'selected' : ''}>Europe/Vienna</option><option value="Europe/Zurich" ${server.timezone === 'Europe/Zurich' ? 'selected' : ''}>Europe/Zurich</option><option value="UTC" ${server.timezone === 'UTC' ? 'selected' : ''}>UTC</option></select><small>Wird für Zeitangaben in Make:Log verwendet.</small></label>
+      <label>Zeitzone<select name="timezone"><option value="Europe/Berlin" ${server.timezone === 'Europe/Berlin' ? 'selected' : ''}>Europe/Berlin</option><option value="Europe/Vienna" ${server.timezone === 'Europe/Vienna' ? 'selected' : ''}>Europe/Vienna</option><option value="Europe/Zurich" ${server.timezone === 'Europe/Zurich' ? 'selected' : ''}>Europe/Zurich</option><option value="UTC" ${server.timezone === 'UTC' ? 'selected' : ''}>UTC</option></select><small>Wird für Zeitangaben im Logbuch verwendet.</small></label>
     </div><div class="device-form-actions"><p>Betriebsart: ${escapeHtml(platform)} · Serverzeit: ${escapeHtml(formatDateTime(server.currentTime))}</p><button class="button primary" type="submit">Servereinstellungen speichern</button></div></form></section>
   </div>`;
 }
@@ -1470,7 +1470,7 @@ function settingsContent(section) {
   if (section === 'general') return generalSettingsContent();
   if (section === 'profile') return profileContent();
   if (section === 'tags') return tagSettingsContent();
-  if (section === 'users') return `<div class="settings-group user-settings"><section class="user-section" aria-label="Benutzerrollen"><div class="settings-section-head"><h2>Benutzerrollen</h2><p>Zur Einordnung der Berechtigungen in Make:Log.</p></div><div class="role-legend">
+  if (section === 'users') return `<div class="settings-group user-settings"><section class="user-section" aria-label="Benutzerrollen"><div class="settings-section-head"><h2>Benutzerrollen</h2><p>Zur Einordnung der Berechtigungen im Logbuch.</p></div><div class="role-legend">
     <div class="role-legend-row"><strong>Administrator</strong><p>Verwaltet alle Projekte, Benutzer und Einstellungen.</p></div>
     <div class="role-legend-row"><strong>Bearbeiter</strong><p>Kann freigegebene Projekte ansehen und verändern.</p></div>
     <div class="role-legend-row"><strong>Leser</strong><p>Kann freigegebene Projekte ausschließlich ansehen.</p></div>
@@ -1481,13 +1481,13 @@ function settingsContent(section) {
   if (section === 'audit') return auditContent();
   const system = state.system || {};
   return `<div class="settings-group">${updateCardContent()}<div class="setting-list">
-    ${settingRow('Version','Installierte Make:Log-Version. ',escapeHtml(system.version || 'Wird geladen'))}
+    ${settingRow('Version','Installierte Logbuch-Version. ',escapeHtml(system.version || 'Wird geladen'))}
     ${settingRow('Betriebsart','Art der aktuellen Installation.',escapeHtml(system.platform === 'docker' ? 'Docker' : 'Webhosting'))}
     ${settingRow('PHP & Datenbank','Laufzeit und lokaler Datenspeicher.',escapeHtml(`${system.phpVersion || '–'} · ${system.database || '–'}`))}
-    ${settingRow('Speicherbelegung','Von Make:Log belegter Speicherplatz.',formatBytes(system.storageBytes))}
+    ${settingRow('Speicherbelegung','Vom Logbuch belegter Speicherplatz.',formatBytes(system.storageBytes))}
     ${settingRow('Freier Speicher','Am Datenspeicher noch verfügbar.',formatBytes(system.storageFreeBytes))}
     ${settingLink('Protokoll','Administrative und sicherheitsrelevante Änderungen nachvollziehen.','/#/settings/audit')}
-  </div><section class="danger-zone"><div class="danger-zone-head"><h2>DANGER ZONE</h2><p>Diese Aktionen verändern oder löschen zentrale Daten dieser Make:Log-Instanz.</p></div>
+  </div><section class="danger-zone"><div class="danger-zone-head"><h2>DANGER ZONE</h2><p>Diese Aktionen verändern oder löschen zentrale Daten dieser Logbuch-Instanz.</p></div>
     <div class="danger-row"><div><strong>Alle Inhalte löschen</strong><p>Löscht sämtliche aktiven und archivierten Projekte einschließlich Logs, Materialien, Kontakte, Links und Ideen. Benutzerkonten bleiben erhalten.</p></div><button class="button danger-button" data-clear-content>Alle Inhalte löschen</button></div>
     <div class="danger-row"><div><strong>Benutzerkonten zurücksetzen</strong><p>Löscht alle Benutzerkonten und deren Sitzungen. Der aktuell angemeldete Administrator bleibt erhalten.</p></div><button class="button danger-button" data-clear-users>Andere Benutzer löschen</button></div>
     <div class="danger-row demo-row"><div><strong>Beispieldaten einspielen</strong><p>Spielt elf Maker-Projekte und zwei thematische Ordner ein oder setzt sie auf den Lieferzustand zurück. Eigene Inhalte bleiben erhalten.</p></div><button class="button secondary" data-load-demo>${system.demoProjectCount || system.demoFolderCount ? 'Beispieldaten zurücksetzen' : 'Beispieldaten einspielen'}</button></div>
@@ -1657,7 +1657,7 @@ function parseTar(buffer) {
 }
 
 function validateProjectBackup(manifest) {
-  if (!['make-log-projects','make-log-backup'].includes(manifest?.format) || manifest.version !== 1 || !Array.isArray(manifest.projects)) throw new Error('Kein unterstütztes Make:Log-Projektarchiv');
+  if (!['logbuch-projects','logbuch-backup'].includes(manifest?.format) || manifest.version !== 1 || !Array.isArray(manifest.projects)) throw new Error('Kein unterstütztes Logbuch-Projektarchiv');
   for (const project of manifest.projects) {
     if (!project?.id || !project?.title || !Array.isArray(project.entries)) throw new Error('Das Backup enthält unvollständige Projektdaten');
     for (const collection of backupCollections) {
@@ -1671,7 +1671,7 @@ function validateProjectBackup(manifest) {
 }
 
 function validateUserBackup(manifest) {
-  if (manifest?.format !== 'make-log-users' || manifest.version !== 1 || !Array.isArray(manifest.accounts)) throw new Error('Kein unterstütztes Make:Log-Benutzerarchiv');
+  if (manifest?.format !== 'logbuch-users' || manifest.version !== 1 || !Array.isArray(manifest.accounts)) throw new Error('Kein unterstütztes Logbuch-Benutzerarchiv');
   for (const account of manifest.accounts) {
     const phpBackup = account?.passwordAlgorithm === 'php-password-hash' && account?.passwordHash;
     const legacyBackup = account?.passwordHash && account?.salt;
@@ -1686,7 +1686,7 @@ async function buildProjectBackup() {
   const projects = fullProjects.map(project => ({ ...project, accessUsers:metadataUsers.filter(user => user.role !== 'admin' && user.projectIds?.includes(project.id)).map(user => user.id) }));
   const usedTagIds = new Set(projects.flatMap(project => project.tagIds || []));
   const tags = state.tags.filter(tag => usedTagIds.has(tag.id)).map(({ id, name, createdAt }) => ({ id, name, createdAt }));
-  const manifest = { format:'make-log-projects', version:1, exportedAt:new Date().toISOString(), source:{ name:'Make:Log', host:location.host }, tags, projects };
+  const manifest = { format:'logbuch-projects', version:1, exportedAt:new Date().toISOString(), source:{ name:'Logbuch', host:location.host }, tags, projects };
   const files = [['manifest.json', JSON.stringify(manifest, null, 2)]];
   for (const project of projects) {
     const root = `projects/${project.id}`;
@@ -1699,7 +1699,7 @@ async function buildProjectBackup() {
 
 async function buildUserBackup() {
   const data = await api('/backup/users');
-  const manifest = { format:'make-log-users', version:1, exportedAt:new Date().toISOString(), source:{ name:'Make:Log', host:location.host }, accounts:data.accounts || [] };
+  const manifest = { format:'logbuch-users', version:1, exportedAt:new Date().toISOString(), source:{ name:'Logbuch', host:location.host }, accounts:data.accounts || [] };
   return createTar([['manifest.json', JSON.stringify(manifest, null, 2)], ['users/accounts.json', JSON.stringify(manifest.accounts, null, 2)]]);
 }
 
@@ -1728,7 +1728,7 @@ function bindDataActions() {
   projectExport.onclick = async () => {
     projectExport.disabled = true; projectExport.textContent = 'Archiv wird erstellt …';
     try {
-      downloadBlob(await buildProjectBackup(), `make-log-projekte-${today()}.tar`); toast('Projektdaten wurden gesichert');
+      downloadBlob(await buildProjectBackup(), `logbuch-projekte-${today()}.tar`); toast('Projektdaten wurden gesichert');
     } catch (error) { toast(error.message); }
     finally { projectExport.disabled = false; projectExport.textContent = 'Projektdaten herunterladen'; }
   };
@@ -1736,7 +1736,7 @@ function bindDataActions() {
   userExport.onclick = async () => {
     userExport.disabled = true; userExport.textContent = 'Archiv wird erstellt …';
     try {
-      downloadBlob(await buildUserBackup(), `make-log-benutzer-${today()}.tar`); toast('Benutzerkonten wurden gesichert');
+      downloadBlob(await buildUserBackup(), `logbuch-benutzer-${today()}.tar`); toast('Benutzerkonten wurden gesichert');
     } catch (error) { toast(error.message); }
     finally { userExport.disabled = false; userExport.textContent = 'Benutzerkonten herunterladen'; }
   };
@@ -1800,8 +1800,8 @@ function profileContent() {
       ? `<div class="profile-projects">${state.projects.map(project => `<span>${escapeHtml(project.title)}</span>`).join('')}</div>`
       : '<span class="profile-value">Keine Projekte</span>';
   return `<div class="settings-group profile-settings"><div class="setting-list">
-    <div class="setting-row"><div><strong>Benutzername</strong><p>Mit diesem Namen meldest du dich bei Make:Log an.</p></div><span class="profile-value">${escapeHtml(state.user.id)}</span></div>
-    <div class="setting-row"><div><strong>Rolle</strong><p>Die Rolle bestimmt deine grundlegenden Rechte in Make:Log.</p></div><span class="profile-value">${escapeHtml(userRoleLabel(state.user.role))}</span></div>
+    <div class="setting-row"><div><strong>Benutzername</strong><p>Mit diesem Namen meldest du dich beim Logbuch an.</p></div><span class="profile-value">${escapeHtml(state.user.id)}</span></div>
+    <div class="setting-row"><div><strong>Rolle</strong><p>Die Rolle bestimmt deine grundlegenden Rechte im Logbuch.</p></div><span class="profile-value">${escapeHtml(userRoleLabel(state.user.role))}</span></div>
     <div class="setting-row profile-project-row"><div><strong>Zugängliche Projekte</strong><p>Diese Projekte kannst du entsprechend deiner Rolle ansehen oder bearbeiten.</p></div>${accessibleProjects}</div>
     <div class="setting-row"><div><strong>Passwort</strong><p>Ändere das Passwort für deinen persönlichen Zugang.</p></div><button class="button secondary compact" data-change-password>Passwort ändern</button></div>
   </div></div>`;
@@ -2412,7 +2412,7 @@ function openPasswordDialog(forced = false) {
   form.dataset.forced = forced ? 'true' : 'false';
   $('#password-error').textContent = '';
   $('#password-dialog-title').textContent = forced ? 'Startpasswort ändern' : 'Passwort ändern';
-  $('#password-dialog-copy').textContent = forced ? 'Bevor du Make:Log verwenden kannst, musst du das vom Administrator vergebene Startpasswort ändern.' : 'Gib dein aktuelles und anschließend ein neues Passwort ein.';
+  $('#password-dialog-copy').textContent = forced ? 'Bevor du das Logbuch verwenden kannst, musst du das vom Administrator vergebene Startpasswort ändern.' : 'Gib dein aktuelles und anschließend ein neues Passwort ein.';
   document.querySelectorAll('.password-cancel').forEach(button => button.classList.toggle('hidden', forced));
   dialog.oncancel = event => { if (forced) event.preventDefault(); };
   showFormDialog(dialog);
@@ -2431,7 +2431,7 @@ function bindSystemActions() {
     checkButton.disabled = true;
     try {
       await loadUpdateStatus(true);
-      toast(state.update.available ? `Version ${state.update.latestVersion} ist verfügbar` : 'Make:Log ist aktuell');
+      toast(state.update.available ? `Version ${state.update.latestVersion} ist verfügbar` : 'Das Logbuch ist aktuell');
       await renderSettings();
     } catch (error) { toast(error.message); checkButton.disabled = false; }
   };
@@ -2443,8 +2443,8 @@ function bindSystemActions() {
     form.reset();
     $('#update-error').textContent = '';
     $('#update-dialog-copy').textContent = update.platform === 'docker'
-      ? `Version ${update.latestVersion} wird beim Docker-Host-Helfer angefordert. Der Container erhält dabei keinen Zugriff auf den Docker-Socket.`
-      : `Version ${update.latestVersion} wird geprüft, gesichert und anschließend installiert. Währenddessen ist Make:Log kurz im Wartungsmodus.`;
+      ? `Version ${update.latestVersion} wird beim AIO-Updater angefordert. Der Anwendungscontainer erhält dabei keinen Zugriff auf den Docker-Socket.`
+      : `Version ${update.latestVersion} wird geprüft, gesichert und anschließend installiert. Währenddessen befindet sich das Logbuch kurz im Wartungsmodus.`;
     showFormDialog(dialog);
   };
   $('[data-clear-content]').onclick = async event => {
@@ -3097,7 +3097,7 @@ $('#update-form').addEventListener('submit', async event => {
     $('#update-dialog').close();
     form.reset();
     if (result.reload) {
-      toast('Update installiert · Make:Log wird neu geladen');
+      toast('Update installiert · Das Logbuch wird neu geladen');
       setTimeout(() => location.reload(), 700);
       return;
     }

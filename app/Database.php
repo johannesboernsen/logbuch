@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace MakeLog;
+namespace Logbuch;
 
 use PDO;
 
@@ -58,7 +58,7 @@ final class Database
     {
         try {
             $statement = $this->pdo->query("SELECT value FROM meta WHERE key = 'schema_version'");
-            return (int) $statement->fetchColumn() === \makelog_schema_version();
+            return (int) $statement->fetchColumn() === \logbuch_schema_version();
         } catch (\PDOException) {
             return false;
         }
@@ -182,9 +182,9 @@ final class Database
         $this->pdo->exec('UPDATE tags SET active = 1 WHERE active <> 1');
         $this->pdo->exec("DELETE FROM settings WHERE key IN ('smtp', 'backup')");
 
-        $targetVersion = \makelog_schema_version();
+        $targetVersion = \logbuch_schema_version();
         for ($version = max(7, $previousVersion + 1); $version <= $targetVersion; $version++) {
-            $migrationPath = \makelog_root_path() . '/database/migrations/' . sprintf('%03d.sql', $version);
+            $migrationPath = \logbuch_root_path() . '/database/migrations/' . sprintf('%03d.sql', $version);
             if (!is_file($migrationPath)) {
                 throw new \RuntimeException('Die Datenbankmigration ' . $version . ' fehlt.');
             }

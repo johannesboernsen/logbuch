@@ -2,7 +2,7 @@
 
 ## Ein Kern, zwei Installationsarten
 
-Make:Log ist eine PHP-Anwendung. Docker enthält denselben PHP-Code und ist nur eine alternative Verpackung. Dadurch entstehen keine getrennten Docker- und Webhosting-Versionen.
+Das Logbuch ist eine PHP-Anwendung. Docker enthält denselben PHP-Code und ist nur eine alternative Verpackung. Dadurch entstehen keine getrennten Docker- und Webhosting-Versionen.
 
 ```text
 Browser
@@ -23,7 +23,7 @@ Der öffentliche Webserver zeigt ausschließlich auf `public/`. Anwendungscode u
 
 ## Offene Projektdaten
 
-Jeder fachliche Datensatz besitzt eine JSON-Datei und eine Markdown-Datei mit YAML-Frontmatter. JSON ermöglicht eine verlustfreie Wiederherstellung und schnelle Verarbeitung; Markdown bleibt ohne Make:Log lesbar. Schreibvorgänge verwenden eine temporäre Datei und ein anschließendes atomisches Umbenennen.
+Jeder fachliche Datensatz besitzt eine JSON-Datei und eine Markdown-Datei mit YAML-Frontmatter. JSON ermöglicht eine verlustfreie Wiederherstellung und schnelle Verarbeitung; Markdown bleibt ohne das Logbuch lesbar. Schreibvorgänge verwenden eine temporäre Datei und ein anschließendes atomisches Umbenennen.
 
 SQLite ist für transaktionale Daten vorgesehen: Benutzer, Argon2id-Hashes, Sitzungen, Anmeldebegrenzung, Projektfreigaben, Tags, Einstellungen und Auditereignisse.
 
@@ -50,14 +50,14 @@ Der Einrichtungsassistent prüft PHP-Version, Erweiterungen und Schreibrechte, l
 
 ## Updates
 
-GitHub Releases liefern ein signiertes Manifest, ein TAR-Paket für Webhosting und ein digest-gepinntes GHCR-Image. Make:Log vertraut nicht auf Branches oder veränderliche Image-Tags. Das Manifest bindet jede ausgelieferte Webdatei und den Container-Digest kryptografisch an einen Release.
+GitHub Releases liefern ein signiertes Manifest, ein TAR-Paket für Webhosting und ein digest-gepinntes GHCR-Image. Das Logbuch vertraut nicht auf Branches oder veränderliche Image-Tags. Das Manifest bindet jede ausgelieferte Webdatei und den Container-Digest kryptografisch an einen Release.
 
 Auf Webhosting arbeitet der Updater mit einer exklusiven Sperre, einem Wartungsmarker, atomaren Dateiersetzungen und einer SQLite-Transaktion für neue Migrationen. Lokale Änderungen an Dateien eines zuvor erfassten Releases blockieren das Update. `storage/` gehört nie zur verwalteten Dateiliste.
 
-In Docker endet die Verantwortung der Anwendung beim Schreiben einer Update-Anforderung in das persistente Volume. Ein eingeschränkter Host-Helfer aktualisiert Compose und führt den Healthcheck aus. Dadurch besitzt der Webprozess keine Kontrolle über den Docker-Daemon.
+In Docker endet die Verantwortung der Anwendung beim Schreiben einer Update-Anforderung in das persistente Volume. Ein separater, nicht über das Netzwerk erreichbarer AIO-Updater prüft die signierte Anforderung nochmals, aktualisiert App und Updater anhand fester Digests und führt den Healthcheck mit automatischer Wiederherstellung aus. Nur dieser Hilfscontainer besitzt den Docker-Socket; der Webprozess und der App-Container haben keine Kontrolle über den Docker-Daemon.
 
 ## Backups
 
 Projekt- und Benutzerbackups bleiben getrennt. Benutzerarchive enthalten Passwort-Hashes, aber keine Klartextpasswörter oder Sitzungen, und müssen deshalb wie Geheimnisse behandelt werden.
 
-Backups werden bewusst manuell heruntergeladen und wieder eingespielt. Make:Log speichert keine SMTP-Zugangsdaten und führt keine Hintergrundjobs aus.
+Backups werden bewusst manuell heruntergeladen und wieder eingespielt. Das Logbuch speichert keine SMTP-Zugangsdaten und führt keine Hintergrundjobs aus.

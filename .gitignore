@@ -3,9 +3,9 @@
 include/config.h
 .DS_Store
 .env
-makelog-data/
+logbuch-data/
 node_modules/
 dist/
-.makelog-update/
-.makelog-update-private.pem
-.env.makelog-update-backup
+.logbuch-update/
+.logbuch-update-private.pem
+.env.logbuch-update-backup

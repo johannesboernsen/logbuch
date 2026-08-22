@@ -1,0 +1,10 @@
+services:
+  logbuch:
+    image: logbuch:local
+    build: .
+
+  logbuch-updater:
+    image: logbuch-updater:local
+    build:
+      context: .
+      dockerfile: docker/updater/Dockerfile

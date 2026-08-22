@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace MakeLog;
+namespace Logbuch;
 
 use PDO;
 
@@ -23,7 +23,7 @@ final class Application
         $this->auth = new Auth($this->db);
         $this->projects = new ProjectStore($storagePath . '/projects');
         $this->folders = new FolderStore($this->db);
-        $this->updates = new UpdateService($storagePath, \makelog_root_path(), $this->db, (string) (getenv('MAKELOG_PLATFORM') ?: 'webhosting'));
+        $this->updates = new UpdateService($storagePath, \logbuch_root_path(), $this->db, (string) (getenv('LOGBUCH_PLATFORM') ?: 'webhosting'));
     }
 
     public function installed(): bool
@@ -33,7 +33,7 @@ final class Application
 
     public function install(array $input): array
     {
-        $siteName = trim((string) ($input['siteName'] ?? 'Make:Log'));
+        $siteName = trim((string) ($input['siteName'] ?? 'Logbuch'));
         if (mb_strlen($siteName) < 2 || mb_strlen($siteName) > 80) {
             throw new HttpError(422, 'Der Name muss 2–80 Zeichen lang sein.');
         }
@@ -47,7 +47,7 @@ final class Application
         $transactionActive = true;
         try {
             if ($this->installed()) {
-                throw new HttpError(409, 'Make:Log ist bereits eingerichtet.');
+                throw new HttpError(409, 'Das Logbuch ist bereits eingerichtet.');
             }
             $this->auth->createAdmin((string) ($input['adminUser'] ?? ''), (string) ($input['adminPassword'] ?? ''));
             $this->setSetting('general', ['siteName' => $siteName, 'timezone' => $timezone, 'baseUrl' => $this->detectedBaseUrl()]);
@@ -82,7 +82,7 @@ final class Application
                 $this->json(201, $this->install($input));
             }
             if (!$this->installed()) {
-                throw new HttpError(503, 'Make:Log muss zuerst eingerichtet werden.');
+                throw new HttpError(503, 'Das Logbuch muss zuerst eingerichtet werden.');
             }
             if ($path === '/api/login' && $method === 'POST') {
                 $user = $this->auth->login((string) ($input['user'] ?? ''), (string) ($input['password'] ?? ''), $this->clientIp(), (string) ($_SERVER['HTTP_USER_AGENT'] ?? ''));
@@ -487,13 +487,13 @@ final class Application
 
     private function csrfToken(): string
     {
-        $cookie = (string) ($_COOKIE['makerlog_session'] ?? '');
-        return hash_hmac('sha256', 'make-log-csrf-v1', $cookie);
+        $cookie = (string) ($_COOKIE['logbuch_session'] ?? '');
+        return hash_hmac('sha256', 'logbuch-csrf-v1', $cookie);
     }
 
     private function verifyCsrf(): void
     {
-        $provided = (string) ($_SERVER['HTTP_X_MAKELOG_CSRF'] ?? '');
+        $provided = (string) ($_SERVER['HTTP_X_LOGBUCH_CSRF'] ?? '');
         if ($provided === '' || !hash_equals($this->csrfToken(), $provided)) {
             throw new HttpError(403, 'Ungültiger CSRF-Schutz. Bitte die Seite neu laden.');
         }
@@ -626,8 +626,8 @@ final class Application
         return [
             'hostname' => parse_url($this->detectedBaseUrl(), PHP_URL_HOST) ?: ($_SERVER['HTTP_HOST'] ?? 'localhost'),
             'baseUrl' => $general['baseUrl'] ?? $this->detectedBaseUrl(),
-            'platform' => getenv('MAKELOG_PLATFORM') ?: 'webhosting',
-            'version' => \makelog_version(),
+            'platform' => getenv('LOGBUCH_PLATFORM') ?: 'webhosting',
+            'version' => \logbuch_version(),
             'phpVersion' => PHP_VERSION,
             'projectCount' => count($projects),
             'demoProjectCount' => $demoProjectCount,
@@ -972,10 +972,10 @@ final class Application
     {
         $general = $this->getSetting('general', []);
         return [
-            'siteName' => $general['siteName'] ?? 'Make:Log',
+            'siteName' => $general['siteName'] ?? 'Logbuch',
             'baseUrl' => $general['baseUrl'] ?? $this->detectedBaseUrl(),
             'timezone' => $general['timezone'] ?? 'Europe/Berlin',
-            'platform' => getenv('MAKELOG_PLATFORM') ?: 'webhosting',
+            'platform' => getenv('LOGBUCH_PLATFORM') ?: 'webhosting',
             'currentTime' => nowIso(),
         ];
     }
@@ -1068,7 +1068,7 @@ final class Application
     {
         $path = dirname(__DIR__) . '/public/demo-data.json';
         $demo = readJsonFile($path);
-        if (($demo['format'] ?? '') !== 'make-log-demo' || ($demo['version'] ?? null) !== 1 || !is_array($demo['tags'] ?? null) || !is_array($demo['folders'] ?? null) || !is_array($demo['projects'] ?? null)) {
+        if (($demo['format'] ?? '') !== 'logbuch-demo' || ($demo['version'] ?? null) !== 1 || !is_array($demo['tags'] ?? null) || !is_array($demo['folders'] ?? null) || !is_array($demo['projects'] ?? null)) {
             throw new \RuntimeException('Der mitgelieferte Beispieldatensatz ist ungültig.');
         }
         $folderIds = [];

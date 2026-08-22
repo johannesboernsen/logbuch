@@ -9,11 +9,11 @@ const root = new URL('..', import.meta.url).pathname;
 const baseUrl = 'http://127.0.0.1:4230';
 
 test('Installer kann den mitgelieferten Beispieldatensatz aktivieren', async () => {
-  const storage = await mkdtemp(join(tmpdir(), 'makelog-installer-demo-'));
+  const storage = await mkdtemp(join(tmpdir(), 'logbuch-installer-demo-'));
   let serverErrors = '';
   const server = spawn('php', ['-S', '127.0.0.1:4230', '-t', 'public', 'public/router.php'], {
     cwd: root,
-    env: { ...process.env, MAKELOG_STORAGE_PATH: storage, MAKELOG_PLATFORM: 'test' },
+    env: { ...process.env, LOGBUCH_STORAGE_PATH: storage, LOGBUCH_PLATFORM: 'test' },
     stdio: ['ignore', 'ignore', 'pipe'],
   });
   server.stderr.on('data', chunk => { serverErrors += chunk.toString(); });

@@ -8,12 +8,12 @@ import { join } from 'node:path';
 const root = new URL('..', import.meta.url).pathname;
 
 test('parallele Ersteinrichtung erzeugt genau einen Administrator', async () => {
-  const storage = await mkdtemp(join(tmpdir(), 'makelog-install-race-'));
+  const storage = await mkdtemp(join(tmpdir(), 'logbuch-install-race-'));
   let serverErrors = '';
   const ports = Array.from({ length:6 }, (_, index) => 4210 + index);
   const servers = ports.map(port => spawn('php', ['-S', `127.0.0.1:${port}`, '-t', 'public', 'public/router.php'], {
     cwd:root,
-    env:{ ...process.env, MAKELOG_STORAGE_PATH:storage, MAKELOG_PLATFORM:'test' },
+    env:{ ...process.env, LOGBUCH_STORAGE_PATH:storage, LOGBUCH_PLATFORM:'test' },
     stdio:['ignore', 'ignore', 'pipe'],
   }));
   servers.forEach(server => server.stderr.on('data', chunk => { serverErrors += chunk.toString(); }));

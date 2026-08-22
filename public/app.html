@@ -4,9 +4,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#f6f7f9">
-  <title>Make:Log</title>
-  <link rel="icon" href="/favicon.svg?v=20260819-4" type="image/svg+xml">
-  <link rel="stylesheet" href="/styles.css?v=20260822-108">
+  <title>Logbuch</title>
+  <link rel="icon" href="/favicon.svg?v=20260822-2" type="image/svg+xml">
+  <link rel="stylesheet" href="/styles.css?v=20260822-208">
 </head>
 <body>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
@@ -14,7 +14,7 @@
   <section id="login-view" class="login-shell">
     <div class="login-copy">
       <div>
-        <a class="brand login-brand" href="/" aria-label="Make:Log"><img src="/makelog-logo.svg" alt=""></a>
+        <a class="brand login-brand" href="/" aria-label="Logbuch"><img src="/logbuch-logo.svg?v=20260822-3" alt=""></a>
         <p class="login-pitch">Erfasse Fortschritte, Materialien und die nächste gute Idee.</p>
       </div>
     </div>
@@ -31,7 +31,7 @@
 
   <div id="app" class="app hidden">
     <aside class="sidebar">
-      <a class="brand" href="/#/" aria-label="Make:Log"><img src="/makelog-logo.svg" alt=""></a>
+      <a class="brand" href="/#/" aria-label="Logbuch"><img src="/logbuch-logo.svg?v=20260822-3" alt=""></a>
       <nav aria-label="Hauptnavigation">
         <a class="nav-item active" href="/#/" data-route="home"><span aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="8.5"></circle><path d="m8.2 12.2 2.5 2.5 5.4-5.6"></path></svg></span> Übersicht</a>
         <div class="projects-menu">
@@ -62,12 +62,12 @@
         <button id="logout" class="nav-item bare"><span aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><path d="m16 17 5-5-5-5M21 12H9"></path></svg></span> Abmelden</button>
       </nav>
       <div class="sidebar-bottom">
-        <div class="device-state"><span class="pulse"></span><div><strong>Make:Log online</strong><small id="device-host">Server</small></div></div>
+        <div class="device-state"><span class="pulse"></span><div><strong>Logbuch online</strong><small id="device-host">Server</small></div></div>
       </div>
     </aside>
 
     <header class="mobile-header">
-      <a class="brand" href="/#/" aria-label="Make:Log"><img src="/makelog-logo.svg" alt=""></a>
+      <a class="brand" href="/#/" aria-label="Logbuch"><img src="/logbuch-logo.svg?v=20260822-3" alt=""></a>
       <button id="menu-button" class="icon-button" aria-label="Menü öffnen">☰</button>
     </header>
 
@@ -157,7 +157,7 @@
 
   <dialog id="update-dialog">
     <form id="update-form" method="dialog">
-      <div class="dialog-head"><div><h2>Make:Log aktualisieren</h2></div><button class="icon-button" type="button" value="cancel" aria-label="Schließen">×</button></div>
+      <div class="dialog-head"><div><h2>Das Logbuch aktualisieren</h2></div><button class="icon-button" type="button" value="cancel" aria-label="Schließen">×</button></div>
       <p id="update-dialog-copy" class="dialog-copy"></p>
       <label>Administratorpasswort<input name="password" type="password" autocomplete="current-password" required></label>
       <p id="update-error" class="form-error"></p>
@@ -185,6 +185,6 @@
     </form>
   </dialog>
 
-  <script src="/app.js?v=20260822-138" defer></script>
+  <script src="/app.js?v=20260822-140" defer></script>
 </body>
 </html>

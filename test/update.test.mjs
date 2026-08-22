@@ -11,7 +11,7 @@ const root = new URL('..', import.meta.url).pathname;
 const appUrl = 'http://127.0.0.1:4240';
 
 test('signierte Updates werden geprüft und für Docker sicher angefordert', async () => {
-  const storage = await mkdtemp(join(tmpdir(), 'makelog-update-test-'));
+  const storage = await mkdtemp(join(tmpdir(), 'logbuch-update-test-'));
   const { privateKey, publicKey } = generateKeyPairSync('rsa', {
     modulusLength:2048,
     privateKeyEncoding:{ type:'pkcs8', format:'pem' },
@@ -21,10 +21,10 @@ test('signierte Updates werden geprüft und für Docker sicher angefordert', asy
   await writeFile(publicKeyPath, publicKey);
   const hash = '0'.repeat(64);
   const manifest = `${JSON.stringify({
-    format:'make-log-update', manifestVersion:1, version:'9.9.9', channel:'stable', publishedAt:'2026-08-21T12:00:00Z', minimumPhp:'8.2.0', summary:'Testupdate', releaseNotesUrl:'https://github.com/johannesboernsen/make-log-releases/releases/tag/v9.9.9',
+    format:'logbuch-update', manifestVersion:1, version:'9.9.9', channel:'stable', publishedAt:'2026-08-21T12:00:00Z', minimumPhp:'8.2.0', summary:'Testupdate', releaseNotesUrl:'https://github.com/johannesboernsen/logbuch/releases/tag/v9.9.9',
     database:{ schemaVersion:6 },
     web:{ url:'http://127.0.0.1/package.tar', sha256:hash, files:{ 'app/bootstrap.php':hash, 'app/Application.php':hash, 'public/index.php':hash, VERSION:hash, SCHEMA_VERSION:hash } },
-    docker:{ image:'ghcr.io/johannesboernsen/make-log', digest:`sha256:${'a'.repeat(64)}` },
+    docker:{ image:'ghcr.io/johannesboernsen/logbuch', digest:`sha256:${'a'.repeat(64)}`, updater:{ image:'ghcr.io/johannesboernsen/logbuch-updater', digest:`sha256:${'c'.repeat(64)}` } },
   }, null, 2)}\n`;
   let signature = sign('sha256', Buffer.from(manifest), privateKey).toString('base64');
   const releaseServer = createServer((request, response) => {
@@ -38,11 +38,11 @@ test('signierte Updates werden geprüft und für Docker sicher angefordert', asy
     cwd:root,
     env:{
       ...process.env,
-      MAKELOG_STORAGE_PATH:storage,
-      MAKELOG_PLATFORM:'docker',
-      MAKELOG_UPDATE_PUBLIC_KEY_PATH:publicKeyPath,
-      MAKELOG_UPDATE_MANIFEST_URL:`http://127.0.0.1:${releasePort}/update-manifest.json`,
-      MAKELOG_UPDATE_SIGNATURE_URL:`http://127.0.0.1:${releasePort}/update-manifest.sig`,
+      LOGBUCH_STORAGE_PATH:storage,
+      LOGBUCH_PLATFORM:'docker',
+      LOGBUCH_UPDATE_PUBLIC_KEY_PATH:publicKeyPath,
+      LOGBUCH_UPDATE_MANIFEST_URL:`http://127.0.0.1:${releasePort}/update-manifest.json`,
+      LOGBUCH_UPDATE_SIGNATURE_URL:`http://127.0.0.1:${releasePort}/update-manifest.sig`,
     },
     stdio:'ignore',
   });
@@ -55,7 +55,7 @@ test('signierte Updates werden geprüft und für Docker sicher angefordert', asy
     await fetch(`${appUrl}/api/install`, { method:'POST', headers:{ 'Content-Type':'application/json' }, body:JSON.stringify({ siteName:'Update-Test', timezone:'Europe/Berlin', adminUser:'admin', adminPassword:'sicheres-update-passwort' }) });
     const login = await fetch(`${appUrl}/api/login`, { method:'POST', headers:{ 'Content-Type':'application/json' }, body:JSON.stringify({ user:'admin', password:'sicheres-update-passwort' }) });
     const loginData = await login.json();
-    const headers = { Cookie:login.headers.get('set-cookie').split(';', 1)[0], 'X-MakeLog-CSRF':loginData.csrfToken, 'Content-Type':'application/json' };
+    const headers = { Cookie:login.headers.get('set-cookie').split(';', 1)[0], 'X-Logbuch-CSRF':loginData.csrfToken, 'Content-Type':'application/json' };
 
     const status = await fetch(`${appUrl}/api/update/status`, { headers }).then(response => response.json());
     assert.equal(status.available, true);
@@ -72,8 +72,10 @@ test('signierte Updates werden geprüft und für Docker sicher angefordert', asy
     const accepted = await fetch(`${appUrl}/api/update/install`, { method:'POST', headers, body:JSON.stringify({ password:'sicheres-update-passwort' }) });
     assert.equal(accepted.status, 202);
     const request = JSON.parse(await readFile(join(storage, 'updates', 'docker-request.json'), 'utf8'));
-    assert.equal(request.image, 'ghcr.io/johannesboernsen/make-log');
+    assert.equal(request.image, 'ghcr.io/johannesboernsen/logbuch');
     assert.equal(request.digest, `sha256:${'a'.repeat(64)}`);
+    assert.equal(request.updaterImage, 'ghcr.io/johannesboernsen/logbuch-updater');
+    assert.equal(request.updaterDigest, `sha256:${'c'.repeat(64)}`);
     assert.equal(request.requestedBy, 'admin');
   } finally {
     php.kill('SIGTERM');
@@ -83,7 +85,7 @@ test('signierte Updates werden geprüft und für Docker sicher angefordert', asy
 });
 
 test('Webhosting-Update sichert und ersetzt ausschließlich signierte Programmdateien', async () => {
-  const temporary = await mkdtemp(join(tmpdir(), 'makelog-web-update-test-'));
+  const temporary = await mkdtemp(join(tmpdir(), 'logbuch-web-update-test-'));
   const installRoot = join(temporary, 'installation');
   const storage = join(installRoot, 'storage');
   const stage = join(temporary, 'release');
@@ -117,7 +119,7 @@ test('Webhosting-Update sichert und ersetzt ausschließlich signierte Programmda
     await writeFile(join(stage, path), content);
   }
   const files = Object.fromEntries(Object.entries(releaseFiles).map(([path, content]) => [path, createHash('sha256').update(content).digest('hex')]));
-  const archivePath = join(temporary, 'makelog-web-0.3.0.tar');
+  const archivePath = join(temporary, 'logbuch-web-0.3.0.tar');
   execFileSync('tar', ['-cf', archivePath, '-C', stage, 'app', 'public', 'config', 'VERSION', 'SCHEMA_VERSION'], { env:{ ...process.env, COPYFILE_DISABLE:'1' } });
   const archive = await readFile(archivePath);
   let manifest = '';
@@ -131,15 +133,15 @@ test('Webhosting-Update sichert und ersetzt ausschließlich signierte Programmda
   await new Promise(resolve => releaseServer.listen(0, '127.0.0.1', resolve));
   const releasePort = releaseServer.address().port;
   manifest = `${JSON.stringify({
-    format:'make-log-update', manifestVersion:1, version:'0.3.0', channel:'stable', publishedAt:'2026-08-21T12:00:00Z', minimumPhp:'8.2.0', summary:'Webtest', releaseNotesUrl:'https://github.com/johannesboernsen/make-log-releases/releases/tag/v0.3.0',
+    format:'logbuch-update', manifestVersion:1, version:'0.3.0', channel:'stable', publishedAt:'2026-08-21T12:00:00Z', minimumPhp:'8.2.0', summary:'Webtest', releaseNotesUrl:'https://github.com/johannesboernsen/logbuch/releases/tag/v0.3.0',
     database:{ schemaVersion:6 },
     web:{ url:`http://127.0.0.1:${releasePort}/package.tar`, sha256:createHash('sha256').update(archive).digest('hex'), files },
-    docker:{ image:'ghcr.io/johannesboernsen/make-log', digest:`sha256:${'b'.repeat(64)}` },
+    docker:{ image:'ghcr.io/johannesboernsen/logbuch', digest:`sha256:${'b'.repeat(64)}`, updater:{ image:'ghcr.io/johannesboernsen/logbuch-updater', digest:`sha256:${'d'.repeat(64)}` } },
   }, null, 2)}\n`;
   signature = sign('sha256', Buffer.from(manifest), privateKey).toString('base64');
   const php = spawn('php', ['-S', '127.0.0.1:4241', '-t', 'public', 'public/router.php'], {
     cwd:root,
-    env:{ ...process.env, MAKELOG_ROOT_PATH:installRoot, MAKELOG_STORAGE_PATH:storage, MAKELOG_PLATFORM:'webhosting', MAKELOG_UPDATE_PUBLIC_KEY_PATH:publicKeyPath, MAKELOG_UPDATE_MANIFEST_URL:`http://127.0.0.1:${releasePort}/update-manifest.json`, MAKELOG_UPDATE_SIGNATURE_URL:`http://127.0.0.1:${releasePort}/update-manifest.sig` },
+    env:{ ...process.env, LOGBUCH_ROOT_PATH:installRoot, LOGBUCH_STORAGE_PATH:storage, LOGBUCH_PLATFORM:'webhosting', LOGBUCH_UPDATE_PUBLIC_KEY_PATH:publicKeyPath, LOGBUCH_UPDATE_MANIFEST_URL:`http://127.0.0.1:${releasePort}/update-manifest.json`, LOGBUCH_UPDATE_SIGNATURE_URL:`http://127.0.0.1:${releasePort}/update-manifest.sig` },
     stdio:'ignore',
   });
   try {
@@ -152,7 +154,7 @@ test('Webhosting-Update sichert und ersetzt ausschließlich signierte Programmda
     await fetch(`${appUrl}/api/install`, { method:'POST', headers:{ 'Content-Type':'application/json' }, body:JSON.stringify({ siteName:'Web-Update-Test', timezone:'Europe/Berlin', adminUser:'admin', adminPassword:'sicheres-update-passwort' }) });
     const login = await fetch(`${appUrl}/api/login`, { method:'POST', headers:{ 'Content-Type':'application/json' }, body:JSON.stringify({ user:'admin', password:'sicheres-update-passwort' }) });
     const loginData = await login.json();
-    const response = await fetch(`${appUrl}/api/update/install`, { method:'POST', headers:{ Cookie:login.headers.get('set-cookie').split(';', 1)[0], 'X-MakeLog-CSRF':loginData.csrfToken, 'Content-Type':'application/json' }, body:JSON.stringify({ password:'sicheres-update-passwort' }) });
+    const response = await fetch(`${appUrl}/api/update/install`, { method:'POST', headers:{ Cookie:login.headers.get('set-cookie').split(';', 1)[0], 'X-Logbuch-CSRF':loginData.csrfToken, 'Content-Type':'application/json' }, body:JSON.stringify({ password:'sicheres-update-passwort' }) });
     const responseText = await response.text();
     assert.equal(response.status, 202, responseText);
     assert.equal(await readFile(join(installRoot, 'VERSION'), 'utf8'), '0.3.0\n');

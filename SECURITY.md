@@ -2,7 +2,7 @@
 
 ## Unterstützte Versionen
 
-Sicherheitskorrekturen werden für die jeweils aktuelle veröffentlichte Version von Make:Log bereitgestellt.
+Sicherheitskorrekturen werden für die jeweils aktuelle veröffentlichte Version des Logbuchs bereitgestellt.
 
 ## Sicherheitsproblem melden
 

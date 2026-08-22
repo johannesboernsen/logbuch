@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace MakeLog;
+namespace Logbuch;
 
 use PDO;
 
@@ -77,14 +77,14 @@ final class Auth
         // PHP exposes newly set cookies only on the next request. Keeping the
         // current request in sync lets the login response contain a token that
         // is already valid for the session cookie sent with that response.
-        $_COOKIE['makerlog_session'] = $token;
+        $_COOKIE['logbuch_session'] = $token;
         $user['session_id'] = $sessionId;
         return $this->publicUser($user);
     }
 
     public function current(bool $touch = true): ?array
     {
-        $token = $_COOKIE['makerlog_session'] ?? '';
+        $token = $_COOKIE['logbuch_session'] ?? '';
         if (!is_string($token) || strlen($token) !== 64) {
             return null;
         }
@@ -246,7 +246,7 @@ final class Auth
     private function setSessionCookie(string $token, int $expires): void
     {
         $secure = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') || strtolower((string) ($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '')) === 'https';
-        setcookie('makerlog_session', $token, [
+        setcookie('logbuch_session', $token, [
             'expires' => $expires,
             'path' => '/',
             'secure' => $secure,

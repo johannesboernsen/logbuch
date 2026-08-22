@@ -6,16 +6,12 @@ on:
       - 'v*.*.*'
 
 permissions:
-  contents: read
+  contents: write
   packages: write
-  id-token: write
-  attestations: write
 
 jobs:
   release:
     runs-on: ubuntu-latest
-    env:
-      RELEASE_REPOSITORY_TOKEN: ${{ secrets.RELEASE_REPOSITORY_TOKEN }}
     steps:
       - uses: actions/checkout@v5
       - uses: shivammathur/setup-php@v2
@@ -47,8 +43,10 @@ jobs:
           image="ghcr.io/${GITHUB_REPOSITORY,,}"
           version="${GITHUB_REF_NAME#v}"
           echo "image=$image" >> "$GITHUB_OUTPUT"
+          echo "updater_image=${image}-updater" >> "$GITHUB_OUTPUT"
           echo "version=$version" >> "$GITHUB_OUTPUT"
-      - id: image
+      - id: app_image
+        name: Logbuch-Image bauen
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -57,43 +55,48 @@ jobs:
           tags: |
             ${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.version }}
             ${{ steps.meta.outputs.image }}:stable
+      - id: updater_image
+        name: AIO-Updater-Image bauen
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/updater/Dockerfile
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: |
+            ${{ steps.meta.outputs.updater_image }}:${{ steps.meta.outputs.version }}
+            ${{ steps.meta.outputs.updater_image }}:stable
       - name: Release-Paket bauen und signieren
         env:
           UPDATE_SIGNING_PRIVATE_KEY: ${{ secrets.UPDATE_SIGNING_PRIVATE_KEY }}
-          MAKELOG_RELEASE_REPOSITORY: johannesboernsen/make-log-releases
+          LOGBUCH_RELEASE_REPOSITORY: ${{ github.repository }}
         run: |
-          node tools/build-release.mjs "${{ steps.meta.outputs.version }}" "${{ steps.meta.outputs.image }}" "${{ steps.image.outputs.digest }}"
+          node tools/build-release.mjs \
+            "${{ steps.meta.outputs.version }}" \
+            "${{ steps.meta.outputs.image }}" \
+            "${{ steps.app_image.outputs.digest }}" \
+            "${{ steps.meta.outputs.updater_image }}" \
+            "${{ steps.updater_image.outputs.digest }}"
           printf '%s' "$UPDATE_SIGNING_PRIVATE_KEY" > "$RUNNER_TEMP/update-private.pem"
           openssl dgst -sha256 -sign "$RUNNER_TEMP/update-private.pem" -out "$RUNNER_TEMP/update-manifest.sig.bin" dist/update-manifest.json
           base64 -w0 "$RUNNER_TEMP/update-manifest.sig.bin" > dist/update-manifest.sig
-      - uses: actions/attest@v4
-        if: github.event.repository.private == false
-        with:
-          subject-path: dist/makelog-web-${{ steps.meta.outputs.version }}.tar
-      - uses: actions/attest@v4
-        if: github.event.repository.private == false
-        with:
-          subject-name: ${{ steps.meta.outputs.image }}
-          subject-digest: ${{ steps.image.outputs.digest }}
-          push-to-registry: true
       - name: Signierte Release-Dateien sichern
         uses: actions/upload-artifact@v4
         with:
-          name: makelog-release-${{ steps.meta.outputs.version }}
+          name: logbuch-release-${{ steps.meta.outputs.version }}
           path: |
-            dist/makelog-web-${{ steps.meta.outputs.version }}.tar
+            dist/logbuch-web-${{ steps.meta.outputs.version }}.tar
             dist/update-manifest.json
             dist/update-manifest.sig
             dist/checksums.txt
           if-no-files-found: error
       - name: GitHub Release veröffentlichen
-        if: env.RELEASE_REPOSITORY_TOKEN != ''
         env:
-          GH_TOKEN: ${{ env.RELEASE_REPOSITORY_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release create "$GITHUB_REF_NAME" \
-            --repo johannesboernsen/make-log-releases \
-            --title "Make:Log ${{ steps.meta.outputs.version }}" \
-            --notes "Signiertes Update für Make:Log ${{ steps.meta.outputs.version }}." \
-            "dist/makelog-web-${{ steps.meta.outputs.version }}.tar" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Logbuch ${{ steps.meta.outputs.version }}" \
+            --notes "Signiertes Update für Version ${{ steps.meta.outputs.version }} des Logbuchs." \
+            "dist/logbuch-web-${{ steps.meta.outputs.version }}.tar" \
             dist/update-manifest.json dist/update-manifest.sig dist/checksums.txt
