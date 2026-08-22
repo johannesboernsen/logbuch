@@ -81,7 +81,7 @@ test('Systemstatus bleibt bei einem unlesbaren Laufzeitverzeichnis verfügbar', 
   try {
     const status = await request('/api/system');
     assert.equal(status.response.status, 200, `${JSON.stringify(status.data)}\n${serverErrors.slice(-4000)}`);
-    assert.equal(status.data.version, '0.3.2');
+    assert.equal(status.data.version, (await readFile(join(root, 'VERSION'), 'utf8')).trim());
   } finally {
     await chmod(inaccessible, 0o700);
     await rm(inaccessible, { recursive: true, force: true });

@@ -37,6 +37,8 @@ Hat der PHP-Benutzer keine Schreibrechte auf den Installationsordner, bleibt die
 
 Der Webprozess und der App-Container erhalten keinen Zugriff auf `/var/run/docker.sock`. Nur der kleine, nicht über das Netzwerk erreichbare Updater-Container besitzt diesen Zugriff. SSH, Cron und Hostskripte sind nicht erforderlich.
 
+Nach der Passwortbestätigung bleibt eine Fortschrittsansicht geöffnet. Der Browser toleriert die erwartete kurze Unterbrechung, prüft die installierte Version regelmäßig und lädt die Seite automatisch neu, sobald die Zielversion erreichbar ist. Nach drei Minuten ohne eindeutiges Ergebnis wird stattdessen eine Schaltfläche zum manuellen Neuladen angeboten.
+
 ## Konfiguration für Forks
 
 Folgende Werte werden ausschließlich in der Server- oder Container-Konfiguration gesetzt und sind bewusst nicht über die Weboberfläche änderbar:

@@ -615,6 +615,18 @@ a.tag-chip:hover { color:var(--red); background:var(--red-soft); }
 dialog { width:min(560px,calc(100% - 28px)); max-height:calc(100vh - 28px); padding:0; overflow:auto; border:0; border-radius:20px; background:var(--surface); box-shadow:0 25px 90px rgba(20,25,21,.25); }
 dialog::backdrop { background:rgba(25,29,25,.48); backdrop-filter:blur(3px); }
 dialog form { padding:26px; display:grid; gap:20px; }
+#update-confirmation { display:grid; gap:20px; }
+#update-confirmation[hidden],.update-progress[hidden] { display:none; }
+.update-progress { min-height:180px; display:grid; grid-template-columns:40px minmax(0,1fr); align-content:center; align-items:start; gap:16px; }
+.update-progress-spinner { width:34px; height:34px; border:4px solid #f0d2d0; border-top-color:var(--brand-red); border-radius:50%; animation:update-spin .8s linear infinite; }
+.update-progress h3 { margin:2px 0 7px; font-size:17px; }
+.update-progress p { margin:0; color:var(--muted); font-size:13px; line-height:1.55; }
+.update-progress .button { grid-column:2; justify-self:start; margin-top:2px; }
+.update-progress .button[hidden] { display:none; }
+.update-progress.failed .update-progress-spinner { border:0; display:grid; place-items:center; color:var(--red); background:var(--red-soft); animation:none; }
+.update-progress.failed .update-progress-spinner::before { content:'!'; font-weight:800; }
+@keyframes update-spin { to { transform:rotate(360deg); } }
+@media (prefers-reduced-motion:reduce) { .update-progress-spinner { animation-duration:1.8s; } }
 #project-form { gap:15px; }
 #project-form .project-tag-picker { gap:5px; }
 #project-tag-options { height:96px; }

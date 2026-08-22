@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#f6f7f9">
   <title>Logbuch</title>
   <link rel="icon" href="/favicon.svg?v=20260822-2" type="image/svg+xml">
-  <link rel="stylesheet" href="/styles.css?v=20260822-208">
+  <link rel="stylesheet" href="/styles.css?v=20260822-209">
 </head>
 <body>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
@@ -157,11 +157,18 @@
 
   <dialog id="update-dialog">
     <form id="update-form" method="dialog">
-      <div class="dialog-head"><div><h2>Das Logbuch aktualisieren</h2></div><button class="icon-button" type="button" value="cancel" aria-label="Schließen">×</button></div>
-      <p id="update-dialog-copy" class="dialog-copy"></p>
-      <label>Administratorpasswort<input name="password" type="password" autocomplete="current-password" required></label>
-      <p id="update-error" class="form-error"></p>
-      <div class="dialog-actions"><button class="button secondary" type="button" value="cancel">Abbrechen</button><button class="button primary" type="submit">Update installieren</button></div>
+      <div class="dialog-head"><div><h2>Das Logbuch aktualisieren</h2></div><button class="icon-button" id="update-close" type="button" value="cancel" aria-label="Schließen">×</button></div>
+      <div id="update-confirmation">
+        <p id="update-dialog-copy" class="dialog-copy"></p>
+        <label>Administratorpasswort<input name="password" type="password" autocomplete="current-password" required></label>
+        <p id="update-error" class="form-error"></p>
+        <div class="dialog-actions"><button class="button secondary" type="button" value="cancel">Abbrechen</button><button class="button primary" type="submit">Update installieren</button></div>
+      </div>
+      <section id="update-progress" class="update-progress" aria-live="polite" aria-busy="true" hidden>
+        <span class="update-progress-spinner" aria-hidden="true"></span>
+        <div><h3 id="update-progress-title">Update wird vorbereitet …</h3><p id="update-progress-copy">Die Aktualisierung wird gestartet.</p></div>
+        <button class="button primary" id="update-manual-reload" type="button" hidden>Seite neu laden</button>
+      </section>
     </form>
   </dialog>
 
@@ -186,6 +193,7 @@
   </dialog>
 
   <script src="/backup-format.js?v=20260822-141" defer></script>
-  <script src="/app.js?v=20260822-141" defer></script>
+  <script src="/update-monitor.js?v=20260822-001" defer></script>
+  <script src="/app.js?v=20260822-142" defer></script>
 </body>
 </html>

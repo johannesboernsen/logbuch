@@ -7,7 +7,11 @@ const api = async (path, options = {}) => {
   const response = await fetch(`/api${path}`, { ...options, headers: { 'Content-Type': 'application/json', ...csrf, ...(options.headers || {}) } });
   if (response.status === 204) return null;
   const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.error || 'Etwas ist schiefgegangen');
+  if (!response.ok) {
+    const error = new Error(data.error || 'Etwas ist schiefgegangen');
+    error.status = response.status;
+    throw error;
+  }
   return data;
 };
 const escapeHtml = value => String(value ?? '').replace(/[&<>'"]/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[char]));
@@ -2437,6 +2441,70 @@ function bindSecurityActions() {
   });
 }
 
+function resetUpdateDialog() {
+  const dialog = $('#update-dialog');
+  dialog.dataset.updating = 'false';
+  dialog.oncancel = event => { if (dialog.dataset.updating === 'true') event.preventDefault(); };
+  $('#update-confirmation').hidden = false;
+  $('#update-progress').hidden = true;
+  $('#update-progress').classList.remove('failed');
+  $('#update-progress').setAttribute('aria-busy', 'false');
+  $('#update-close').hidden = false;
+  $('#update-manual-reload').hidden = true;
+}
+
+function showUpdateProgress(title, copy, { failed = false, allowClose = false, manualReload = false } = {}) {
+  const dialog = $('#update-dialog');
+  dialog.dataset.updating = allowClose ? 'false' : 'true';
+  $('#update-confirmation').hidden = true;
+  const progress = $('#update-progress');
+  progress.hidden = false;
+  progress.classList.toggle('failed', failed);
+  progress.setAttribute('aria-busy', !failed && !allowClose ? 'true' : 'false');
+  $('#update-progress-title').textContent = title;
+  $('#update-progress-copy').textContent = copy;
+  $('#update-close').hidden = !allowClose;
+  $('#update-manual-reload').hidden = !manualReload;
+}
+
+async function monitorRequestedUpdate(targetVersion) {
+  const result = await LogbuchUpdateMonitor.waitForVersion({
+    targetVersion,
+    check:async () => {
+      const response = await fetch('/api/update/status', { headers:{ Accept:'application/json' }, cache:'no-store' });
+      if (!response.ok) throw new Error('Das Logbuch ist noch nicht erreichbar.');
+      return response.json();
+    },
+    onAttempt:({ reachable, elapsedMs }) => {
+      const seconds = Math.max(1, Math.round(elapsedMs / 1000));
+      showUpdateProgress(
+        reachable ? 'Update wird installiert …' : 'Das Logbuch wird neu gestartet …',
+        reachable
+          ? `Der AIO-Updater arbeitet weiter. Die neue Version wird automatisch geprüft. Seit ${seconds} Sekunden.`
+          : 'Die kurze Unterbrechung ist erwartet. Diese Seite prüft automatisch, wann das Logbuch wieder erreichbar ist.',
+      );
+    },
+  });
+  if (result.outcome === 'complete') {
+    showUpdateProgress('Update abgeschlossen', `Version ${targetVersion} ist erreichbar. Die Seite wird jetzt automatisch neu geladen.`);
+    setTimeout(() => location.reload(), 900);
+    return;
+  }
+  if (result.outcome === 'failed') {
+    showUpdateProgress(
+      'Das Update ist fehlgeschlagen',
+      result.status?.stateMessage || 'Die vorherige Version ist weiterhin aktiv. Lade die Seite neu, um den aktuellen Zustand anzuzeigen.',
+      { failed:true, allowClose:true, manualReload:true },
+    );
+    return;
+  }
+  showUpdateProgress(
+    'Das Update dauert länger als erwartet',
+    'Die automatische Prüfung wurde beendet. Der Update-Prozess kann im Hintergrund noch laufen. Lade die Seite in einigen Augenblicken manuell neu.',
+    { allowClose:true, manualReload:true },
+  );
+}
+
 function bindSystemActions() {
   const checkButton = $('[data-check-update]');
   if (checkButton) checkButton.onclick = async () => {
@@ -2453,6 +2521,7 @@ function bindSystemActions() {
     const dialog = $('#update-dialog');
     const form = $('#update-form');
     form.reset();
+    resetUpdateDialog();
     $('#update-error').textContent = '';
     $('#update-dialog-copy').textContent = update.platform === 'docker'
       ? `Version ${update.latestVersion} wird beim AIO-Updater angefordert. Der Anwendungscontainer erhält dabei keinen Zugriff auf den Docker-Socket.`
@@ -3101,28 +3170,40 @@ $('#update-form').addEventListener('submit', async event => {
   const form = event.currentTarget;
   const error = $('#update-error');
   const submit = form.querySelector('button[type="submit"]');
+  const targetVersion = state.update?.latestVersion || '';
+  const platform = state.update?.platform || '';
   error.textContent = '';
   submit.disabled = true;
-  submit.textContent = state.update?.platform === 'docker' ? 'Update wird angefordert …' : 'Update wird installiert …';
+  submit.textContent = platform === 'docker' ? 'Update wird angefordert …' : 'Update wird installiert …';
+  showUpdateProgress(
+    platform === 'docker' ? 'Update wird vorbereitet …' : 'Update wird installiert …',
+    platform === 'docker'
+      ? `Version ${targetVersion} wird sicher an den AIO-Updater übergeben.`
+      : `Version ${targetVersion} wird geprüft, gesichert und installiert.`,
+  );
   try {
     const result = await api('/update/install', { method:'POST', body:JSON.stringify({ password:form.elements.password.value }) });
-    $('#update-dialog').close();
     form.reset();
     if (result.reload) {
-      toast('Update installiert · Das Logbuch wird neu geladen');
-      setTimeout(() => location.reload(), 700);
+      showUpdateProgress('Update abgeschlossen', `Version ${targetVersion} wurde installiert. Die Seite wird jetzt automatisch neu geladen.`);
+      setTimeout(() => location.reload(), 900);
       return;
     }
-    toast('Docker-Update wurde angefordert');
-    await loadUpdateStatus();
-    await renderSettings();
+    await monitorRequestedUpdate(targetVersion);
   } catch (cause) {
+    if (!cause.status) {
+      await monitorRequestedUpdate(targetVersion);
+      return;
+    }
+    resetUpdateDialog();
     error.textContent = cause.message;
+    form.elements.password.focus();
   } finally {
     submit.disabled = false;
     submit.textContent = 'Update installieren';
   }
 });
+$('#update-manual-reload').onclick = () => location.reload();
 $('#logout').onclick = async () => { await api('/logout', { method:'POST' }); location.reload(); };
 $('#settings-toggle').onclick = () => {
   const open = $('#settings-toggle').getAttribute('aria-expanded') !== 'true';
@@ -3150,7 +3231,11 @@ $('#projects-toggle').onclick = async () => {
   setProjectsMenu(open, currentProjectMenuStatus());
 };
 $('#menu-button').onclick = () => $('.sidebar').classList.toggle('open');
-document.querySelectorAll('dialog button[value="cancel"]').forEach(button => button.addEventListener('click', event => { event.preventDefault(); button.closest('dialog').close(); }));
+document.querySelectorAll('dialog button[value="cancel"]').forEach(button => button.addEventListener('click', event => {
+  event.preventDefault();
+  const dialog = button.closest('dialog');
+  if (dialog.dataset.updating !== 'true') dialog.close();
+}));
 window.addEventListener('hashchange', () => { $('.sidebar').classList.remove('open'); route(); });
 document.addEventListener('click', event => {
   document.querySelectorAll('.action-menu[open]').forEach(menu => { if (!menu.contains(event.target)) menu.removeAttribute('open'); });
