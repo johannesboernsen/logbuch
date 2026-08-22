@@ -1,5 +1,5 @@
 const $ = (selector, root = document) => root.querySelector(selector);
-const state = { user: null, users: [], sessions: [], audit: [], tags: [], folders: [], iconLibrary:null, currentFolderId:null, projectStatusFilter:'all', server: null, system: null, update:null, projects: [], current: null, activeTab: 'entries', activeSettings:'general', activityObserver:null, timelineObserver:null, overviewGridObservers:[], projectSort: { field:'status', direction:'asc' }, archiveSort: { field:'createdAt', direction:'desc' }, projectSearch: { active:'', archived:'' }, projectTagFilter:{ active:{ ids:[], mode:'all' }, archived:{ ids:[], mode:'all' } }, projectDialogTagIds:[], projectTagDraftOpen:false, projectTagSearchOpen:false, collapsedLogSections:{ tasks:false, entries:false } };
+const state = { user: null, users: [], sessions: [], audit: [], tags: [], folders: [], iconLibrary:null, currentFolderId:null, projectStatusFilter:'all', server: null, system: null, update:null, projects: [], current: null, activeTab: 'entries', activeSettings:'general', activityObserver:null, timelineObserver:null, overviewGridObservers:[], projectSort: { field:'status', direction:'asc' }, archiveSort: { field:'createdAt', direction:'desc' }, projectSearch: { active:'', archived:'' }, projectTagFilter:{ active:{ ids:[], mode:'all' }, archived:{ ids:[], mode:'all' } }, projectDialogTagIds:[], projectTagDraftOpen:false, projectTagSearchOpen:false, collapsedProjectFolders:false, collapsedProjectStatusGroups:{ idea:false, active:false, paused:false, completed:false }, collapsedLogSections:{ tasks:false, entries:false } };
 let iconLibraryPromise = null;
 const api = async (path, options = {}) => {
   const method = (options.method || 'GET').toUpperCase();
@@ -296,19 +296,21 @@ const itemCount = (collection, count) => {
   const value = count < 10 ? countWords[count][0].toUpperCase() + countWords[count].slice(1) : String(count);
   return `${value} ${config.plural}`;
 };
-const regularProjectStatuses = ['active','paused','completed'];
-const projectStatusLabels = { active:'Aktiv', paused:'Pausiert', completed:'Abgeschlossen', archived:'Archiviert', trashed:'Papierkorb' };
+const regularProjectStatuses = ['idea','active','paused','completed'];
+const projectStatusLabels = { idea:'Idee', active:'Aktiv', paused:'Pausiert', completed:'Abgeschlossen', archived:'Archiviert', trashed:'Papierkorb' };
 const projectPriority = project => ['Hoch','Mittel','Gering'].includes(project?.priority) ? project.priority : 'Mittel';
 const projectPriorityMarkup = project => `<span class="project-priority ${projectPriority(project).toLocaleLowerCase('de')}">${escapeHtml(projectPriority(project))}</span>`;
 const projectStatusControl = project => mayEditProjects()
-  ? `<select class="project-inline-select project-status ${escapeHtml(project.status)}" data-project-inline-status="${escapeHtml(project.id)}" aria-label="Status von ${escapeHtml(project.title)} ändern">${['active','paused','completed','archived'].map(status => `<option value="${status}"${project.status === status ? ' selected' : ''}>${projectStatusLabels[status]}</option>`).join('')}</select>`
+  ? `<select class="project-inline-select project-status ${escapeHtml(project.status)}" data-project-inline-status="${escapeHtml(project.id)}" aria-label="Status von ${escapeHtml(project.title)} ändern">${['idea','active','paused','completed','archived'].map(status => `<option value="${status}"${project.status === status ? ' selected' : ''}>${projectStatusLabels[status]}</option>`).join('')}</select>`
   : `<span class="project-status ${escapeHtml(project.status)}">${escapeHtml(projectStatusLabels[project.status] || project.status)}</span>`;
 const projectPriorityControl = project => mayEditProjects()
   ? `<select class="project-inline-select project-priority ${projectPriority(project).toLocaleLowerCase('de')}" data-project-inline-priority="${escapeHtml(project.id)}" aria-label="Priorität von ${escapeHtml(project.title)} ändern">${['Hoch','Mittel','Gering'].map(priority => `<option value="${priority}"${projectPriority(project) === priority ? ' selected' : ''}>${priority}</option>`).join('')}</select>`
   : projectPriorityMarkup(project);
 const projectFlagIcon = () => '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6 21V4"></path><path d="M6 5h10l-2 3 2 3H6Z"></path></svg>';
 const editIcon = () => '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.4 2.6a1 1 0 0 1 3 3l-9 9a2 2 0 0 1-.9.5l-2.9.9a.5.5 0 0 1-.6-.6l.9-2.9a2 2 0 0 1 .5-.9Z"></path></svg>';
+const printIcon = () => '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M7 9V3h10v6"></path><path d="M7 18H5a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><path d="M7 14h10v7H7Z"></path><path d="M17.5 12h.01"></path></svg>';
 const projectEditButton = project => mayEditProjects() ? `<button class="edit-action" type="button" data-edit-project="${escapeHtml(project.id)}" aria-label="Projekt bearbeiten" title="Projekt bearbeiten">${editIcon()}</button>` : '';
+const projectPrintButton = project => `<a class="edit-action project-print-action" href="/#/projects/${encodeURIComponent(project.id)}/print" target="_blank" rel="noopener" aria-label="Projekt drucken oder als PDF speichern" title="Drucken / PDF">${printIcon()}</a>`;
 const folderEditButton = folder => mayEditProjects() ? `<button class="edit-action" type="button" data-edit-folder="${escapeHtml(folder.id)}" aria-label="Ordner bearbeiten" title="Ordner bearbeiten">${editIcon()}</button>` : '';
 const itemEditButton = (collection, id, label = 'Arbeitsschritt') => `<button class="edit-action" type="button" data-edit-item="${collection}:${escapeHtml(id)}" aria-label="${escapeHtml(label)} bearbeiten" title="${escapeHtml(label)} bearbeiten">${editIcon()}</button>`;
 const entryEditButton = id => `<button class="edit-action" type="button" data-edit-entry="${escapeHtml(id)}" aria-label="Arbeitsschritt bearbeiten" title="Arbeitsschritt bearbeiten">${editIcon()}</button>`;
@@ -451,8 +453,8 @@ function updateProjectMenuCounts() {
   const counts = state.projects.reduce((result, project) => {
     if (Object.hasOwn(result, project.status)) result[project.status] += 1;
     return result;
-  }, { active:0, paused:0, completed:0, archived:0, trashed:0 });
-  counts.all = counts.active + counts.paused + counts.completed;
+  }, { idea:0, active:0, paused:0, completed:0, archived:0, trashed:0 });
+  counts.all = counts.idea + counts.active + counts.paused + counts.completed;
   document.querySelectorAll('[data-project-count]').forEach(node => { node.textContent = counts[node.dataset.projectCount] ?? 0; });
 }
 
@@ -483,10 +485,24 @@ function projectCard(project, archived = false, showFolder = false) {
   const tagNames = (project.tagIds || []).map(tagById).filter(Boolean).map(tag => tag.name);
   const folderPath = showFolder ? folderPathLabel(project.folderId) : '';
   const searchText = [project.title, project.description, project.latestEntryTitle, project.latestEntryBody, folderPath, ...nextSteps, ...tagNames].filter(Boolean).join(' ').toLocaleLowerCase('de');
-  return `<article class="project-card" data-project-card data-project-tags="${escapeHtml((project.tagIds || []).join(','))}" data-project-search="${escapeHtml(searchText)}">
+  return `<article class="project-card" data-project-card data-project-card-status="${escapeHtml(project.status)}" data-project-tags="${escapeHtml((project.tagIds || []).join(','))}" data-project-search="${escapeHtml(searchText)}">
     <a class="project-card-content" href="/#/projects/${encodeURIComponent(project.id)}"><div class="entity-card-lead"><span class="project-entity-icon" aria-hidden="true">${iconSvg(projectIconName(project))}</span><span class="entity-card-copy"><h3>${escapeHtml(project.title)}</h3><p>${escapeHtml(project.description || 'Noch keine Beschreibung hinterlegt.')}</p></span></div><div class="project-next-step"><small>Nächste anstehende Schritte</small>${nextSteps.length ? `<ul class="project-next-steps">${nextSteps.map(step => `<li>${escapeHtml(step)}</li>`).join('')}</ul>` : '<strong>Kein nächster Schritt hinterlegt</strong>'}</div></a>
-    <aside class="project-card-status" aria-label="Projektstatus"><div class="project-card-actions">${projectCardActions(project)}</div><div class="project-status-row"><small>Status</small>${projectStatusControl(project)}</div><div class="project-status-row"><small>Priorität</small>${projectPriorityControl(project)}</div><div class="project-status-row"><small>Fälligkeit</small><span class="project-status-value">${project.dueDate ? formatDate(project.dueDate) : 'ohne'}</span></div>${folderPath ? `<div class="project-status-row project-status-folder"><small>Ordner</small><a href="${folderHref(project.folderId)}" title="Ordner öffnen">${escapeHtml(folderPath)}</a></div>` : ''}<div class="project-status-row project-status-tags"><small>Tags</small>${tagChips(project.tagIds, { archived }) || '<span class="project-status-empty">Keine</span>'}</div></aside>
+    <aside class="project-card-status" aria-label="Projektstatus"><div class="project-card-actions">${projectCardActions(project)}</div><div class="project-status-row"><small>Status</small>${projectStatusControl(project)}</div><div class="project-status-row"><small>Priorität</small>${projectPriorityControl(project)}</div><div class="project-status-row"><small>Startdatum</small><span class="project-status-value">${project.createdAt ? formatDate(project.createdAt) : 'ohne'}</span></div><div class="project-status-row"><small>Fälligkeit</small><span class="project-status-value">${project.dueDate ? formatDate(project.dueDate) : 'ohne'}</span></div>${folderPath ? `<div class="project-status-row project-status-folder"><small>Ordner</small><a href="${folderHref(project.folderId)}" title="Ordner öffnen">${escapeHtml(folderPath)}</a></div>` : ''}<div class="project-status-row project-status-tags"><small>Tags</small>${tagChips(project.tagIds, { archived }) || '<span class="project-status-empty">Keine</span>'}</div></aside>
   </article>`;
+}
+
+function projectCards(projects, archived = false, showFolder = false, separateStatuses = false) {
+  let previousStatus = '';
+  return projects.map(project => {
+    const startsStatusGroup = separateStatuses && project.status !== previousStatus;
+    const statusGroupLabels = { idea:'Projektideen', active:'Aktive Projekte', paused:'Pausierte Projekte', completed:'Abgeschlossene Projekte' };
+    const collapsed = state.collapsedProjectStatusGroups[project.status] === true;
+    const divider = startsStatusGroup
+      ? `<div class="project-status-divider" data-project-status-divider="${escapeHtml(project.status)}"><button type="button" data-toggle-project-status-group="${escapeHtml(project.status)}" aria-expanded="${!collapsed}"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="m6 8 4 4 4-4"></path></svg><span>${escapeHtml(statusGroupLabels[project.status] || 'Projekte')}</span></button></div>`
+      : '';
+    previousStatus = project.status;
+    return `${divider}${projectCard(project, archived, showFolder)}`;
+  }).join('');
 }
 
 const folderById = id => state.folders.find(folder => folder.id === id);
@@ -575,7 +591,7 @@ function sortedProjects(projects, sort = state.projectSort) {
   const factor = direction === 'asc' ? 1 : -1;
   return [...projects].sort((a, b) => {
     if (field === 'status') {
-      const statusOrder = { active:0, paused:1, completed:2, archived:3, trashed:4 };
+      const statusOrder = { idea:0, active:1, paused:2, completed:3, archived:4, trashed:5 };
       const statusComparison = (statusOrder[a.status] ?? 99) - (statusOrder[b.status] ?? 99);
       if (statusComparison) return statusComparison * factor;
       const createdComparison = String(projectCreatedAt(b) || '').localeCompare(String(projectCreatedAt(a) || ''), 'de', { numeric:true });
@@ -600,7 +616,7 @@ function sortedProjects(projects, sort = state.projectSort) {
 }
 
 const projectSortOptions = includeStatus => [
-  ...(includeStatus ? [['status:asc','Status · Aktiv → Pausiert → Abgeschlossen']] : []),
+  ...(includeStatus ? [['status:asc','Status · Idee → Aktiv → Pausiert → Abgeschlossen']] : []),
   ['priority:desc','Priorität · Hoch → Gering'],
   ['priority:asc','Priorität · Gering → Hoch'],
   ['dueDate:asc','Fälligkeit · früheste zuerst'],
@@ -654,17 +670,45 @@ function applyProjectSearch(archived) {
   const key = archived ? 'archived' : 'active';
   const query = state.projectSearch[key].trim().toLocaleLowerCase('de');
   const filter = state.projectTagFilter[key];
+  const groupedByStatus = !archived && state.projectStatusFilter === 'all' && state.projectSort.field === 'status';
   let visible = 0;
   document.querySelectorAll('[data-project-card]').forEach(card => {
     const cardTags = new Set((card.dataset.projectTags || '').split(',').filter(Boolean));
     const tagMatches = !filter.ids.length || (filter.mode === 'any' ? filter.ids.some(id => cardTags.has(id)) : filter.ids.every(id => cardTags.has(id)));
     const matches = (!query || card.dataset.projectSearch.includes(query)) && tagMatches;
-    card.classList.toggle('hidden', !matches);
+    const collapsed = groupedByStatus && state.collapsedProjectStatusGroups[card.dataset.projectCardStatus] === true;
+    card.dataset.projectFilterMatch = String(matches);
+    card.classList.toggle('hidden', !matches || collapsed);
     if (matches) visible += 1;
+  });
+  document.querySelectorAll('[data-project-status-divider]').forEach(divider => {
+    const statusVisible = [...document.querySelectorAll('[data-project-card]')]
+      .some(card => card.dataset.projectCardStatus === divider.dataset.projectStatusDivider && card.dataset.projectFilterMatch === 'true');
+    divider.classList.toggle('hidden', !statusVisible);
   });
   const filtering = Boolean(query || filter.ids.length);
   const noResults = $('#project-no-results');
   if (noResults) noResults.classList.toggle('hidden', !filtering || visible > 0);
+}
+
+function bindProjectStatusGroups() {
+  document.querySelectorAll('[data-toggle-project-status-group]').forEach(button => button.onclick = () => {
+    const status = button.dataset.toggleProjectStatusGroup;
+    state.collapsedProjectStatusGroups[status] = !state.collapsedProjectStatusGroups[status];
+    button.setAttribute('aria-expanded', String(!state.collapsedProjectStatusGroups[status]));
+    applyProjectSearch(false);
+  });
+}
+
+function bindProjectFolderGroup() {
+  const button = $('[data-toggle-project-folder-group]');
+  if (!button) return;
+  button.onclick = () => {
+    state.collapsedProjectFolders = !state.collapsedProjectFolders;
+    button.setAttribute('aria-expanded', String(!state.collapsedProjectFolders));
+    const content = $('[data-project-folder-group]');
+    if (content) content.classList.toggle('hidden', state.collapsedProjectFolders);
+  };
 }
 
 function updateTagFilterUrl(archived) {
@@ -1238,7 +1282,7 @@ async function renderHome(keepMenuOpen = false) {
   const entries = stats.entries4Weeks;
   const sectionMarkup = {
     summary:showSummary ? `<section class="overview-work-section overview-section" aria-label="Statistik"><div class="section-head"><h2>Statistik</h2></div><div class="stats">${[
-      statCard('active-projects', 'Aktive Projekte', activeProjects.length, 'aktuell in Arbeit', 'Gezählt werden alle Projekte mit dem Status „Aktiv“. Pausierte, abgeschlossene, archivierte und gelöschte Projekte bleiben unberücksichtigt. Die Zahl zeigt, wie viele Vorhaben gleichzeitig Aufmerksamkeit benötigen.'),
+      statCard('active-projects', 'Aktive Projekte', activeProjects.length, 'aktuell in Arbeit', 'Gezählt werden alle Projekte mit dem Status „Aktiv“. Projektideen, pausierte, abgeschlossene, archivierte und gelöschte Projekte bleiben unberücksichtigt. Die Zahl zeigt, wie viele Vorhaben gleichzeitig Aufmerksamkeit benötigen.'),
       statCard('open-tasks', 'Offene Arbeitsschritte', stats.openTaskCount, 'in aktiven Projekten', 'Gezählt werden alle Arbeitsschritte in aktiven Projekten, deren Status nicht „Erledigt“ ist. Fälligkeit und Priorität spielen dabei keine Rolle. Die Zahl zeigt die Größe des aktuellen Arbeitsvorrats und kann auf zu viele gleichzeitig geplante Aufgaben hinweisen.'),
       statCard('overdue-tasks', 'Überfällige Arbeitsschritte', stats.overdueTaskCount, 'offen und vor heute fällig', 'Gezählt werden offene Arbeitsschritte in aktiven Projekten, deren Fälligkeitsdatum vor dem heutigen Tag liegt. Heute fällige Schritte gelten noch nicht als überfällig. Die Zahl macht sichtbar, wo Termine geprüft, neu geplant oder Arbeitsschritte abgeschlossen werden sollten.'),
       statCard('inactive-projects', 'Projekte ohne Aktivität', stats.inactiveProjectCount, 'seit mindestens 4 Wochen', 'Gezählt werden aktive Projekte, deren letzte gespeicherte Änderung länger als 4 Wochen zurückliegt. Dazu zählen Änderungen am Projekt und seinen Inhalten. Die Zahl hilft, festgefahrene Vorhaben zu entdecken und zu entscheiden, ob sie weitergeführt, pausiert oder abgeschlossen werden sollten.'),
@@ -1301,14 +1345,18 @@ async function renderProjects() {
   }));
   const folders = showFolders ? state.folders.filter(folder => folder.parentId === state.currentFolderId).sort((a,b) => a.name.localeCompare(b.name, 'de', { sensitivity:'base' })) : [];
   const currentFolder = folderById(state.currentFolderId);
-  const title = { all:'Alle', active:'Aktiv', paused:'Pausiert', completed:'Abgeschlossen' }[state.projectStatusFilter] || 'Alle';
+  const title = { all:'Alle', idea:'Idee', active:'Aktiv', paused:'Pausiert', completed:'Abgeschlossen' }[state.projectStatusFilter] || 'Alle';
+  const separateStatuses = state.projectStatusFilter === 'all' && state.projectSort.field === 'status';
+  const collapsibleFolders = state.projectStatusFilter === 'all';
+  const folderGroup = folders.length ? `${collapsibleFolders ? `<div class="project-status-divider"><button type="button" data-toggle-project-folder-group aria-expanded="${!state.collapsedProjectFolders}"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="m6 8 4 4 4-4"></path></svg><span>Ordner</span></button></div>` : ''}<div class="folder-grid${collapsibleFolders && state.collapsedProjectFolders ? ' hidden' : ''}" data-project-folder-group>${folders.map(folderCard).join('')}</div>` : '';
   $('#main').innerHTML = `${folderBreadcrumbs(state.currentFolderId)}<header class="page-head project-browser-head"><div><h1>${escapeHtml(title)}</h1>${currentFolder?.description ? `<p>${escapeHtml(currentFolder.description)}</p>` : ''}</div><div class="page-actions">${projectListControls(false, projects)}</div></header><div id="active-tag-filters">${selectedTagFiltersMarkup(false)}</div>
-    ${folders.length ? `<section class="folder-section"><div class="folder-grid">${folders.map(folderCard).join('')}</div></section>` : ''}
-    ${projects.length ? `<div class="project-grid project-list">${projects.map(project => projectCard(project, false, !showFolders)).join('')}</div><div id="project-no-results" class="empty hidden"><strong>Keine passenden Projekte gefunden.</strong>Versuche einen anderen Suchbegriff.</div>` : (!folders.length ? `<div class="empty"><strong>${currentFolder ? 'Dieser Ordner enthält keine passenden Projekte.' : state.projectStatusFilter === 'paused' ? 'Keine pausierten Projekte vorhanden.' : state.projectStatusFilter === 'completed' ? 'Noch keine abgeschlossenen Projekte vorhanden.' : state.projectStatusFilter === 'active' ? 'Keine aktiven Projekte vorhanden.' : 'Noch keine Projekte vorhanden.'}</strong></div>` : '')}`;
+    ${folders.length || projects.length ? `<div class="project-grid project-list">${folderGroup}${projectCards(projects, false, !showFolders, separateStatuses)}</div>${projects.length ? '<div id="project-no-results" class="empty hidden"><strong>Keine passenden Projekte gefunden.</strong>Versuche einen anderen Suchbegriff.</div>' : ''}` : `<div class="empty"><strong>${currentFolder ? 'Dieser Ordner enthält keine passenden Projekte.' : state.projectStatusFilter === 'idea' ? 'Noch keine Projektideen vorhanden.' : state.projectStatusFilter === 'paused' ? 'Keine pausierten Projekte vorhanden.' : state.projectStatusFilter === 'completed' ? 'Noch keine abgeschlossenen Projekte vorhanden.' : state.projectStatusFilter === 'active' ? 'Keine aktiven Projekte vorhanden.' : 'Noch keine Projekte vorhanden.'}</strong></div>`}`;
   bindNewProject();
   bindFolderActions();
   bindProjectListControls(false);
   bindTagFilterSummary();
+  bindProjectFolderGroup();
+  bindProjectStatusGroups();
   bindProjectActions();
 }
 
@@ -1316,7 +1364,7 @@ async function renderArchive() {
   await loadProjectBrowser();
   const projects = sortedProjects(state.projects.filter(project => project.status === 'archived'), state.archiveSort);
   $('#main').innerHTML = `<header class="page-head project-browser-head"><div><h1>Archiv</h1></div><div class="page-actions">${projectListControls(true, projects)}</div></header><div id="active-tag-filters">${selectedTagFiltersMarkup(true)}</div>
-    ${projects.length ? `<div class="project-grid project-list">${projects.map(project => projectCard(project, true)).join('')}</div><div id="project-no-results" class="empty hidden"><strong>Keine passenden Projekte gefunden.</strong>Versuche einen anderen Suchbegriff.</div>` : `<div class="empty"><strong>Das Archiv ist leer.</strong>Archivierte Projekte erscheinen hier und können jederzeit wiederhergestellt werden.</div>`}
+    ${projects.length ? `<div class="project-grid project-list">${projectCards(projects, true)}</div><div id="project-no-results" class="empty hidden"><strong>Keine passenden Projekte gefunden.</strong>Versuche einen anderen Suchbegriff.</div>` : `<div class="empty"><strong>Das Archiv ist leer.</strong>Archivierte Projekte erscheinen hier und können jederzeit wiederhergestellt werden.</div>`}
     <aside class="archive-note"><p>Das Archiv dient dazu, deine Projektliste übersichtlich zu halten. Archivierte Projekte und ihre Logs bleiben erhalten, werden in der Aktivitätsanzeige und der Projekt-Timeline in der Übersicht jedoch nicht mehr berücksichtigt.</p></aside>`;
   bindProjectListControls(true);
   bindTagFilterSummary();
@@ -1328,7 +1376,7 @@ function trashProjectCard(project) {
   const actions = mayEditProjects() ? `<details class="action-menu card-menu"><summary aria-label="Papierkorbaktionen">☰</summary><div class="action-menu-panel"><button class="menu-item" data-restore-project="${escapeHtml(project.id)}">Wiederherstellen</button><button class="menu-item danger" data-purge-project="${escapeHtml(project.id)}">Endgültig löschen</button></div></details>` : '';
   return `<article class="project-card trash-project-card" data-project-card>
     <div class="project-card-content"><div class="entity-card-lead"><span class="project-entity-icon" aria-hidden="true">${iconSvg(projectIconName(project))}</span><span class="entity-card-copy"><h3>${escapeHtml(project.title)}</h3><p>${escapeHtml(project.description || 'Noch keine Beschreibung hinterlegt.')}</p></span></div><div class="project-next-step trash-deleted-at"><small>In den Papierkorb verschoben</small><strong>${escapeHtml(deletedAt)}</strong></div></div>
-    <aside class="project-card-status" aria-label="Papierkorbstatus"><div class="project-card-actions">${actions}</div><div class="project-status-row"><small>Status</small><span class="project-status trashed">Papierkorb</span></div><div class="project-status-row"><small>Priorität</small>${projectPriorityMarkup(project)}</div><div class="project-status-row project-status-tags"><small>Tags</small>${tagChips(project.tagIds, { linked:false }) || '<span class="project-status-empty">Keine</span>'}</div></aside>
+    <aside class="project-card-status" aria-label="Papierkorbstatus"><div class="project-card-actions">${actions}</div><div class="project-status-row"><small>Status</small><span class="project-status trashed">Papierkorb</span></div><div class="project-status-row"><small>Priorität</small>${projectPriorityMarkup(project)}</div><div class="project-status-row"><small>Startdatum</small><span class="project-status-value">${project.createdAt ? formatDate(project.createdAt) : 'ohne'}</span></div><div class="project-status-row project-status-tags"><small>Tags</small>${tagChips(project.tagIds, { linked:false }) || '<span class="project-status-empty">Keine</span>'}</div></aside>
   </article>`;
 }
 
@@ -1899,6 +1947,108 @@ function diaryView(project) {
   return `<section class="next-steps-section"><div class="section-head"><h2>${taskHeading}</h2><div class="section-head-actions">${taskButton}${sectionToggle('tasks', taskHeading)}</div></div><div data-log-section-content="tasks"${state.collapsedLogSections.tasks ? ' hidden' : ''}>${tasks.length ? `<div class="next-steps-list" data-reorder-list="tasks">${tasks.map(taskCard).join('')}</div>` : '<div class="empty compact-empty">Füge einen Arbeitsschritt hinzu, wenn klar ist, wie es weitergeht.</div>'}</div></section><section class="diary-section"><div class="section-head"><h2>${entryHeading}</h2><div class="section-head-actions">${entryButton}${sectionToggle('entries', entryHeading)}</div></div><div data-log-section-content="entries"${state.collapsedLogSections.entries ? ' hidden' : ''}>${entriesView(project)}</div></section>`;
 }
 
+const printDate = value => value ? formatDate(String(value).slice(0, 10)) : 'ohne';
+const printText = value => String(value || '').trim() ? `<p>${escapeHtml(String(value).trim())}</p>` : '';
+const printLink = value => String(value || '').trim() ? `<a class="project-print-link" href="${escapeHtml(safeUrl(String(value).trim()))}">${escapeHtml(String(value).trim())}</a>` : '';
+
+function printRecordMeta(rows) {
+  return `<dl class="project-print-record-meta">${rows.filter(([, value]) => String(value ?? '').trim()).map(([label, value]) => `<div><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd></div>`).join('')}</dl>`;
+}
+
+function printRecord(title, rows = [], body = '') {
+  return `<article class="project-print-record"><h3>${escapeHtml(title)}</h3>${rows.length ? printRecordMeta(rows) : ''}${body}</article>`;
+}
+
+function printSection(title, items, emptyText = 'Keine Inhalte vorhanden.') {
+  return `<section class="project-print-section"><div class="project-print-section-head"><h2>${escapeHtml(title)}</h2><span>${items.length}</span></div>${items.length ? `<div class="project-print-records">${items.join('')}</div>` : `<p class="project-print-empty">${escapeHtml(emptyText)}</p>`}</section>`;
+}
+
+function printTaskRecord(task) {
+  return printRecord(task.title || 'Arbeitsschritt', [
+    ['Status', task.status || 'Offen'],
+    ['Priorität', task.priority || 'Normal'],
+    ['Fälligkeit', printDate(task.dueDate)],
+    ...(task.flagged === true ? [['Markiert', 'Ja']] : []),
+  ], printText(task.description));
+}
+
+function printEntryRecord(entry, sourceTask = null) {
+  return printRecord(entryTitle(entry), [
+    ['Erledigt am', printDate(entry.date)],
+    ['Bearbeitet von', entry.author || 'Unbekannt'],
+    ...(sourceTask ? [['Priorität', sourceTask.priority || 'Normal'], ['Ursprünglich fällig', printDate(sourceTask.dueDate)]] : []),
+  ], `${printText(entry.body)}${String(entry.nextStep || '').trim() ? `<div class="project-print-future"><strong>Nächster Schritt</strong>${printText(entry.nextStep)}</div>` : ''}`);
+}
+
+function printItemRecord(collection, item) {
+  if (collection === 'notes') return printRecord(item.title || 'Notiz', [], printText(item.description));
+  if (collection === 'materials') return printRecord(item.name || 'Material', [
+    ['Menge', item.quantity || 'ohne'],
+    ['Status', item.status || 'ohne'],
+    ['Preis', item.price || 'ohne'],
+  ], `${printText(item.properties)}${printLink(item.url)}`);
+  if (collection === 'contacts') return printRecord(item.name || 'Kontakt', [
+    ['Rolle', item.role || 'ohne'],
+    ['Firma', item.company || 'ohne'],
+    ['E-Mail', item.email || 'ohne'],
+    ['Telefon', item.phone || 'ohne'],
+  ], printText(item.notes));
+  if (collection === 'links') return printRecord(item.title || 'Link', [], `${printText(item.notes)}${printLink(item.url)}`);
+  if (collection === 'ideas') return printRecord(item.title || 'Idee', [['Status', item.status || 'Offen']], printText(item.description));
+  if (collection === 'learnings') return printRecord(item.title || 'Erkenntnis', [], `${printText(item.description)}${String(item.futureUse || '').trim() ? `<div class="project-print-future"><strong>Für die Zukunft</strong>${printText(item.futureUse)}</div>` : ''}`);
+  return printRecord(item.title || item.name || 'Eintrag');
+}
+
+function projectPrintMarkup(project) {
+  const allTasks = orderedItems(project.tasks || [], (a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+  const taskById = new Map(allTasks.map(task => [task.id, task]));
+  const orderedEntries = orderedItems(project.entries || [], (a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+  const entrySourceIds = new Set(orderedEntries.map(entry => entry.sourceTaskId).filter(Boolean));
+  const tasks = allTasks.filter(task => task.status !== 'Erledigt').map(printTaskRecord);
+  const entries = [
+    ...orderedEntries.map(entry => printEntryRecord(entry, taskById.get(entry.sourceTaskId) || null)),
+    ...allTasks.filter(task => task.status === 'Erledigt' && !entrySourceIds.has(task.id)).map(printTaskRecord),
+  ];
+  const tagNames = (project.tagIds || []).map(tagById).filter(Boolean).map(tag => tag.name).join(', ') || 'Keine';
+  const folderPath = folderPathLabel(project.folderId) || 'Kein Ordner';
+  const projectFacts = [
+    ['Status', projectStatusLabels[project.status] || project.status || 'ohne'],
+    ['Priorität', projectPriority(project)],
+    ['Startdatum', printDate(project.createdAt)],
+    ['Fälligkeit', printDate(project.dueDate)],
+    ...(project.completedAt ? [['Abgeschlossen am', printDate(project.completedAt)]] : []),
+    ['Ordner', folderPath],
+    ['Tags', tagNames],
+    ...(project.flagged === true ? [['Markiert', 'Ja']] : []),
+  ];
+  const logbook = `<section class="project-print-section project-print-logbook"><div class="project-print-section-head"><h2>Logbuch</h2><span>${tasks.length + entries.length}</span></div><div class="project-print-subsection"><h3>Anstehende Arbeitsschritte <span>${tasks.length}</span></h3>${tasks.length ? `<div class="project-print-records">${tasks.join('')}</div>` : '<p class="project-print-empty">Keine anstehenden Arbeitsschritte.</p>'}</div><div class="project-print-subsection"><h3>Erledigte Arbeitsschritte <span>${entries.length}</span></h3>${entries.length ? `<div class="project-print-records">${entries.join('')}</div>` : '<p class="project-print-empty">Keine erledigten Arbeitsschritte.</p>'}</div></section>`;
+  const itemSections = [
+    ['notes', 'Notizen'],
+    ['materials', 'Material'],
+    ['contacts', 'Kontakte'],
+    ['links', 'Links'],
+    ['ideas', 'Ideen'],
+    ['learnings', 'Erkenntnisse'],
+  ].map(([collection, label]) => {
+    const items = orderedItems(project[collection] || []).map(item => printItemRecord(collection, item));
+    return printSection(label, items);
+  }).join('');
+  return `<article class="project-print-sheet"><header class="project-print-header"><img src="/logbuch-logo.svg?v=20260822-3" alt="Logbuch"><p>Projektbericht</p><h1>${escapeHtml(project.title)}</h1><div class="project-print-description">${escapeHtml(project.description || 'Keine Projektbeschreibung hinterlegt.')}</div></header><section class="project-print-facts" aria-label="Projektstatus">${projectFacts.map(([label, value]) => `<div><small>${escapeHtml(label)}</small><strong>${escapeHtml(value)}</strong></div>`).join('')}</section>${logbook}${itemSections}<footer class="project-print-footer"><span>Logbuch</span><span>Erstellt am ${escapeHtml(formatDate(today()))}</span></footer></article>`;
+}
+
+async function renderProjectPrint(id) {
+  const view = await api(`/project-view/${encodeURIComponent(id)}`);
+  state.current = view.project;
+  state.tags = view.tags || [];
+  state.folders = view.folders || [];
+  const project = state.current;
+  document.body.classList.add('project-print-mode');
+  document.title = `${project.title} – Druckansicht – Logbuch`;
+  setProjectsMenu(true, project.status);
+  $('#main').innerHTML = `<div class="project-print-shell"><div class="project-print-toolbar"><a class="button secondary compact" href="/#/projects/${encodeURIComponent(project.id)}">Zurück zum Projekt</a><div><span>DIN A4 · Hochformat</span><button class="button primary compact" type="button" data-print-now>${printIcon()} Drucken / als PDF speichern</button></div></div>${projectPrintMarkup(project)}</div>`;
+  $('[data-print-now]').onclick = () => window.print();
+}
+
 async function renderProject(id) {
   const [view] = await Promise.all([api(`/project-view/${encodeURIComponent(id)}`), loadIconLibrary().catch(() => null)]);
   state.current = view.project;
@@ -1920,7 +2070,7 @@ async function renderProject(id) {
   ];
   const content = state.activeTab === 'entries' ? diaryView(p) : itemsView(p, state.activeTab);
   const breadcrumbs = p.status === 'archived' ? '<nav class="folder-breadcrumbs" aria-label="Projektpfad"><a href="/#/archive">Archiviert</a></nav>' : folderBreadcrumbs(p.folderId || null);
-  $('#main').innerHTML = `<div class="project-page-breadcrumbs">${breadcrumbs}</div><div class="project-page-head"><section class="project-hero"><div class="project-hero-layout"><div class="project-hero-main"><div class="project-heading-row"><span class="project-hero-icon" aria-hidden="true">${iconSvg(projectIconName(p))}</span><div class="project-heading-content"><div class="project-title-line"><h1>${escapeHtml(p.title)}</h1></div><p class="project-description">${escapeHtml(p.description || 'Noch keine Projektbeschreibung hinterlegt.')}</p></div></div></div><aside class="project-hero-status" aria-label="Projektstatus"><div class="project-hero-status-head"><span>Projektstatus</span><div class="project-hero-actions">${projectCardActions(p)}</div></div><div class="project-hero-facts"><div class="project-hero-fact"><small>Status</small>${projectStatusControl(p)}</div><div class="project-hero-fact"><small>Priorität</small>${projectPriorityControl(p)}</div><div class="project-hero-fact"><small>Fälligkeit</small><span class="project-status-value">${p.dueDate ? formatDate(p.dueDate) : 'ohne'}</span></div><div class="project-hero-fact project-hero-tags"><small>Tags</small>${tagChips(p.tagIds, { limit:20, archived:p.status === 'archived' }) || '<span class="project-status-empty">Keine</span>'}</div></div></aside></div><div class="project-subnav"><nav class="tabs" aria-label="Projektbereiche">${tabs.map(([id,label,count]) => `<button class="tab ${state.activeTab===id?'active':''}" data-tab="${id}"><span>${label}</span><span class="tab-count">(${count})</span></button>`).join('')}</nav></div></section></div><section class="project-page-content">${content}</section>`;
+  $('#main').innerHTML = `<div class="project-page-breadcrumbs">${breadcrumbs}</div><div class="project-page-head"><section class="project-hero"><div class="project-hero-layout"><div class="project-hero-main"><div class="project-heading-row"><span class="project-hero-icon" aria-hidden="true">${iconSvg(projectIconName(p))}</span><div class="project-heading-content"><div class="project-title-line"><h1>${escapeHtml(p.title)}</h1></div><p class="project-description">${escapeHtml(p.description || 'Noch keine Projektbeschreibung hinterlegt.')}</p></div></div></div><aside class="project-hero-status" aria-label="Projektstatus"><div class="project-hero-status-head"><span>Projektstatus</span><div class="project-hero-actions">${projectPrintButton(p)}${projectCardActions(p)}</div></div><div class="project-hero-facts"><div class="project-hero-fact"><small>Status</small>${projectStatusControl(p)}</div><div class="project-hero-fact"><small>Priorität</small>${projectPriorityControl(p)}</div><div class="project-hero-fact"><small>Startdatum</small><span class="project-status-value">${p.createdAt ? formatDate(p.createdAt) : 'ohne'}</span></div><div class="project-hero-fact"><small>Fälligkeit</small><span class="project-status-value">${p.dueDate ? formatDate(p.dueDate) : 'ohne'}</span></div><div class="project-hero-fact project-hero-tags"><small>Tags</small>${tagChips(p.tagIds, { limit:20, archived:p.status === 'archived' }) || '<span class="project-status-empty">Keine</span>'}</div></div></aside></div><div class="project-subnav"><nav class="tabs" aria-label="Projektbereiche">${tabs.map(([id,label,count]) => `<button class="tab ${state.activeTab===id?'active':''}" data-tab="${id}"><span>${label}</span><span class="tab-count">(${count})</span></button>`).join('')}</nav></div></section></div><section class="project-page-content">${content}</section>`;
   const newEntryButton = $('[data-new-entry]');
   if (newEntryButton) newEntryButton.onclick = () => openEntryDialog(p.id);
   const newItemButton = $('[data-new-item]');
@@ -2010,6 +2160,8 @@ function setNav(routeName, projectStatus = '') {
 }
 async function route() {
   if (!state.user) return;
+  document.body.classList.remove('project-print-mode');
+  document.title = 'Logbuch';
   const hashValue = location.hash.replace(/^#\/?/, '');
   const [hashPath, hashQuery = ''] = hashValue.split('?');
   const hashParts = hashPath.split('/').filter(Boolean);
@@ -2019,7 +2171,11 @@ async function route() {
   const directEntry = directProject && pathParts[2] === 'e' && pathParts[3];
   const parts = hashParts.length ? hashParts : directProject ? ['projects', pathParts[1]] : [];
   try {
-    if (parts[0] === 'projects' && parts[1]) {
+    if (parts[0] === 'projects' && parts[1] && parts[2] === 'print') {
+      setNav('projects');
+      await renderProjectPrint(parts[1]);
+    }
+    else if (parts[0] === 'projects' && parts[1]) {
       setNav('projects');
       if (directEntry) state.activeTab = 'entries';
       await renderProject(parts[1]);
@@ -2232,6 +2388,7 @@ function openProjectDialog(project = null) {
     form.elements.title.removeAttribute('aria-invalid');
   };
   form.elements.description.value = project?.description || '';
+  form.elements.status.value = project?.status || 'active';
   form.elements.iconInherited.value = project ? (projectUsesDefaultIcon(project) ? '1' : '0') : '1';
   form.elements.icon.value = project ? entityIconName(project, 'box') : defaultProjectIconName();
   renderIconPicker('project');
@@ -2657,7 +2814,7 @@ function bindProjectActions() {
     try {
       const updated = await api(`/projects/${encodeURIComponent(id)}`, { method:'PATCH', body:JSON.stringify({ status }) });
       rememberProject(updated);
-      toast({ active:'Projekt ist aktiv', paused:'Projekt pausiert', completed:'Projekt abgeschlossen', archived:'Projekt archiviert' }[status] || 'Projektstatus geändert');
+      toast({ idea:'Projekt ist eine Idee', active:'Projekt ist aktiv', paused:'Projekt pausiert', completed:'Projekt abgeschlossen', archived:'Projekt archiviert' }[status] || 'Projektstatus geändert');
       if (status === 'archived' && onDetail) location.href = '/#/archive';
       else if (inArchive) await renderArchive();
       else if (onDetail) await renderProject(id);
@@ -3016,7 +3173,7 @@ $('#project-form').addEventListener('submit', async event => {
   const path = editing ? `/projects/${encodeURIComponent(form.projectId)}` : '/projects';
   const returnUrl = formElement.dataset.returnUrl;
   try {
-    const payload = { title:form.title, description:form.description, icon:form.icon, iconInherited:form.iconInherited === '1', createdAt:form.createdAt, dueDate:form.dueDate || '', folderId:form.folderId || null, tagIds:state.projectDialogTagIds };
+    const payload = { title:form.title, description:form.description, status:form.status, icon:form.icon, iconInherited:form.iconInherited === '1', createdAt:form.createdAt, dueDate:form.dueDate || '', folderId:form.folderId || null, tagIds:state.projectDialogTagIds };
     const project = await api(path, { method:editing ? 'PATCH' : 'POST', body:JSON.stringify(payload) });
     rememberProject(project);
     $('#project-dialog').close(); formElement.reset(); toast(editing ? 'Projekt aktualisiert' : 'Projekt angelegt');

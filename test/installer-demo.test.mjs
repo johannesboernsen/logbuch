@@ -45,7 +45,7 @@ test('Installer kann den mitgelieferten Beispieldatensatz aktivieren', async () 
     assert.equal(folders.folders.filter(folder => folder.id.startsWith('demo-folder-')).length, 2);
     assert.ok(projects.projects.some(project => project.folderId === 'demo-folder-elektronik'));
     assert.ok(projects.projects.some(project => project.folderId === 'demo-folder-werkstatt'));
-    const regularProjects = projects.projects.filter(project => ['active', 'paused', 'completed'].includes(project.status));
+    const regularProjects = projects.projects.filter(project => ['idea', 'active', 'paused', 'completed'].includes(project.status));
     assert.equal(regularProjects.filter(project => project.folderId === null).length, 4);
   } finally {
     server.kill('SIGTERM');

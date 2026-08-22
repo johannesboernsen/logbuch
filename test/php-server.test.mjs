@@ -108,8 +108,8 @@ test('Beispieldaten lassen sich unabhängig von eigenen Projekten verwalten', as
   const list = await request('/api/projects');
   const demoProjects = list.data.projects.filter(project => project.id.startsWith('demo-'));
   assert.equal(demoProjects.length, 11);
-  assert.deepEqual(Object.fromEntries(['active', 'paused', 'completed', 'archived', 'trashed'].map(status => [status, demoProjects.filter(project => project.status === status).length])), { active: 4, paused: 2, completed: 3, archived: 1, trashed: 1 });
-  const regularDemoProjects = demoProjects.filter(project => ['active', 'paused', 'completed'].includes(project.status));
+  assert.deepEqual(Object.fromEntries(['idea', 'active', 'paused', 'completed', 'archived', 'trashed'].map(status => [status, demoProjects.filter(project => project.status === status).length])), { idea: 0, active: 4, paused: 2, completed: 3, archived: 1, trashed: 1 });
+  const regularDemoProjects = demoProjects.filter(project => ['idea', 'active', 'paused', 'completed'].includes(project.status));
   assert.equal(regularDemoProjects.filter(project => project.folderId === null).length, 4);
   assert.equal(regularDemoProjects.filter(project => project.folderId === 'demo-folder-elektronik').length, 3);
   assert.equal(regularDemoProjects.filter(project => project.folderId === 'demo-folder-werkstatt').length, 2);
@@ -197,6 +197,15 @@ test('Ein Projekt benötigt Titel und Startdatum', async () => {
   assert.equal(minimal.data.icon, 'box');
   assert.equal(minimal.data.iconInherited, true);
   assert.equal(minimal.data.dueDate, '');
+  assert.equal(minimal.data.status, 'active');
+
+  const idea = await request('/api/projects', { method: 'POST', body: JSON.stringify({ title: 'Neue Projektidee', status: 'idea', createdAt: '2026-08-19' }) });
+  assert.equal(idea.response.status, 201);
+  assert.equal(idea.data.status, 'idea');
+  assert.ok(!(await request('/api/overview')).data.projects.some(project => project.id === idea.data.id));
+
+  const invalidStatus = await request('/api/projects', { method: 'POST', body: JSON.stringify({ title: 'Ungültiger Status', status: 'vielleicht', createdAt: '2026-08-19' }) });
+  assert.equal(invalidStatus.response.status, 422);
 
   const invalidPriority = await request(`/api/projects/${minimal.data.id}`, { method: 'PATCH', body: JSON.stringify({ priority: 'Dringend' }) });
   assert.equal(invalidPriority.response.status, 422);
@@ -330,6 +339,11 @@ test('Projektordner können verschachtelt und nur leer gelöscht werden', async 
   assert.equal(assigned.data.folderId, child.data.id);
   assert.equal((await request(`/api/folders/${child.data.id}`, { method: 'DELETE' })).response.status, 409);
   assert.equal((await request(`/api/folders/${parent.data.id}`, { method: 'DELETE' })).response.status, 409);
+
+  const idea = await request(`/api/projects/${projectId}`, { method: 'PATCH', body: JSON.stringify({ status: 'idea' }) });
+  assert.equal(idea.data.folderId, child.data.id);
+  assert.equal('completedAt' in idea.data, false);
+  assert.ok(!(await request('/api/overview')).data.projects.some(project => project.id === projectId));
 
   const paused = await request(`/api/projects/${projectId}`, { method: 'PATCH', body: JSON.stringify({ status: 'paused' }) });
   assert.equal(paused.data.folderId, child.data.id);

@@ -854,7 +854,7 @@ final class Application
         $usageByTag = [];
         foreach ($projects as $project) {
             $status = (string) ($project['status'] ?? '');
-            if (!in_array($status, ['active', 'paused', 'completed', 'archived'], true)) continue;
+            if (!in_array($status, ['idea', 'active', 'paused', 'completed', 'archived'], true)) continue;
             foreach ($project['tagIds'] ?? [] as $tagId) {
                 $usageByTag[$tagId] ??= ['activeProjectCount' => 0, 'archivedProjectCount' => 0];
                 $key = $status === 'archived' ? 'archivedProjectCount' : 'activeProjectCount';
@@ -1179,7 +1179,7 @@ final class Application
         if (count($folderIds) !== 2) {
             throw new \RuntimeException('Der mitgelieferte Beispieldatensatz hat einen unerwarteten Ordnerumfang.');
         }
-        $statusCounts = array_fill_keys(['active', 'paused', 'completed', 'archived', 'trashed'], 0);
+        $statusCounts = array_fill_keys(ProjectStore::STATUSES, 0);
         $ids = [];
         foreach ($demo['projects'] as $project) {
             $id = is_array($project) ? (string) ($project['id'] ?? '') : '';
@@ -1199,7 +1199,7 @@ final class Application
             $ids[$id] = true;
             ++$statusCounts[$status];
         }
-        if (count($ids) !== 11 || $statusCounts !== ['active' => 4, 'paused' => 2, 'completed' => 3, 'archived' => 1, 'trashed' => 1]) {
+        if (count($ids) !== 11 || $statusCounts !== ['idea' => 0, 'active' => 4, 'paused' => 2, 'completed' => 3, 'archived' => 1, 'trashed' => 1]) {
             throw new \RuntimeException('Der mitgelieferte Beispieldatensatz hat einen unerwarteten Umfang.');
         }
         return $demo;

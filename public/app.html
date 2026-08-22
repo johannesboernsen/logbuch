@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#f6f7f9">
   <title>Logbuch</title>
   <link rel="icon" href="/favicon.svg?v=20260822-2" type="image/svg+xml">
-  <link rel="stylesheet" href="/styles.css?v=20260822-209">
+  <link rel="stylesheet" href="/styles.css?v=20260823-218">
 </head>
 <body>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
@@ -38,6 +38,7 @@
           <button id="projects-toggle" class="nav-item bare" type="button" data-route="projects" aria-expanded="false" aria-controls="projects-subnav"><span data-project-nav-icon aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M12 3 20 7.5v9L12 21l-8-4.5v-9L12 3Z"></path><path d="m4 7.5 8 4.5 8-4.5M12 12v9"></path></svg></span><b>Projekte</b></button>
           <div id="projects-subnav" class="settings-subnav projects-subnav" hidden>
             <a href="/#/projects" data-projects-route="all"><span>Alle</span><small class="project-nav-count" data-project-count="all">0</small></a>
+            <a href="/#/projects?status=idea" data-projects-route="idea"><span>Idee</span><small class="project-nav-count" data-project-count="idea">0</small></a>
             <a href="/#/projects?status=active" data-projects-route="active"><span>Aktiv</span><small class="project-nav-count" data-project-count="active">0</small></a>
             <a href="/#/projects?status=paused" data-projects-route="paused"><span>Pausiert</span><small class="project-nav-count" data-project-count="paused">0</small></a>
             <a href="/#/projects?status=completed" data-projects-route="completed"><span>Abgeschlossen</span><small class="project-nav-count" data-project-count="completed">0</small></a>
@@ -82,7 +83,7 @@
       <div class="dialog-head"><div><h2 id="project-dialog-title">Neues Projekt</h2></div><button class="icon-button" type="button" value="cancel" aria-label="Schließen">×</button></div>
       <label>Projektname<input name="title" maxlength="100" required></label>
       <label>Beschreibung<textarea name="description" rows="4"></textarea></label>
-      <div class="project-compact-fields"><div class="icon-picker" data-icon-picker="project"></div><label>Startdatum<input name="createdAt" type="date" data-calendar-only required></label><label>Fälligkeit<input name="dueDate" type="date" data-calendar-only></label></div>
+      <div class="project-compact-fields"><div class="icon-picker" data-icon-picker="project"></div><label>Status<select name="status"><option value="idea">Idee</option><option value="active">Aktiv</option><option value="paused">Pausiert</option><option value="completed">Abgeschlossen</option><option value="archived">Archiviert</option></select></label><label>Startdatum<input name="createdAt" type="date" data-calendar-only required></label><label>Fälligkeit<input name="dueDate" type="date" data-calendar-only></label></div>
       <div class="project-folder-picker"><label>Ordner<select name="folderId"></select></label><button class="icon-button" type="button" data-new-folder-from-project aria-label="Neuen Ordner anlegen" title="Neuen Ordner anlegen">+</button></div>
       <div class="project-tag-picker"><div class="tag-picker-label-row"><label>Tags</label></div><div id="project-tag-options" class="tag-picker-options"></div></div>
       <div class="dialog-actions"><button class="button secondary" type="button" value="cancel">Abbrechen</button><button class="button primary" id="project-submit" type="submit">Speichern</button></div>
@@ -194,6 +195,6 @@
 
   <script src="/backup-format.js?v=20260822-141" defer></script>
   <script src="/update-monitor.js?v=20260822-001" defer></script>
-  <script src="/app.js?v=20260822-142" defer></script>
+  <script src="/app.js?v=20260823-149" defer></script>
 </body>
 </html>

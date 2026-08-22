@@ -7,6 +7,7 @@ namespace Logbuch;
 final class ProjectStore
 {
     public const COLLECTIONS = ['entries', 'tasks', 'materials', 'contacts', 'links', 'ideas', 'learnings', 'notes'];
+    public const STATUSES = ['idea', 'active', 'paused', 'completed', 'archived', 'trashed'];
 
     public function __construct(private readonly string $root)
     {
@@ -102,12 +103,16 @@ final class ProjectStore
         if ($dueDate !== '' && !validDate($dueDate)) {
             throw new HttpError(422, 'Die Fälligkeit muss ein gültiges Datum sein.');
         }
+        $status = (string) ($input['status'] ?? 'active');
+        if (!in_array($status, self::STATUSES, true) || $status === 'trashed') {
+            throw new HttpError(422, 'Ungültiger Projektstatus.');
+        }
         $id = 'project-' . gmdate('YmdHis') . '-' . bin2hex(random_bytes(3));
         $project = [
             'id' => $id,
             'title' => $title,
             'description' => mb_substr(trim((string) ($input['description'] ?? '')), 0, 2000),
-            'status' => 'active',
+            'status' => $status,
             'priority' => $this->validPriority($input['priority'] ?? 'Mittel'),
             'flagged' => $this->validFlag($input['flagged'] ?? false),
             'icon' => $this->validIcon($input['icon'] ?? 'box'),
@@ -116,8 +121,11 @@ final class ProjectStore
             'dueDate' => $dueDate,
             'createdBy' => $actor,
             'tagIds' => $this->validTagIds($input['tagIds'] ?? []),
-            'folderId' => $this->validFolderId($input['folderId'] ?? null),
+            'folderId' => $status === 'archived' ? null : $this->validFolderId($input['folderId'] ?? null),
         ];
+        if ($status === 'completed') {
+            $project['completedAt'] = nowIso();
+        }
         $this->prepareProjectDirectory($id);
         $this->saveProject($project);
         return $this->get($id);
@@ -162,14 +170,14 @@ final class ProjectStore
             $project['dueDate'] = $dueDate;
         }
         if (array_key_exists('status', $input)) {
-            if (!in_array($input['status'], ['active', 'paused', 'completed', 'archived', 'trashed'], true)) {
+            if (!in_array($input['status'], self::STATUSES, true)) {
                 throw new HttpError(422, 'Ungültiger Projektstatus.');
             }
             $previousStatus = (string) ($project['status'] ?? 'active');
             $project['status'] = $input['status'];
             if ($input['status'] === 'completed' && $previousStatus !== 'completed') {
                 $project['completedAt'] = nowIso();
-            } elseif (in_array($input['status'], ['active', 'paused'], true)) {
+            } elseif (in_array($input['status'], ['idea', 'active', 'paused'], true)) {
                 unset($project['completedAt']);
             }
             if ($input['status'] === 'trashed') {
@@ -271,7 +279,7 @@ final class ProjectStore
         foreach (self::COLLECTIONS as $collection) {
             unset($base[$collection]);
         }
-        $base['status'] = in_array(($base['status'] ?? 'active'), ['active', 'paused', 'completed', 'archived', 'trashed'], true) ? $base['status'] : 'active';
+        $base['status'] = in_array(($base['status'] ?? 'active'), self::STATUSES, true) ? $base['status'] : 'active';
         $base['priority'] = $this->validPriority($base['priority'] ?? 'Mittel');
         $base['flagged'] = $this->validFlag($base['flagged'] ?? false);
         $base['icon'] = $this->validIcon($base['icon'] ?? 'box');
