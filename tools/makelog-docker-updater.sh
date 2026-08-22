@@ -11,6 +11,7 @@ backup="$project_dir/.env.makelog-update-backup"
 [ -r "$project_dir/compose.yaml" ] || { printf '%s\n' 'Der Make:Log-Projektordner ist für den Host-Helfer nicht lesbar.' >&2; exit 1; }
 [ -f "$request" ] || exit 0
 command -v docker >/dev/null 2>&1 || { printf '%s\n' 'Docker wurde nicht gefunden.' >&2; exit 1; }
+[ -f "$env_file" ] || cp "$project_dir/.env.example" "$env_file"
 lock="$project_dir/makelog-data/updates/docker-updater.lock"
 mkdir "$lock" 2>/dev/null || exit 0
 trap 'rmdir "$lock" 2>/dev/null || true' EXIT HUP INT TERM

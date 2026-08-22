@@ -584,7 +584,7 @@ final class Application
         if (isset($input['defaultProjectIcon']) && (!is_string($input['defaultProjectIcon']) || !preg_match('/^[a-z0-9][a-z0-9-]{0,63}$/', $input['defaultProjectIcon']))) {
             throw new HttpError(422, 'Ungültiges Standard-Projektsymbol.');
         }
-        foreach (['showOverviewSummary', 'showOverviewRecent', 'showOverviewNext', 'showOverviewRecentlyEdited', 'showOverviewMarked', 'showOverviewDueSoon', 'showOverviewHighPriority', 'showOverviewActivity', 'showOverviewTimeline'] as $flag) {
+        foreach (['showProjectFolders', 'showOverviewSummary', 'showOverviewRecent', 'showOverviewNext', 'showOverviewRecentlyEdited', 'showOverviewMarked', 'showOverviewDueSoon', 'showOverviewHighPriority', 'showOverviewActivity', 'showOverviewTimeline'] as $flag) {
             if (array_key_exists($flag, $input) && !is_bool($input[$flag])) {
                 throw new HttpError(422, 'Ungültige Übersichts-Einstellung.');
             }

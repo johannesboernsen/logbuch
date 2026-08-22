@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#f6f7f9">
   <title>Make:Log</title>
   <link rel="icon" href="/favicon.svg?v=20260819-4" type="image/svg+xml">
-  <link rel="stylesheet" href="/styles.css?v=20260821-104">
+  <link rel="stylesheet" href="/styles.css?v=20260822-108">
 </head>
 <body>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
@@ -79,13 +79,13 @@
       <input type="hidden" name="projectId">
       <input type="hidden" name="icon" value="box">
       <input type="hidden" name="iconInherited" value="1">
-      <div class="dialog-head"><div><h2 id="project-dialog-title">Neues Projekt</h2></div><button class="icon-button" value="cancel" formmethod="dialog" formnovalidate aria-label="Schließen">×</button></div>
+      <div class="dialog-head"><div><h2 id="project-dialog-title">Neues Projekt</h2></div><button class="icon-button" type="button" value="cancel" aria-label="Schließen">×</button></div>
       <label>Projektname<input name="title" maxlength="100" required></label>
       <label>Beschreibung<textarea name="description" rows="4"></textarea></label>
       <div class="project-compact-fields"><div class="icon-picker" data-icon-picker="project"></div><label>Startdatum<input name="createdAt" type="date" data-calendar-only required></label><label>Fälligkeit<input name="dueDate" type="date" data-calendar-only></label></div>
       <div class="project-folder-picker"><label>Ordner<select name="folderId"></select></label><button class="icon-button" type="button" data-new-folder-from-project aria-label="Neuen Ordner anlegen" title="Neuen Ordner anlegen">+</button></div>
       <div class="project-tag-picker"><div class="tag-picker-label-row"><label>Tags</label></div><div id="project-tag-options" class="tag-picker-options"></div></div>
-      <div class="dialog-actions"><button class="button secondary" value="cancel" formmethod="dialog" formnovalidate>Abbrechen</button><button class="button primary" id="project-submit" type="submit">Speichern</button></div>
+      <div class="dialog-actions"><button class="button secondary" type="button" value="cancel">Abbrechen</button><button class="button primary" id="project-submit" type="submit">Speichern</button></div>
       <section id="project-link-zone" class="dialog-link-section" hidden><strong>Projektlink</strong><div class="dialog-link-row"><a id="project-dialog-link" href="#" target="_blank" rel="noopener"></a><button class="button secondary compact" id="project-dialog-copy" type="button">Kopieren</button></div></section>
       <section id="project-delete-zone" class="dialog-danger" hidden><div><strong>Projekt löschen</strong><p>Das Projekt wird mit allen Inhalten in den Papierkorb verschoben. Dort kann es wiederhergestellt werden.</p></div><button class="button danger-button" id="project-dialog-delete" type="button">Projekt löschen</button></section>
     </form>
@@ -110,11 +110,11 @@
     <form id="entry-form" method="dialog">
       <input type="hidden" name="projectId">
       <input type="hidden" name="entryId">
-      <div class="dialog-head"><div><h2 id="entry-dialog-title">Fortschritt festhalten</h2></div><button class="icon-button" value="cancel" formmethod="dialog" formnovalidate aria-label="Schließen">×</button></div>
+      <div class="dialog-head"><div><h2 id="entry-dialog-title">Fortschritt festhalten</h2></div><button class="icon-button" type="button" value="cancel" aria-label="Schließen">×</button></div>
       <label>Datum des Arbeitsschritts<input name="date" type="date" required></label>
       <label>Titel <span class="optional">Optional</span><input name="title" maxlength="100" placeholder="z. B. Halterung montiert"></label>
       <label><span>Was hast du gemacht? <span class="optional">Optional</span></span><textarea name="body" rows="5" placeholder="Beschreibe Änderungen, Entscheidungen und Ergebnisse …"></textarea></label>
-      <div class="dialog-actions"><button class="button secondary" value="cancel" formmethod="dialog" formnovalidate>Abbrechen</button><button class="button primary" id="entry-submit" type="submit">Arbeitsschritt speichern</button></div>
+      <div class="dialog-actions"><button class="button secondary" type="button" value="cancel">Abbrechen</button><button class="button primary" id="entry-submit" type="submit">Arbeitsschritt speichern</button></div>
     </form>
   </dialog>
 
@@ -123,68 +123,68 @@
       <input type="hidden" name="projectId">
       <input type="hidden" name="collection">
       <input type="hidden" name="itemId">
-      <div class="dialog-head"><div><h2 id="item-dialog-title">Projektinhalt anlegen</h2></div><button class="icon-button" value="cancel" formmethod="dialog" formnovalidate aria-label="Schließen">×</button></div>
+      <div class="dialog-head"><div><h2 id="item-dialog-title">Projektinhalt anlegen</h2></div><button class="icon-button" type="button" value="cancel" aria-label="Schließen">×</button></div>
       <div id="item-fields" class="item-fields"></div>
-      <div class="dialog-actions"><button class="button secondary" value="cancel" formmethod="dialog" formnovalidate>Abbrechen</button><button class="button primary" id="item-submit" type="submit">Speichern</button></div>
+      <div class="dialog-actions"><button class="button secondary" type="button" value="cancel">Abbrechen</button><button class="button primary" id="item-submit" type="submit">Speichern</button></div>
     </form>
   </dialog>
 
   <dialog id="user-dialog">
     <form id="user-form" method="dialog">
       <input type="hidden" name="userId">
-      <div class="dialog-head"><div><h2 id="user-dialog-title">Benutzer anlegen</h2></div><button class="icon-button" value="cancel" formmethod="dialog" formnovalidate aria-label="Schließen">×</button></div>
+      <div class="dialog-head"><div><h2 id="user-dialog-title">Benutzer anlegen</h2></div><button class="icon-button" type="button" value="cancel" aria-label="Schließen">×</button></div>
       <label>Benutzername<input name="id" minlength="3" maxlength="32" pattern="[A-Za-z0-9_-]+" autocomplete="off" placeholder="z. B. mara" required></label>
       <label>Rolle<select name="role"><option value="editor">Bearbeiter</option><option value="viewer">Leser</option><option value="admin">Administrator</option></select></label>
       <label><span id="user-password-label">Startpasswort</span><input name="password" type="password" minlength="10" maxlength="128" autocomplete="new-password" required></label>
       <label class="checkbox-line"><input name="mustChangePassword" type="checkbox" checked><span>Passwortänderung bei der nächsten Anmeldung erzwingen</span></label>
       <label>Zugriffsmodus<select name="projectAccessMode"><option value="all">Alle Projekte freigeben (auch zukünftige)</option><option value="include">Ausgewählte Projekte freigeben</option><option value="exclude">Ausgewählte Projekte verbergen</option></select></label>
       <fieldset class="project-access"><legend id="project-access-title">Freigegebene Projekte</legend><p id="project-access-description">Der Benutzer erhält Zugriff auf die ausgewählten Projekte. Administratoren haben immer Zugriff auf alle Projekte.</p><div id="user-projects" class="project-access-list"></div></fieldset>
-      <div class="dialog-actions"><button class="button secondary" value="cancel" formmethod="dialog" formnovalidate>Abbrechen</button><button class="button primary" id="user-submit" type="submit">Benutzer anlegen</button></div>
+      <div class="dialog-actions"><button class="button secondary" type="button" value="cancel">Abbrechen</button><button class="button primary" id="user-submit" type="submit">Benutzer anlegen</button></div>
     </form>
   </dialog>
 
   <dialog id="password-dialog">
     <form id="password-form" method="dialog">
-      <div class="dialog-head"><div><h2 id="password-dialog-title">Passwort ändern</h2></div><button class="icon-button password-cancel" value="cancel" formmethod="dialog" formnovalidate aria-label="Schließen">×</button></div>
+      <div class="dialog-head"><div><h2 id="password-dialog-title">Passwort ändern</h2></div><button class="icon-button password-cancel" type="button" value="cancel" aria-label="Schließen">×</button></div>
       <p id="password-dialog-copy" class="dialog-copy">Gib dein aktuelles und anschließend ein neues Passwort ein.</p>
       <label>Aktuelles Passwort<input name="currentPassword" type="password" autocomplete="current-password" required></label>
       <label>Neues Passwort<input name="newPassword" type="password" minlength="10" maxlength="128" autocomplete="new-password" required></label>
       <label>Neues Passwort wiederholen<input name="confirmPassword" type="password" minlength="10" maxlength="128" autocomplete="new-password" required></label>
       <p id="password-error" class="form-error"></p>
-      <div class="dialog-actions"><button class="button secondary password-cancel" value="cancel" formmethod="dialog" formnovalidate>Abbrechen</button><button class="button primary" type="submit">Passwort speichern</button></div>
+      <div class="dialog-actions"><button class="button secondary password-cancel" type="button" value="cancel">Abbrechen</button><button class="button primary" type="submit">Passwort speichern</button></div>
     </form>
   </dialog>
 
   <dialog id="update-dialog">
     <form id="update-form" method="dialog">
-      <div class="dialog-head"><div><h2>Make:Log aktualisieren</h2></div><button class="icon-button" value="cancel" formmethod="dialog" formnovalidate aria-label="Schließen">×</button></div>
+      <div class="dialog-head"><div><h2>Make:Log aktualisieren</h2></div><button class="icon-button" type="button" value="cancel" aria-label="Schließen">×</button></div>
       <p id="update-dialog-copy" class="dialog-copy"></p>
       <label>Administratorpasswort<input name="password" type="password" autocomplete="current-password" required></label>
       <p id="update-error" class="form-error"></p>
-      <div class="dialog-actions"><button class="button secondary" value="cancel" formmethod="dialog" formnovalidate>Abbrechen</button><button class="button primary" type="submit">Update installieren</button></div>
+      <div class="dialog-actions"><button class="button secondary" type="button" value="cancel">Abbrechen</button><button class="button primary" type="submit">Update installieren</button></div>
     </form>
   </dialog>
 
   <dialog id="tag-dialog">
     <form id="tag-form" method="dialog">
       <input type="hidden" name="tagId">
-      <div class="dialog-head"><div><h2 id="tag-dialog-title">Tag anlegen</h2></div><button class="icon-button" value="cancel" formmethod="dialog" formnovalidate aria-label="Schließen">×</button></div>
+      <div class="dialog-head"><div><h2 id="tag-dialog-title">Tag anlegen</h2></div><button class="icon-button" type="button" value="cancel" aria-label="Schließen">×</button></div>
       <label>Name<input name="name" minlength="2" maxlength="40" placeholder="z. B. 3D-Druck" required></label>
-      <div class="dialog-actions"><button class="button secondary" value="cancel" formmethod="dialog" formnovalidate>Abbrechen</button><button class="button primary" id="tag-submit" type="submit">Tag anlegen</button></div>
+      <div class="dialog-actions"><button class="button secondary" type="button" value="cancel">Abbrechen</button><button class="button primary" id="tag-submit" type="submit">Tag anlegen</button></div>
     </form>
   </dialog>
 
   <dialog id="tag-merge-dialog">
     <form id="tag-merge-form" method="dialog">
       <input type="hidden" name="sourceId">
-      <div class="dialog-head"><div><h2>Tags zusammenführen</h2></div><button class="icon-button" value="cancel" formmethod="dialog" formnovalidate aria-label="Schließen">×</button></div>
+      <div class="dialog-head"><div><h2>Tags zusammenführen</h2></div><button class="icon-button" type="button" value="cancel" aria-label="Schließen">×</button></div>
       <p id="tag-merge-copy" class="dialog-copy"></p>
       <label>Ziel-Tag<select name="targetId" required></select></label>
       <p class="dialog-copy">Der bisherige Tag wird an allen aktiven und archivierten Projekten durch den Ziel-Tag ersetzt und anschließend gelöscht.</p>
-      <div class="dialog-actions"><button class="button secondary" value="cancel" formmethod="dialog" formnovalidate>Abbrechen</button><button class="button primary" type="submit">Zusammenführen</button></div>
+      <div class="dialog-actions"><button class="button secondary" type="button" value="cancel">Abbrechen</button><button class="button primary" type="submit">Zusammenführen</button></div>
     </form>
   </dialog>
 
-  <script src="/app.js?v=20260821-125" defer></script>
+  <script src="/app.js?v=20260822-138" defer></script>
 </body>
 </html>

@@ -151,7 +151,7 @@ test('Übersichtsbereiche werden in Zeilen konfiguriert', async () => {
   assert.equal(invalidSort.response.status, 422);
 
   const overviewOrder = ['recentlyEdited', 'marked', 'dueSoon', 'highPriority', 'summary', 'next', 'recent', 'activity', 'timeline'];
-  const updated = await request('/api/account/preferences', { method: 'PATCH', body: JSON.stringify({ projectSort:'dueDate:asc', archiveSort:'title:asc', defaultProjectIcon:'rocket', showOverviewNext: true, showOverviewRecentlyEdited: true, showOverviewMarked: true, showOverviewDueSoon: true, showOverviewHighPriority: true, overviewRecentRows: 3, overviewNextRows: 2, overviewRecentlyEditedRows: 1, overviewMarkedRows: 1, overviewDueSoonRows: 2, overviewHighPriorityRows: 1, overviewOrder }) });
+  const updated = await request('/api/account/preferences', { method: 'PATCH', body: JSON.stringify({ projectSort:'dueDate:asc', archiveSort:'title:asc', defaultProjectIcon:'rocket', showProjectFolders:false, showOverviewNext: true, showOverviewRecentlyEdited: true, showOverviewMarked: true, showOverviewDueSoon: true, showOverviewHighPriority: true, overviewRecentRows: 3, overviewNextRows: 2, overviewRecentlyEditedRows: 1, overviewMarkedRows: 1, overviewDueSoonRows: 2, overviewHighPriorityRows: 1, overviewOrder }) });
   assert.equal(updated.response.status, 200);
   assert.equal(updated.data.showOverviewNext, true);
   assert.equal(updated.data.overviewRecentRows, 3);
@@ -163,6 +163,7 @@ test('Übersichtsbereiche werden in Zeilen konfiguriert', async () => {
   assert.equal(updated.data.projectSort, 'dueDate:asc');
   assert.equal(updated.data.archiveSort, 'title:asc');
   assert.equal(updated.data.defaultProjectIcon, 'rocket');
+  assert.equal(updated.data.showProjectFolders, false);
   assert.deepEqual(updated.data.overviewOrder, overviewOrder);
 });
 

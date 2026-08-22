@@ -22,7 +22,13 @@ Dafür benötigt das private Quellcode-Repository zwei Actions-Secrets:
 
 Das automatisch bereitgestellte `GITHUB_TOKEN` bleibt auf das private Quellcode-Repository begrenzt und wird nur zum Veröffentlichen des Container-Images und der Attestierungen verwendet. Solange `make-log-releases` privat ist, erhalten Installationen ohne GitHub-Zugangsdaten bei der Updateprüfung erwartungsgemäß keinen Zugriff. Für einen Webhosting-Test wird das Repository kurzfristig auf **Public** und danach wieder auf **Private** gestellt.
 
-Für einen Docker-Test muss zusätzlich das GHCR-Paket `ghcr.io/johannesboernsen/make-log` anonym abrufbar sein. Anders als die Repository-Sichtbarkeit lässt sich die Umstellung eines GHCR-Pakets auf **Public** bei GitHub nicht einfach wieder auf **Private** zurücksetzen. Dieser Schritt darf deshalb nicht als kurzfristiger Testschalter verwendet werden und erfordert vorab eine bewusste Entscheidung.
+Für einen Docker-Test bleibt das GHCR-Paket `ghcr.io/johannesboernsen/make-log` **Private**. Der Docker-Host meldet sich einmalig mit einem klassischen GitHub-PAT an, das ausschließlich `read:packages` besitzt:
+
+```sh
+printf '%s' 'TOKEN' | docker login ghcr.io -u johannesboernsen --password-stdin
+```
+
+Das Token muss direkt auf dem NAS eingegeben werden, darf nicht in Compose, Protokollen oder Make:Log abgelegt werden und sollte eine kurze Laufzeit haben. Die Umstellung eines GHCR-Pakets auf **Public** lässt sich bei GitHub nicht einfach wieder auf **Private** zurücksetzen und ist für den privaten Test daher nicht nötig.
 
 Das Webpaket enthält nur Programmdateien. `storage/`, `.env`, Git-Dateien und lokale Update-Sicherungen werden nicht veröffentlicht.
 

@@ -216,6 +216,7 @@ final class Auth
             'projectSort' => 'status:asc',
             'archiveSort' => 'createdAt:desc',
             'defaultProjectIcon' => 'box',
+            'showProjectFolders' => true,
             'showOverviewSummary' => true,
             'showOverviewRecent' => true,
             'showOverviewNext' => true,

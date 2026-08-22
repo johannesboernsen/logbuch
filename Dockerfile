@@ -1,5 +1,7 @@
 FROM php:8.4-apache@sha256:5f8050825b2f3de4efb0d81149c86643a9ee9c0a74ed4595ca2ad69ebfeb35fb
 
+LABEL org.opencontainers.image.source="https://github.com/johannesboernsen/make-log"
+
 RUN apt-get update \
     && apt-get upgrade -y \
     && rm -rf /var/lib/apt/lists/* \

@@ -26,11 +26,35 @@ const dateFieldText = value => {
   const match = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
   return match ? `${match[3]}.${match[2]}.${match[1]}` : 'TT.MM.JJJJ';
 };
-const dateCalendarState = { input:null, year:0, month:0, popover:null };
+const dateDigitsText = digits => [digits.slice(0, 2), digits.slice(2, 4), digits.slice(4, 8)].filter(Boolean).join('.');
+const dateFromDigits = digits => {
+  if (!/^\d{8}$/.test(digits)) return '';
+  const day = Number(digits.slice(0, 2));
+  const month = Number(digits.slice(2, 4));
+  const year = Number(digits.slice(4, 8));
+  const candidate = new Date(year, month - 1, day, 12);
+  return year >= 1000 && candidate.getFullYear() === year && candidate.getMonth() === month - 1 && candidate.getDate() === day ? `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}` : '';
+};
+const dateCalendarState = { input:null, year:0, month:0, focusedDate:'', popover:null };
 const isoDate = (year, month, day) => `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-function closeDateCalendar() {
+const shiftedDate = (value, days) => {
+  const [year, month, day] = String(value).split('-').map(Number);
+  const shifted = new Date(year, month - 1, day + days, 12);
+  return isoDate(shifted.getFullYear(), shifted.getMonth(), shifted.getDate());
+};
+function closeDateCalendar(restoreFocus = true) {
+  const input = dateCalendarState.input;
   if (dateCalendarState.popover?.matches(':popover-open')) dateCalendarState.popover.hidePopover();
   dateCalendarState.input = null;
+  if (restoreFocus) input?.focus();
+}
+function focusCalendarDate(value) {
+  const [year, month] = String(value).split('-').map(Number);
+  dateCalendarState.focusedDate = value;
+  dateCalendarState.year = year;
+  dateCalendarState.month = month - 1;
+  renderDateCalendar();
+  requestAnimationFrame(() => dateCalendarState.popover?.querySelector(`[data-calendar-date="${value}"]`)?.focus());
 }
 function renderDateCalendar() {
   const popover = dateCalendarState.popover;
@@ -44,7 +68,7 @@ function renderDateCalendar() {
     const day = index - firstWeekday + 1;
     if (day < 1 || day > daysInMonth) return '<span class="date-calendar-blank" aria-hidden="true"></span>';
     const value = isoDate(year, month, day);
-    const classes = [value === todayValue ? 'today' : '', value === input.value ? 'selected' : ''].filter(Boolean).join(' ');
+    const classes = [value === todayValue ? 'today' : '', value === input.value ? 'selected' : '', value === dateCalendarState.focusedDate ? 'keyboard-focused' : ''].filter(Boolean).join(' ');
     return `<button type="button"${classes ? ` class="${classes}"` : ''} data-calendar-date="${value}" aria-label="${dateFieldText(value)}">${day}</button>`;
   }).join('');
   const monthLabel = new Intl.DateTimeFormat('de-DE', { month:'long', year:'numeric' }).format(new Date(year, month, 1));
@@ -53,13 +77,35 @@ function renderDateCalendar() {
     const next = new Date(year, month + Number(button.dataset.calendarStep), 1);
     dateCalendarState.year = next.getFullYear();
     dateCalendarState.month = next.getMonth();
+    const focusedDay = Number(String(dateCalendarState.focusedDate || input.value || today()).slice(-2));
+    const lastDay = new Date(dateCalendarState.year, dateCalendarState.month + 1, 0).getDate();
+    dateCalendarState.focusedDate = isoDate(dateCalendarState.year, dateCalendarState.month, Math.min(focusedDay, lastDay));
     renderDateCalendar();
+    requestAnimationFrame(() => popover.querySelector(`[data-calendar-date="${dateCalendarState.focusedDate}"]`)?.focus());
   });
-  popover.querySelectorAll('[data-calendar-date]').forEach(button => button.onclick = () => {
-    input.value = button.dataset.calendarDate;
-    input.dispatchEvent(new Event('input', { bubbles:true }));
-    input.dispatchEvent(new Event('change', { bubbles:true }));
-    closeDateCalendar();
+  popover.querySelectorAll('[data-calendar-date]').forEach(button => {
+    button.onclick = () => {
+      input.dataset.dateDigits = '';
+      input.value = button.dataset.calendarDate;
+      input.setCustomValidity('');
+      input.dispatchEvent(new Event('input', { bubbles:true }));
+      input.dispatchEvent(new Event('change', { bubbles:true }));
+      closeDateCalendar();
+    };
+    button.onkeydown = event => {
+      const offsets = { ArrowLeft:-1, ArrowRight:1, ArrowUp:-7, ArrowDown:7 };
+      if (Object.hasOwn(offsets, event.key)) {
+        event.preventDefault();
+        event.stopPropagation();
+        focusCalendarDate(shiftedDate(button.dataset.calendarDate, offsets[event.key]));
+        return;
+      }
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        event.stopPropagation();
+        button.click();
+      }
+    };
   });
   const clear = popover.querySelector('[data-calendar-clear]');
   if (clear) clear.onclick = () => {
@@ -85,7 +131,7 @@ function openDateCalendar(input) {
     document.addEventListener('pointerdown', event => {
       const path = event.composedPath();
       if (!popover.matches(':popover-open') || path.includes(popover) || path.includes(dateCalendarState.input)) return;
-      closeDateCalendar();
+      closeDateCalendar(false);
     });
     document.addEventListener('keydown', event => {
       if (event.key === 'Escape' && popover.matches(':popover-open')) closeDateCalendar();
@@ -95,8 +141,11 @@ function openDateCalendar(input) {
   dateCalendarState.input = input;
   dateCalendarState.year = selected[0];
   dateCalendarState.month = selected[1] - 1;
-  renderDateCalendar();
+  dateCalendarState.focusedDate = input.value || today();
   const popover = dateCalendarState.popover;
+  const calendarOwner = input.closest('dialog') || document.body;
+  if (popover.parentElement !== calendarOwner) calendarOwner.append(popover);
+  renderDateCalendar();
   if (!popover.matches(':popover-open')) popover.showPopover();
   const inputRect = input.getBoundingClientRect();
   const calendarRect = popover.getBoundingClientRect();
@@ -105,13 +154,24 @@ function openDateCalendar(input) {
   const top = below + calendarRect.height <= window.innerHeight - 12 ? below : Math.max(12, inputRect.top - calendarRect.height - 8);
   popover.style.left = `${left}px`;
   popover.style.top = `${top}px`;
-  requestAnimationFrame(() => popover.querySelector('.selected,[data-calendar-date]')?.focus());
+  requestAnimationFrame(() => popover.querySelector(`[data-calendar-date="${dateCalendarState.focusedDate}"]`)?.focus());
 }
 function updateDatePresentation(input) {
   const text = input.closest('.date-input')?.querySelector('.date-input-text');
   if (!text) return;
-  text.textContent = dateFieldText(input.value);
-  text.classList.toggle('placeholder', !input.value);
+  const digits = input.dataset.dateDigits || '';
+  text.textContent = digits ? dateDigitsText(digits) : dateFieldText(input.value);
+  text.classList.toggle('placeholder', !digits && !input.value);
+}
+function focusAdjacentFormControl(input, backwards = false) {
+  const scope = input.closest('dialog, form') || document;
+  const controls = [...scope.querySelectorAll('input:not([type="hidden"]):not([disabled]), textarea:not([disabled]), select:not([disabled]), button:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])')]
+    .filter(control => !control.closest('[hidden], .hidden, [aria-hidden="true"]') && control.getClientRects().length && getComputedStyle(control).visibility !== 'hidden');
+  const currentIndex = controls.indexOf(input);
+  const next = controls[currentIndex + (backwards ? -1 : 1)];
+  if (!next) return false;
+  next.focus();
+  return true;
 }
 function enhanceDateInputs(root = document) {
   root.querySelectorAll('input[type="date"]:not([data-date-enhanced])').forEach(input => {
@@ -121,15 +181,91 @@ function enhanceDateInputs(root = document) {
     wrapper.append(input);
     wrapper.insertAdjacentHTML('beforeend', '<span class="date-input-text" aria-hidden="true"></span>');
     input.dataset.dateEnhanced = 'true';
-    if (input.hasAttribute('data-calendar-only')) {
-      input.tabIndex = -1;
-      input.addEventListener('pointerdown', event => {
+    input.addEventListener('pointerdown', event => {
+      event.preventDefault();
+      openDateCalendar(input);
+    });
+    input.addEventListener('keydown', event => {
+      if (/^\d$/.test(event.key)) {
         event.preventDefault();
+        event.stopPropagation();
+        const existing = input.dataset.dateDigits || '';
+        const digits = existing.length >= 8 ? event.key : existing + event.key;
+        input.dataset.dateDigits = digits;
+        input.setCustomValidity('');
+        input.classList.remove('input-invalid');
+        input.removeAttribute('aria-invalid');
+        updateDatePresentation(input);
+        if (digits.length === 8) {
+          const value = dateFromDigits(digits);
+          if (value) {
+            input.dataset.dateDigits = '';
+            input.value = value;
+            input.dispatchEvent(new Event('input', { bubbles:true }));
+            input.dispatchEvent(new Event('change', { bubbles:true }));
+          } else {
+            input.setCustomValidity('Bitte gib ein gültiges Datum im Format TTMMJJJJ ein.');
+            input.classList.add('input-invalid');
+            input.setAttribute('aria-invalid', 'true');
+          }
+        }
+        return;
+      }
+      if (event.key === 'Backspace') {
+        event.preventDefault();
+        event.stopPropagation();
+        const valueDigits = input.value ? `${input.value.slice(8, 10)}${input.value.slice(5, 7)}${input.value.slice(0, 4)}` : '';
+        input.dataset.dateDigits = (input.dataset.dateDigits || valueDigits).slice(0, -1);
+        input.setCustomValidity('');
+        input.classList.remove('input-invalid');
+        input.removeAttribute('aria-invalid');
+        updateDatePresentation(input);
+        return;
+      }
+      if (event.key === 'Delete') {
+        event.preventDefault();
+        event.stopPropagation();
+        input.dataset.dateDigits = '';
+        input.value = '';
+        input.setCustomValidity('');
+        input.dispatchEvent(new Event('input', { bubbles:true }));
+        input.dispatchEvent(new Event('change', { bubbles:true }));
+        return;
+      }
+      if (event.key === ' ' || event.key === 'ArrowDown') {
+        event.preventDefault();
+        event.stopPropagation();
         openDateCalendar(input);
-      });
-      input.addEventListener('keydown', event => event.preventDefault());
-    }
+        return;
+      }
+      if (event.key === 'Enter' && input.dataset.dateDigits) {
+        event.preventDefault();
+        event.stopPropagation();
+        input.setCustomValidity(input.dataset.dateDigits.length === 8
+          ? 'Bitte gib ein gültiges Datum im Format TTMMJJJJ ein.'
+          : 'Bitte gib das Datum vollständig im Format TTMMJJJJ ein.');
+        input.classList.add('input-invalid');
+        input.setAttribute('aria-invalid', 'true');
+        return;
+      }
+      if (event.key === 'Tab' && focusAdjacentFormControl(input, event.shiftKey)) {
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
+      if (!['Tab','Enter','Escape'].includes(event.key)) event.preventDefault();
+    });
+    input.addEventListener('blur', () => {
+      if (!input.dataset.dateDigits || input.dataset.dateDigits.length === 8 && dateFromDigits(input.dataset.dateDigits)) return;
+      input.setCustomValidity(input.dataset.dateDigits.length === 8
+        ? 'Bitte gib ein gültiges Datum im Format TTMMJJJJ ein.'
+        : 'Bitte gib das Datum vollständig im Format TTMMJJJJ ein.');
+      input.classList.add('input-invalid');
+      input.setAttribute('aria-invalid', 'true');
+    });
     const update = () => {
+      input.dataset.dateDigits = '';
+      input.setCustomValidity('');
       updateDatePresentation(input);
       if (!input.value) return;
       input.classList.remove('input-invalid');
@@ -337,18 +473,44 @@ function projectCardActions(project) {
   return `${projectEditButton(project)}${projectFlagControl(project)}`;
 }
 
-function projectCard(project, archived = false) {
+function projectCard(project, archived = false, showFolder = false) {
   const nextSteps = (Array.isArray(project.nextTaskTitles) ? project.nextTaskTitles : [project.nextTaskTitle]).map(value => String(value || '').trim()).filter(Boolean).slice(0, 3);
   if (!nextSteps.length && String(project.latestNextStep || '').trim()) nextSteps.push(String(project.latestNextStep).trim());
   const tagNames = (project.tagIds || []).map(tagById).filter(Boolean).map(tag => tag.name);
-  const searchText = [project.title, project.description, project.latestEntryTitle, project.latestEntryBody, ...nextSteps, ...tagNames].filter(Boolean).join(' ').toLocaleLowerCase('de');
+  const folderPath = showFolder ? folderPathLabel(project.folderId) : '';
+  const searchText = [project.title, project.description, project.latestEntryTitle, project.latestEntryBody, folderPath, ...nextSteps, ...tagNames].filter(Boolean).join(' ').toLocaleLowerCase('de');
   return `<article class="project-card" data-project-card data-project-tags="${escapeHtml((project.tagIds || []).join(','))}" data-project-search="${escapeHtml(searchText)}">
     <a class="project-card-content" href="/#/projects/${encodeURIComponent(project.id)}"><div class="entity-card-lead"><span class="project-entity-icon" aria-hidden="true">${iconSvg(projectIconName(project))}</span><span class="entity-card-copy"><h3>${escapeHtml(project.title)}</h3><p>${escapeHtml(project.description || 'Noch keine Beschreibung hinterlegt.')}</p></span></div><div class="project-next-step"><small>Nächste anstehende Schritte</small>${nextSteps.length ? `<ul class="project-next-steps">${nextSteps.map(step => `<li>${escapeHtml(step)}</li>`).join('')}</ul>` : '<strong>Kein nächster Schritt hinterlegt</strong>'}</div></a>
-    <aside class="project-card-status" aria-label="Projektstatus"><div class="project-card-actions">${projectCardActions(project)}</div><div class="project-status-row"><small>Status</small>${projectStatusControl(project)}</div><div class="project-status-row"><small>Priorität</small>${projectPriorityControl(project)}</div><div class="project-status-row"><small>Fälligkeit</small><span class="project-status-value">${project.dueDate ? formatDate(project.dueDate) : 'ohne'}</span></div><div class="project-status-row project-status-tags"><small>Tags</small>${tagChips(project.tagIds, { archived }) || '<span class="project-status-empty">Keine</span>'}</div></aside>
+    <aside class="project-card-status" aria-label="Projektstatus"><div class="project-card-actions">${projectCardActions(project)}</div><div class="project-status-row"><small>Status</small>${projectStatusControl(project)}</div><div class="project-status-row"><small>Priorität</small>${projectPriorityControl(project)}</div><div class="project-status-row"><small>Fälligkeit</small><span class="project-status-value">${project.dueDate ? formatDate(project.dueDate) : 'ohne'}</span></div>${folderPath ? `<div class="project-status-row project-status-folder"><small>Ordner</small><a href="${folderHref(project.folderId)}" title="Ordner öffnen">${escapeHtml(folderPath)}</a></div>` : ''}<div class="project-status-row project-status-tags"><small>Tags</small>${tagChips(project.tagIds, { archived }) || '<span class="project-status-empty">Keine</span>'}</div></aside>
   </article>`;
 }
 
 const folderById = id => state.folders.find(folder => folder.id === id);
+function folderPathLabel(folderId) {
+  const names = [];
+  const visited = new Set();
+  let current = folderById(folderId);
+  while (current && !visited.has(current.id)) {
+    names.unshift(current.name);
+    visited.add(current.id);
+    current = folderById(current.parentId);
+  }
+  return names.join(' › ');
+}
+function descendantFolderIds(folderId) {
+  const descendants = new Set(folderId ? [folderId] : state.folders.filter(folder => !folder.parentId).map(folder => folder.id));
+  let changed = true;
+  while (changed) {
+    changed = false;
+    state.folders.forEach(folder => {
+      if (folder.parentId && descendants.has(folder.parentId) && !descendants.has(folder.id)) {
+        descendants.add(folder.id);
+        changed = true;
+      }
+    });
+  }
+  return descendants;
+}
 const folderHref = id => {
   const params = new URLSearchParams();
   if (id) params.set('folder', id);
@@ -467,8 +629,11 @@ function projectListControls(archived = false, projects = []) {
   const availableIds = new Set(projects.flatMap(project => project.tagIds || []));
   const availableTags = state.tags.filter(tag => availableIds.has(tag.id)).map(tag => ({ ...tag, viewProjectCount:projects.filter(project => (project.tagIds || []).includes(tag.id)).length })).sort((a,b) => a.name.localeCompare(b.name, 'de', { sensitivity:'base' }));
   const createControl = !archived && mayEditProjects() ? `<details class="action-menu project-create-control"><summary class="project-tool-toggle project-create-toggle" aria-label="Projekt oder Ordner anlegen" title="Projekt oder Ordner anlegen">+</summary><div class="action-menu-panel project-create-panel"><button class="menu-item" type="button" data-new-project>Projekt anlegen</button><button class="menu-item" type="button" data-new-folder>Ordner anlegen</button></div></details>` : '';
+  const foldersVisible = state.user.showProjectFolders !== false;
+  const folderToggle = !archived ? `<button class="project-tool-toggle project-folder-toggle" type="button" data-toggle-folders aria-pressed="${!foldersVisible}" aria-label="${foldersVisible ? 'Ordner ausblenden' : 'Ordner einblenden'}" title="${foldersVisible ? 'Ordner ausblenden' : 'Ordner einblenden'}"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3.5 6.5h6l2 2h9v9.5a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2V6.5Z"></path><path d="M3.5 9h17"></path></svg></button>` : '';
   return `<div class="project-list-controls">
     <div class="project-compact-control${searchOpen ? ' open has-value' : ''}" data-search-control><button class="project-tool-toggle" type="button" data-toggle-search aria-label="Suche öffnen" aria-expanded="${searchOpen}"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="10.5" cy="10.5" r="5.8"></circle><path d="m15 15 4.5 4.5"></path></svg></button><input id="project-search" class="project-search" type="search" value="${escapeHtml(search)}" placeholder="${archived ? 'Archiv durchsuchen' : 'Projekte durchsuchen'}" aria-label="${archived ? 'Archivierte Projekte durchsuchen' : 'Projekte durchsuchen'}" autocomplete="off"></div>
+    ${folderToggle}
     <div class="project-sort-control" data-sort-control><button class="project-tool-toggle" type="button" data-toggle-sort aria-label="Sortierung öffnen" aria-expanded="false"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M8 4v16M4.5 7.5 8 4l3.5 3.5M16 20V4m-3.5 12.5L16 20l3.5-3.5"></path></svg></button>${projectSortControls(archived ? state.archiveSort : state.projectSort, !archived)}</div>
     <div class="project-filter-control${filter.ids.length ? ' has-value' : ''}" data-filter-control><button class="project-tool-toggle" type="button" data-toggle-filter aria-label="Nach Tags filtern" aria-expanded="false"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 6h16l-6.2 7v5l-3.6 1.8V13L4 6Z"></path></svg>${filter.ids.length ? `<b>${filter.ids.length}</b>` : ''}</button><div class="tag-filter-panel" hidden><div class="tag-filter-head"><strong>Nach Tags filtern</strong>${filter.ids.length ? '<button type="button" data-clear-tag-filter>Zurücksetzen</button>' : ''}</div>${availableTags.length ? `<div class="tag-filter-options">${availableTags.map(tag => `<label><input type="checkbox" value="${escapeHtml(tag.id)}" ${filter.ids.includes(tag.id) ? 'checked' : ''}><span>${escapeHtml(tag.name)}</span><small>${tag.viewProjectCount}</small></label>`).join('')}</div><label class="tag-filter-mode">Verknüpfung<select data-tag-filter-mode><option value="all" ${filter.mode === 'all' ? 'selected' : ''}>Alle ausgewählten Tags</option><option value="any" ${filter.mode === 'any' ? 'selected' : ''}>Mindestens ein Tag</option></select></label>` : '<p class="tag-filter-empty">Für diese Projekte sind noch keine Tags vergeben.</p>'}</div></div>
     ${createControl}
@@ -516,6 +681,7 @@ function bindProjectListControls(archived) {
   const searchToggle = $('[data-toggle-search]');
   const sortToggle = $('[data-toggle-sort]');
   const filterToggle = $('[data-toggle-filter]');
+  const folderToggle = $('[data-toggle-folders]');
   const setControlOpen = (control, toggle, open) => {
     control.classList.toggle('open', open);
     toggle.setAttribute('aria-expanded', String(open));
@@ -546,6 +712,16 @@ function bindProjectListControls(archived) {
     setControlOpen(searchControl, searchToggle, false);
     sortControl.querySelector('.project-sort-panel').hidden = true;
     sortToggle.setAttribute('aria-expanded', 'false');
+  };
+  if (folderToggle) folderToggle.onclick = async () => {
+    const showProjectFolders = state.user.showProjectFolders === false;
+    folderToggle.disabled = true;
+    try {
+      const result = await api('/account/preferences', { method:'PATCH', body:JSON.stringify({ showProjectFolders }) });
+      Object.assign(state.user, result);
+      toast(showProjectFolders ? 'Ordner eingeblendet' : 'Ordner ausgeblendet');
+      await renderProjects();
+    } catch (error) { toast(error.message); folderToggle.disabled = false; }
   };
   const refreshFilterSummary = () => {
     const count = state.projectTagFilter[archived ? 'archived' : 'active'].ids.length;
@@ -1111,13 +1287,20 @@ async function renderHome(keepMenuOpen = false) {
 async function renderProjects() {
   await loadProjectBrowser();
   if (state.currentFolderId && !folderById(state.currentFolderId)) state.currentFolderId = null;
-  const projects = sortedProjects(state.projects.filter(project => regularProjectStatuses.includes(project.status) && (state.projectStatusFilter === 'all' || project.status === state.projectStatusFilter) && (project.folderId || null) === state.currentFolderId));
-  const folders = state.folders.filter(folder => folder.parentId === state.currentFolderId).sort((a,b) => a.name.localeCompare(b.name, 'de', { sensitivity:'base' }));
+  const showFolders = state.user.showProjectFolders !== false;
+  const visibleFolderIds = showFolders ? null : descendantFolderIds(state.currentFolderId);
+  const projects = sortedProjects(state.projects.filter(project => {
+    if (!regularProjectStatuses.includes(project.status) || (state.projectStatusFilter !== 'all' && project.status !== state.projectStatusFilter)) return false;
+    if (showFolders) return (project.folderId || null) === state.currentFolderId;
+    if (state.currentFolderId) return visibleFolderIds.has(project.folderId);
+    return !project.folderId || visibleFolderIds.has(project.folderId);
+  }));
+  const folders = showFolders ? state.folders.filter(folder => folder.parentId === state.currentFolderId).sort((a,b) => a.name.localeCompare(b.name, 'de', { sensitivity:'base' })) : [];
   const currentFolder = folderById(state.currentFolderId);
   const title = { all:'Alle', active:'Aktiv', paused:'Pausiert', completed:'Abgeschlossen' }[state.projectStatusFilter] || 'Alle';
   $('#main').innerHTML = `${folderBreadcrumbs(state.currentFolderId)}<header class="page-head project-browser-head"><div><h1>${escapeHtml(title)}</h1>${currentFolder?.description ? `<p>${escapeHtml(currentFolder.description)}</p>` : ''}</div><div class="page-actions">${projectListControls(false, projects)}</div></header><div id="active-tag-filters">${selectedTagFiltersMarkup(false)}</div>
     ${folders.length ? `<section class="folder-section"><div class="folder-grid">${folders.map(folderCard).join('')}</div></section>` : ''}
-    ${projects.length ? `<div class="project-grid project-list">${projects.map(project => projectCard(project)).join('')}</div><div id="project-no-results" class="empty hidden"><strong>Keine passenden Projekte gefunden.</strong>Versuche einen anderen Suchbegriff.</div>` : (!folders.length ? `<div class="empty"><strong>${currentFolder ? 'Dieser Ordner enthält keine passenden Projekte.' : state.projectStatusFilter === 'paused' ? 'Keine pausierten Projekte vorhanden.' : state.projectStatusFilter === 'completed' ? 'Noch keine abgeschlossenen Projekte vorhanden.' : state.projectStatusFilter === 'active' ? 'Keine aktiven Projekte vorhanden.' : 'Noch keine Projekte vorhanden.'}</strong></div>` : '')}`;
+    ${projects.length ? `<div class="project-grid project-list">${projects.map(project => projectCard(project, false, !showFolders)).join('')}</div><div id="project-no-results" class="empty hidden"><strong>Keine passenden Projekte gefunden.</strong>Versuche einen anderen Suchbegriff.</div>` : (!folders.length ? `<div class="empty"><strong>${currentFolder ? 'Dieser Ordner enthält keine passenden Projekte.' : state.projectStatusFilter === 'paused' ? 'Keine pausierten Projekte vorhanden.' : state.projectStatusFilter === 'completed' ? 'Noch keine abgeschlossenen Projekte vorhanden.' : state.projectStatusFilter === 'active' ? 'Keine aktiven Projekte vorhanden.' : 'Noch keine Projekte vorhanden.'}</strong></div>` : '')}`;
   bindNewProject();
   bindFolderActions();
   bindProjectListControls(false);
@@ -1709,10 +1892,19 @@ async function renderProject(id) {
   if (p.status === 'trashed') { location.href = '/#/trash'; return; }
   setProjectsMenu(true, p.status);
   if (state.activeTab === 'tasks') state.activeTab = 'entries';
-  const tabs = [['entries','Logbuch'],['notes','Notizen'],['materials','Material'],['contacts','Kontakte'],['links','Links'],['ideas','Ideen'],['learnings','Erkenntnisse']];
+  const openTaskCount = (p.tasks || []).filter(task => task.status !== 'Erledigt').length;
+  const tabs = [
+    ['entries','Logbuch',`${openTaskCount}/${(p.entries || []).length}`],
+    ['notes','Notizen',(p.notes || []).length],
+    ['materials','Material',(p.materials || []).length],
+    ['contacts','Kontakte',(p.contacts || []).length],
+    ['links','Links',(p.links || []).length],
+    ['ideas','Ideen',(p.ideas || []).length],
+    ['learnings','Erkenntnisse',(p.learnings || []).length]
+  ];
   const content = state.activeTab === 'entries' ? diaryView(p) : itemsView(p, state.activeTab);
   const breadcrumbs = p.status === 'archived' ? '<nav class="folder-breadcrumbs" aria-label="Projektpfad"><a href="/#/archive">Archiviert</a></nav>' : folderBreadcrumbs(p.folderId || null);
-  $('#main').innerHTML = `<div class="project-page-breadcrumbs">${breadcrumbs}</div><div class="project-page-head"><section class="project-hero"><div class="project-hero-layout"><div class="project-hero-main"><div class="project-heading-row"><span class="project-hero-icon" aria-hidden="true">${iconSvg(projectIconName(p))}</span><div class="project-heading-content"><div class="project-title-line"><h1>${escapeHtml(p.title)}</h1></div><p class="project-description">${escapeHtml(p.description || 'Noch keine Projektbeschreibung hinterlegt.')}</p></div></div></div><aside class="project-hero-status" aria-label="Projektstatus"><div class="project-hero-status-head"><span>Projektstatus</span><div class="project-hero-actions">${projectCardActions(p)}</div></div><div class="project-hero-facts"><div class="project-hero-fact"><small>Status</small>${projectStatusControl(p)}</div><div class="project-hero-fact"><small>Priorität</small>${projectPriorityControl(p)}</div><div class="project-hero-fact"><small>Fälligkeit</small><span class="project-status-value">${p.dueDate ? formatDate(p.dueDate) : 'ohne'}</span></div><div class="project-hero-fact project-hero-tags"><small>Tags</small>${tagChips(p.tagIds, { limit:20, archived:p.status === 'archived' }) || '<span class="project-status-empty">Keine</span>'}</div></div></aside></div><div class="project-subnav"><nav class="tabs" aria-label="Projektbereiche">${tabs.map(([id,label]) => `<button class="tab ${state.activeTab===id?'active':''}" data-tab="${id}">${label}</button>`).join('')}</nav></div></section></div><section class="project-page-content">${content}</section>`;
+  $('#main').innerHTML = `<div class="project-page-breadcrumbs">${breadcrumbs}</div><div class="project-page-head"><section class="project-hero"><div class="project-hero-layout"><div class="project-hero-main"><div class="project-heading-row"><span class="project-hero-icon" aria-hidden="true">${iconSvg(projectIconName(p))}</span><div class="project-heading-content"><div class="project-title-line"><h1>${escapeHtml(p.title)}</h1></div><p class="project-description">${escapeHtml(p.description || 'Noch keine Projektbeschreibung hinterlegt.')}</p></div></div></div><aside class="project-hero-status" aria-label="Projektstatus"><div class="project-hero-status-head"><span>Projektstatus</span><div class="project-hero-actions">${projectCardActions(p)}</div></div><div class="project-hero-facts"><div class="project-hero-fact"><small>Status</small>${projectStatusControl(p)}</div><div class="project-hero-fact"><small>Priorität</small>${projectPriorityControl(p)}</div><div class="project-hero-fact"><small>Fälligkeit</small><span class="project-status-value">${p.dueDate ? formatDate(p.dueDate) : 'ohne'}</span></div><div class="project-hero-fact project-hero-tags"><small>Tags</small>${tagChips(p.tagIds, { limit:20, archived:p.status === 'archived' }) || '<span class="project-status-empty">Keine</span>'}</div></div></aside></div><div class="project-subnav"><nav class="tabs" aria-label="Projektbereiche">${tabs.map(([id,label,count]) => `<button class="tab ${state.activeTab===id?'active':''}" data-tab="${id}"><span>${label}</span><span class="tab-count">(${count})</span></button>`).join('')}</nav></div></section></div><section class="project-page-content">${content}</section>`;
   const newEntryButton = $('[data-new-entry]');
   if (newEntryButton) newEntryButton.onclick = () => openEntryDialog(p.id);
   const newItemButton = $('[data-new-item]');
@@ -1897,6 +2089,9 @@ function renderProjectTagPicker(query = '') {
     if (state.projectDialogTagIds.includes(id)) state.projectDialogTagIds = state.projectDialogTagIds.filter(tagId => tagId !== id);
     else state.projectDialogTagIds.push(id);
     renderProjectTagPicker(options.querySelector('#project-tag-input')?.value || '');
+    [...options.querySelectorAll('[data-toggle-project-tag]')]
+      .find(option => option.dataset.toggleProjectTag === id)
+      ?.focus();
   });
   const addButton = options.querySelector('[data-new-project-tag]');
   if (addButton) addButton.onclick = () => {
@@ -1991,6 +2186,22 @@ function renderIconPicker(scope, query = '', open = false) {
   };
 }
 
+function showFormDialog(dialog) {
+  dialog.querySelectorAll('input[type="date"]').forEach(input => {
+    input.dataset.dateDigits = '';
+    input.setCustomValidity('');
+    input.classList.remove('input-invalid');
+    input.removeAttribute('aria-invalid');
+    updateDatePresentation(input);
+  });
+  dialog.showModal();
+  requestAnimationFrame(() => {
+    const firstField = [...dialog.querySelectorAll('input:not([type="hidden"]):not([disabled]), textarea:not([disabled]), select:not([disabled])')]
+      .find(field => !field.closest('[hidden], .hidden') && field.getClientRects().length);
+    firstField?.focus();
+  });
+}
+
 function openProjectDialog(project = null) {
   document.querySelectorAll('.action-menu[open]').forEach(menu => menu.removeAttribute('open'));
   const form = $('#project-form');
@@ -2037,7 +2248,7 @@ function openProjectDialog(project = null) {
   form.dataset.returnUrl = location.href;
   $('#project-dialog-title').textContent = project ? 'Projekt bearbeiten' : 'Neues Projekt';
   $('#project-submit').textContent = 'Speichern';
-  $('#project-dialog').showModal();
+  showFormDialog($('#project-dialog'));
 }
 
 function openFolderDialog(folder = null, { selectAfterCreate = false, parentId = state.currentFolderId } = {}) {
@@ -2062,8 +2273,7 @@ function openFolderDialog(folder = null, { selectAfterCreate = false, parentId =
     : 'Der leere Ordner wird endgültig gelöscht. Das Löschen kann nicht rückgängig gemacht werden.';
   form.elements.parentId.innerHTML = folderSelectOptions(folder?.parentId || parentId || '', folder?.id || '');
   $('#folder-dialog-title').textContent = folder ? 'Ordner bearbeiten' : 'Neuer Ordner';
-  $('#folder-dialog').showModal();
-  requestAnimationFrame(() => form.elements.name.focus());
+  showFormDialog($('#folder-dialog'));
 }
 
 function openEntryDialog(projectId, entry = null) {
@@ -2079,7 +2289,7 @@ function openEntryDialog(projectId, entry = null) {
   if (form.elements.nextStep) form.elements.nextStep.value = entry?.nextStep || '';
   $('#entry-dialog-title').textContent = entry ? 'Arbeitsschritt bearbeiten' : 'Erledigten Arbeitsschritt festhalten';
   $('#entry-submit').textContent = entry ? 'Änderungen speichern' : 'Arbeitsschritt speichern';
-  $('#entry-dialog').showModal();
+  showFormDialog($('#entry-dialog'));
 }
 
 function fieldMarkup(field, value = '') {
@@ -2102,7 +2312,7 @@ function openItemDialog(projectId, collection, item = null) {
   $('#item-submit').textContent = item ? 'Änderungen speichern' : `${config.singular} speichern`;
   $('#item-fields').innerHTML = config.fields.map(field => fieldMarkup(field, item?.[field.name] || '')).join('');
   enhanceDateInputs($('#item-fields'));
-  $('#item-dialog').showModal();
+  showFormDialog($('#item-dialog'));
 }
 
 function openTagDialog(tag = null) {
@@ -2112,7 +2322,7 @@ function openTagDialog(tag = null) {
   form.elements.name.value = tag?.name || '';
   $('#tag-dialog-title').textContent = tag ? 'Tag umbenennen' : 'Tag anlegen';
   $('#tag-submit').textContent = tag ? 'Änderung speichern' : 'Tag anlegen';
-  $('#tag-dialog').showModal();
+  showFormDialog($('#tag-dialog'));
 }
 
 function openTagMergeDialog(tag) {
@@ -2121,7 +2331,7 @@ function openTagMergeDialog(tag) {
   form.elements.sourceId.value = tag.id;
   form.elements.targetId.innerHTML = state.tags.filter(candidate => candidate.id !== tag.id).sort((a,b) => a.name.localeCompare(b.name, 'de')).map(candidate => `<option value="${escapeHtml(candidate.id)}">${escapeHtml(candidate.name)}</option>`).join('');
   $('#tag-merge-copy').textContent = `„${tag.name}“ wird aktuell von ${(tag.activeProjectCount || 0) + (tag.archivedProjectCount || 0)} Projekten verwendet.`;
-  $('#tag-merge-dialog').showModal();
+  showFormDialog($('#tag-merge-dialog'));
 }
 
 function bindTagActions() {
@@ -2171,7 +2381,7 @@ function openUserDialog(user = null) {
   };
   form.elements.projectAccessMode.onchange = updateAccessCopy;
   updateAccessCopy();
-  $('#user-dialog').showModal();
+  showFormDialog($('#user-dialog'));
 }
 
 function bindUserActions() {
@@ -2205,7 +2415,7 @@ function openPasswordDialog(forced = false) {
   $('#password-dialog-copy').textContent = forced ? 'Bevor du Make:Log verwenden kannst, musst du das vom Administrator vergebene Startpasswort ändern.' : 'Gib dein aktuelles und anschließend ein neues Passwort ein.';
   document.querySelectorAll('.password-cancel').forEach(button => button.classList.toggle('hidden', forced));
   dialog.oncancel = event => { if (forced) event.preventDefault(); };
-  dialog.showModal();
+  showFormDialog(dialog);
 }
 
 function bindSecurityActions() {
@@ -2235,8 +2445,7 @@ function bindSystemActions() {
     $('#update-dialog-copy').textContent = update.platform === 'docker'
       ? `Version ${update.latestVersion} wird beim Docker-Host-Helfer angefordert. Der Container erhält dabei keinen Zugriff auf den Docker-Socket.`
       : `Version ${update.latestVersion} wird geprüft, gesichert und anschließend installiert. Währenddessen ist Make:Log kurz im Wartungsmodus.`;
-    dialog.showModal();
-    form.elements.password.focus();
+    showFormDialog(dialog);
   };
   $('[data-clear-content]').onclick = async event => {
     if (!confirm('Wirklich alle Projekte einschließlich aller Logs und Projektinhalte endgültig löschen? Benutzerkonten bleiben erhalten.')) return;
@@ -2678,6 +2887,20 @@ function bindReordering() {
 }
 enhanceDateInputs();
 
+document.querySelectorAll('dialog form').forEach(form => form.addEventListener('keydown', event => {
+  if (event.key !== 'Enter' || event.repeat || event.isComposing) return;
+  if (event.target.matches('button')) {
+    event.preventDefault();
+    event.target.click();
+    return;
+  }
+  if (event.target.matches('textarea')) return;
+  const submit = form.querySelector('button[type="submit"]:not(:disabled)');
+  if (!submit) return;
+  event.preventDefault();
+  form.requestSubmit(submit);
+}));
+
 $('#login-form').addEventListener('submit', async event => {
   event.preventDefault();
   const form = new FormData(event.currentTarget);
@@ -2699,8 +2922,13 @@ $('#project-form').addEventListener('submit', async event => {
     dateInput.classList.add('input-invalid');
     dateInput.setAttribute('aria-invalid', 'true');
   }
-  if (!String(form.title || '').trim() || !form.createdAt) {
-    (!String(form.title || '').trim() ? titleInput : dateInput).focus();
+  const invalidDateInput = [...formElement.querySelectorAll('input[type="date"]')].find(input => !input.checkValidity());
+  if (invalidDateInput) {
+    invalidDateInput.classList.add('input-invalid');
+    invalidDateInput.setAttribute('aria-invalid', 'true');
+  }
+  if (!String(form.title || '').trim() || !form.createdAt || invalidDateInput) {
+    (!String(form.title || '').trim() ? titleInput : invalidDateInput || dateInput).focus();
     return;
   }
   const editing = Boolean(form.projectId);

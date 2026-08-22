@@ -14,6 +14,8 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
+    env:
+      RELEASE_REPOSITORY_TOKEN: ${{ secrets.RELEASE_REPOSITORY_TOKEN }}
     steps:
       - uses: actions/checkout@v5
       - uses: shivammathur/setup-php@v2
@@ -72,11 +74,21 @@ jobs:
           subject-name: ${{ steps.meta.outputs.image }}
           subject-digest: ${{ steps.image.outputs.digest }}
           push-to-registry: true
+      - name: Signierte Release-Dateien sichern
+        uses: actions/upload-artifact@v4
+        with:
+          name: makelog-release-${{ steps.meta.outputs.version }}
+          path: |
+            dist/makelog-web-${{ steps.meta.outputs.version }}.tar
+            dist/update-manifest.json
+            dist/update-manifest.sig
+            dist/checksums.txt
+          if-no-files-found: error
       - name: GitHub Release veröffentlichen
+        if: env.RELEASE_REPOSITORY_TOKEN != ''
         env:
-          GH_TOKEN: ${{ secrets.RELEASE_REPOSITORY_TOKEN }}
+          GH_TOKEN: ${{ env.RELEASE_REPOSITORY_TOKEN }}
         run: |
-          test -n "$GH_TOKEN"
           gh release create "$GITHUB_REF_NAME" \
             --repo johannesboernsen/make-log-releases \
             --title "Make:Log ${{ steps.meta.outputs.version }}" \

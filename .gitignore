@@ -5,6 +5,7 @@ include/config.h
 .env
 makelog-data/
 node_modules/
+dist/
 .makelog-update/
 .makelog-update-private.pem
 .env.makelog-update-backup
