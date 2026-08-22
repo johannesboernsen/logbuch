@@ -48,10 +48,14 @@ function slug(string $value): string
 
 function readJsonFile(string $path, array $fallback = []): array
 {
-    if (!is_file($path)) {
+    if (!is_file($path) || !is_readable($path)) {
         return $fallback;
     }
-    $decoded = json_decode((string) file_get_contents($path), true);
+    $content = @file_get_contents($path);
+    if (!is_string($content)) {
+        return $fallback;
+    }
+    $decoded = json_decode($content, true);
     return is_array($decoded) ? $decoded : $fallback;
 }
 
