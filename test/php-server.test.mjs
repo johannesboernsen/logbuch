@@ -1,9 +1,13 @@
 import test, { after, before } from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { chmod, mkdir, mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+
+await import('../public/backup-format.js');
+const backupArchives = globalThis.LogbuchBackupArchive;
 
 const root = new URL('..', import.meta.url).pathname;
 const baseUrl = 'http://127.0.0.1:4191';
@@ -181,6 +185,36 @@ test('Übersichtsbereiche werden in Zeilen konfiguriert', async () => {
   assert.deepEqual(updated.data.overviewOrder, overviewOrder);
 });
 
+test('Persönliche To-dos bleiben einfach, sortierbar und vom Projektlog getrennt', async () => {
+  assert.equal((await request('/api/todos')).data.openCount, 0);
+  assert.equal((await request('/api/todos', { method:'POST', body:JSON.stringify({ title:'   ' }) })).response.status, 422);
+  assert.equal((await request('/api/todos', { method:'POST', body:JSON.stringify({ title:'x'.repeat(201) }) })).response.status, 422);
+
+  const first = await request('/api/todos', { method:'POST', body:JSON.stringify({ title:'Paket zur Post bringen' }) });
+  const second = await request('/api/todos', { method:'POST', body:JSON.stringify({ title:'Versicherung anrufen' }) });
+  const third = await request('/api/todos', { method:'POST', body:JSON.stringify({ title:'Batterien kaufen' }) });
+  assert.equal(first.response.status, 201);
+  assert.equal(second.response.status, 201);
+  assert.equal(third.response.status, 201);
+  assert.equal((await request('/api/todos')).data.openCount, 3);
+
+  const order = [third.data.id, first.data.id, second.data.id];
+  assert.equal((await request('/api/todos/reorder', { method:'POST', body:JSON.stringify({ ids:order }) })).response.status, 200);
+  assert.deepEqual((await request('/api/todos')).data.todos.filter(todo => !todo.completedAt).map(todo => todo.id), order);
+  assert.equal((await request('/api/todos/reorder', { method:'POST', body:JSON.stringify({ ids:[first.data.id] }) })).response.status, 422);
+
+  const edited = await request(`/api/todos/${second.data.id}`, { method:'PATCH', body:JSON.stringify({ title:'Versicherung zurückrufen' }) });
+  assert.equal(edited.data.title, 'Versicherung zurückrufen');
+  const completed = await request(`/api/todos/${third.data.id}`, { method:'PATCH', body:JSON.stringify({ completed:true }) });
+  assert.match(completed.data.completedAt, /^\d{4}-\d{2}-\d{2}T/);
+  const listed = await request('/api/todos');
+  assert.equal(listed.data.openCount, 2);
+  assert.equal(listed.data.todos.at(-1).id, third.data.id);
+
+  assert.equal((await request(`/api/todos/${first.data.id}`, { method:'DELETE' })).response.status, 204);
+  assert.equal((await request('/api/todos')).data.todos.length, 2);
+});
+
 test('Ein Projekt benötigt Titel und Startdatum', async () => {
   const missingTitle = await request('/api/projects', { method: 'POST', body: JSON.stringify({ title: '', createdAt: '' }) });
   assert.equal(missingTitle.response.status, 422);
@@ -311,6 +345,25 @@ test('Projekt, Aufgabe und Log werden per API und als offene Dateien gespeichert
   assert.match(projectMarkdown, /dueDate: "2026-09-30"/);
 });
 
+test('Globale Suche findet Projektinhalte und unterstützt Filter sowie Sortierung', async () => {
+  const learning = await request('/api/search?q=Vorbohren');
+  assert.equal(learning.response.status, 200);
+  assert.ok(learning.data.results.some(result => result.type === 'learnings' && result.projectId === projectId && result.title === 'Vorbohren verhindert Ausrisse'));
+
+  const notes = await request('/api/search?q=Breite&type=notes&status=active');
+  assert.equal(notes.response.status, 200);
+  assert.equal(notes.data.results.length, 1);
+  assert.equal(notes.data.results[0].type, 'notes');
+  assert.equal(notes.data.results[0].title, 'Maße der Werkbank');
+
+  const wrongStatus = await request('/api/search?q=Breite&type=notes&status=paused');
+  assert.equal(wrongStatus.data.total, 0);
+  const sorted = await request('/api/search?q=Werkbank&sort=title');
+  assert.deepEqual(sorted.data.results.map(result => result.title), [...sorted.data.results.map(result => result.title)].sort((left, right) => left.localeCompare(right, 'de', { sensitivity:'base' })));
+  assert.equal((await request('/api/search?q=x')).response.status, 422);
+  assert.equal((await request('/api/search?q=Werkbank&type=unbekannt')).response.status, 422);
+});
+
 test('Projektordner können verschachtelt und nur leer gelöscht werden', async () => {
   const folderTag = await request('/api/tags', { method: 'POST', body: JSON.stringify({ name: 'Ordnerstruktur' }) });
   assert.equal(folderTag.response.status, 201);
@@ -376,6 +429,146 @@ test('Gelöschte Projekte landen mit Löschzeitpunkt im Papierkorb', async () =>
   assert.equal('deletedAt' in restored.data, false);
 });
 
+test('Projektdateien werden im Projektordner gespeichert, zugeordnet und verwaltet', async () => {
+  const detail = await request(`/api/projects/${projectId}`);
+  const note = detail.data.notes[0];
+  const payload = new FormData();
+  const imageBytes = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64');
+  payload.append('file', new Blob([imageBytes], { type:'image/png' }), 'werkbank-plan.png');
+  payload.append('displayName', 'Werkbankplan');
+  payload.append('description', 'Skizze mit den finalen Abmessungen');
+  payload.append('associationCollection', 'notes');
+  payload.append('associationItemId', note.id);
+  const uploadResponse = await fetch(`${baseUrl}/api/projects/${projectId}/files`, { method:'POST', headers:{ Cookie:cookie, 'X-Logbuch-CSRF':csrf, Accept:'application/json' }, body:payload });
+  const uploadText = await uploadResponse.text();
+  let uploaded;
+  try { uploaded = JSON.parse(uploadText); } catch { assert.fail(`${uploadText}\n${serverErrors.slice(-4000)}`); }
+  assert.equal(uploadResponse.status, 201, `${JSON.stringify(uploaded)}\n${serverErrors.slice(-4000)}`);
+  assert.equal(uploaded.displayName, 'Werkbankplan');
+  assert.deepEqual(uploaded.association, { collection:'notes', itemId:note.id });
+  assert.match(uploaded.sha256, /^[a-f0-9]{64}$/);
+
+  const stored = await readFile(join(storage, 'projects', projectId, 'attachments', uploaded.id, 'original.bin'));
+  assert.deepEqual(stored, imageBytes);
+  const withFiles = await request(`/api/project-view/${projectId}`);
+  assert.equal(withFiles.data.project.files.length, 1);
+
+  const content = await fetch(`${baseUrl}/api/projects/${projectId}/files/${uploaded.id}/content`, { headers:{ Cookie:cookie } });
+  assert.equal(content.status, 200);
+  assert.equal(content.headers.get('x-content-type-options'), 'nosniff');
+  assert.deepEqual(Buffer.from(await content.arrayBuffer()), stored);
+  const thumbnail = await fetch(`${baseUrl}/api/projects/${projectId}/files/${uploaded.id}/thumbnail`, { headers:{ Cookie:cookie } });
+  assert.equal(thumbnail.status, 200);
+  assert.equal(thumbnail.headers.get('content-type'), 'image/jpeg');
+  assert.ok((await thumbnail.arrayBuffer()).byteLength > 0);
+  const storageStatus = await request('/api/storage');
+  assert.equal(storageStatus.response.status, 200);
+  assert.ok(storageStatus.data.attachmentCount >= 1);
+  assert.ok(storageStatus.data.attachmentBytes >= imageBytes.length);
+
+  const rotated = await request(`/api/projects/${projectId}/files/${uploaded.id}/rotate`, { method:'POST', body:JSON.stringify({ degrees:90 }) });
+  assert.equal(rotated.response.status, 200);
+  assert.equal(rotated.data.rotation, 90);
+  const renamed = await request(`/api/projects/${projectId}/files/${uploaded.id}`, { method:'PATCH', body:JSON.stringify({ displayName:'Werkbankplan v2', description:'Aktualisierte Beschreibung' }) });
+  assert.equal(renamed.data.displayName, 'Werkbankplan v2');
+
+  const search = await request('/api/search?q=Werkbankplan&type=files');
+  assert.equal(search.response.status, 200);
+  assert.equal(search.data.results[0]?.id, uploaded.id);
+
+  const removedNote = await request(`/api/projects/${projectId}/notes/${note.id}`, { method:'DELETE' });
+  assert.equal(removedNote.response.status, 204);
+  const withoutAssociatedFile = await request(`/api/projects/${projectId}`);
+  assert.equal(withoutAssociatedFile.data.files.length, 0);
+  await assert.rejects(readFile(join(storage, 'projects', projectId, 'attachments', uploaded.id, 'original.bin')));
+
+  const standalonePayload = new FormData();
+  standalonePayload.append('file', new Blob([imageBytes], { type:'image/png' }), 'manuell-loeschen.png');
+  const standaloneResponse = await fetch(`${baseUrl}/api/projects/${projectId}/files`, { method:'POST', headers:{ Cookie:cookie, 'X-Logbuch-CSRF':csrf, Accept:'application/json' }, body:standalonePayload });
+  const standalone = await standaloneResponse.json();
+  assert.equal(standaloneResponse.status, 201, JSON.stringify(standalone));
+  const deleted = await request(`/api/projects/${projectId}/files/${standalone.id}`, { method:'DELETE' });
+  assert.equal(deleted.response.status, 204);
+  assert.equal((await request(`/api/projects/${projectId}`)).data.files.length, 0);
+});
+
+test('Projektbackup stellt Bilddatei und Metadaten bytegenau wieder her', async () => {
+  const importedProjectId = 'project-backup-roundtrip';
+  const noteId = 'note-backup-roundtrip';
+  const fileId = 'file-backup-roundtrip';
+  const imageBytes = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64');
+  const metadata = {
+    id:fileId,
+    originalName:'backup-bild.png',
+    displayName:'Backup-Bild',
+    description:'Beschreibung aus dem ursprünglichen Projekt',
+    mimeType:'image/png',
+    size:imageBytes.length,
+    sha256:createHash('sha256').update(imageBytes).digest('hex'),
+    rotation:270,
+    association:{ collection:'notes', itemId:noteId },
+    uploadedAt:'2025-04-03T12:13:14Z',
+    uploadedBy:'ursprungsnutzer',
+    updatedAt:'2025-04-04T15:16:17Z',
+  };
+  const project = {
+    id:importedProjectId, title:'Backup Roundtrip', description:'Vollständiger Wiederherstellungstest', status:'idea', priority:'Hoch', flagged:true, icon:'camera', iconInherited:false, createdAt:'2025-04-01', dueDate:'2025-12-31', tagIds:[], folderId:null,
+    entries:[], tasks:[], materials:[], contacts:[], links:[], ideas:[], learnings:[], notes:[{ id:noteId, title:'Bildnotiz', description:'Mit Zuordnung', author:'ursprungsnutzer', createdAt:'2025-04-02T10:00:00Z' }], files:[metadata],
+  };
+  const archive = await backupArchives.create([
+    ['manifest.json', JSON.stringify({ format:'logbuch-projects', version:1, exportedAt:'2026-08-23T20:00:00Z', tags:[], folders:[], serverSettings:null, projects:[project] })],
+    [`projects/${importedProjectId}/attachments/${fileId}/metadata.json`, JSON.stringify(metadata)],
+    [`projects/${importedProjectId}/attachments/${fileId}/original.bin`, imageBytes],
+  ]);
+  const archiveFiles = backupArchives.parse(await archive.arrayBuffer());
+  const restoredManifest = JSON.parse(new TextDecoder().decode(archiveFiles.get('manifest.json')));
+  const restoredMetadata = JSON.parse(new TextDecoder().decode(archiveFiles.get(`projects/${importedProjectId}/attachments/${fileId}/metadata.json`)));
+  const importedProject = await request('/api/import/project', { method:'POST', body:JSON.stringify({ project:restoredManifest.projects[0], tags:[], replace:false }) });
+  assert.equal(importedProject.response.status, 201);
+
+  const upload = new FormData();
+  upload.append('file', new Blob([archiveFiles.get(`projects/${importedProjectId}/attachments/${fileId}/original.bin`)], { type:metadata.mimeType }), metadata.originalName);
+  upload.append('metadata', JSON.stringify(restoredMetadata));
+  const response = await fetch(`${baseUrl}/api/import/projects/${importedProjectId}/files`, { method:'POST', headers:{ Cookie:cookie, 'X-Logbuch-CSRF':csrf, Accept:'application/json' }, body:upload });
+  const responseText = await response.text();
+  let restoredFile;
+  try { restoredFile = JSON.parse(responseText); } catch { assert.fail(`${responseText}\n${serverErrors.slice(-4000)}`); }
+  assert.equal(response.status, 201, JSON.stringify(restoredFile));
+  assert.deepEqual(restoredFile, metadata);
+  assert.deepEqual(await readFile(join(storage, 'projects', importedProjectId, 'attachments', fileId, 'original.bin')), imageBytes);
+  const restoredProject = await request(`/api/projects/${importedProjectId}`);
+  assert.equal(restoredProject.data.status, 'idea');
+  assert.equal(restoredProject.data.notes[0].id, noteId);
+  assert.deepEqual(restoredProject.data.files[0], metadata);
+
+  const exportResponse = await fetch(`${baseUrl}/api/backup/projects/${importedProjectId}`, { headers:{ Cookie:cookie } });
+  assert.equal(exportResponse.status, 200);
+  assert.match(exportResponse.headers.get('content-type') || '', /application\/x-tar/);
+  const exportedFiles = backupArchives.parse(await exportResponse.arrayBuffer());
+  assert.deepEqual(Buffer.from(exportedFiles.get(`projects/${importedProjectId}/attachments/${fileId}/original.bin`)), imageBytes);
+  assert.equal(exportedFiles.has(`projects/${importedProjectId}/attachments/${fileId}/thumbnail.jpg`), false);
+});
+
+test('Große Projektarchive werden serverseitig importiert', async () => {
+  const importedProjectId = 'project-server-archive-import';
+  const fileId = 'file-server-archive-import';
+  const imageBytes = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64');
+  const metadata = { id:fileId, originalName:'server-import.png', displayName:'Serverimport', description:'Ohne Browser-Entpacken', mimeType:'image/png', size:imageBytes.length, sha256:createHash('sha256').update(imageBytes).digest('hex'), rotation:0, association:null, uploadedAt:'2026-08-23T18:00:00Z', uploadedBy:'admin' };
+  const project = { id:importedProjectId, title:'Serverarchiv', description:'Importtest', status:'active', priority:'Mittel', flagged:false, icon:'folder', iconInherited:false, createdAt:'2026-08-23', dueDate:'', tagIds:[], folderId:null, entries:[], tasks:[], materials:[], contacts:[], links:[], ideas:[], learnings:[], notes:[], files:[metadata] };
+  const archive = await backupArchives.create([
+    ['manifest.json', JSON.stringify({ format:'logbuch-projects', version:1, exportedAt:'2026-08-23T20:00:00Z', tags:[], folders:[], serverSettings:null, projects:[project] })],
+    [`projects/${importedProjectId}/attachments/${fileId}/original.bin`, imageBytes],
+  ]);
+  const payload = new FormData();
+  payload.append('archive', archive, 'server-import.tar');
+  payload.append('conflict', 'skip');
+  const response = await fetch(`${baseUrl}/api/import/projects-archive`, { method:'POST', headers:{ Cookie:cookie, 'X-Logbuch-CSRF':csrf, Accept:'application/json' }, body:payload });
+  const result = await response.json();
+  assert.equal(response.status, 200, `${JSON.stringify(result)}\n${serverErrors.slice(-4000)}`);
+  assert.deepEqual(result, { imported:1, skipped:0, filesImported:1 });
+  assert.deepEqual(await readFile(join(storage, 'projects', importedProjectId, 'attachments', fileId, 'original.bin')), imageBytes);
+});
+
 test('Logs erscheinen im administrativen Protokoll', async () => {
   const audit = await request('/api/audit');
   assert.equal(audit.response.status, 200);
@@ -403,14 +596,23 @@ test('Rollen und Positivlisten werden auch bei direktem API-Zugriff erzwungen', 
   assert.deepEqual(browserData.data.projects, []);
   assert.deepEqual(browserData.data.folders, []);
   assert.deepEqual(browserData.data.tags, []);
+  const search = await request('/api/search?q=Werkbank');
+  assert.equal(search.response.status, 200);
+  assert.deepEqual(search.data.results, []);
   const direct = await request(`/api/projects/${projectId}`);
   assert.equal(direct.response.status, 403);
   assert.equal((await request(`/api/project-view/${projectId}`)).response.status, 403);
   const adminArea = await request('/api/users');
   assert.equal(adminArea.response.status, 403);
+  const personalTodos = await request('/api/todos');
+  assert.deepEqual(personalTodos.data.todos, []);
+  const viewerTodo = await request('/api/todos', { method:'POST', body:JSON.stringify({ title:'Eigenes Leser-To-do' }) });
+  assert.equal(viewerTodo.response.status, 201);
+  assert.equal((await request('/api/todos')).data.openCount, 1);
 
   cookie = adminCookie;
   csrf = adminCsrf;
+  assert.ok(!(await request('/api/todos')).data.todos.some(todo => todo.id === viewerTodo.data.id));
 });
 
 test('Backup-Metadaten stellen Ordnerhierarchie und Servereinstellungen transaktional wieder her', async () => {
@@ -450,6 +652,8 @@ test('Benutzerbackups erhalten validierte Präferenzen und bleiben ohne Präfere
   const admin = backup.data.accounts.find(account => account.id === 'admin');
   assert.equal(admin.preferences.defaultProjectIcon, 'rocket');
   assert.equal(admin.preferences.showProjectFolders, false);
+  assert.equal(admin.todos.length, 2);
+  assert.ok(admin.todos.some(todo => todo.title === 'Versicherung zurückrufen'));
 
   const restored = await request('/api/import/users', { method:'POST', body:JSON.stringify({ accounts:[{ ...admin, preferences:{ startPage:'archive', showProjectFolders:true } }], replace:true }) });
   assert.equal(restored.response.status, 200);
@@ -463,8 +667,10 @@ test('Benutzerbackups erhalten validierte Präferenzen und bleiben ohne Präfere
   assert.equal(invalid.response.status, 422);
   const legacy = { ...admin };
   delete legacy.preferences;
+  delete legacy.todos;
   const compatible = await request('/api/import/users', { method:'POST', body:JSON.stringify({ accounts:[legacy], replace:true }) });
   assert.equal(compatible.response.status, 200);
   const legacyAdmin = (await request('/api/users')).data.users.find(user => user.id === 'admin');
   assert.equal(legacyAdmin.startPage, 'home');
+  assert.equal((await request('/api/todos')).data.todos.length, 2);
 });

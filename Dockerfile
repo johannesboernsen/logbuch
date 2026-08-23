@@ -4,10 +4,15 @@ LABEL org.opencontainers.image.source="https://github.com/johannesboernsen/logbu
 
 RUN apt-get update \
     && apt-get upgrade -y \
+    && apt-get install -y --no-install-recommends libjpeg62-turbo-dev libpng-dev libwebp-dev \
+    && docker-php-ext-configure gd --with-jpeg --with-webp \
+    && docker-php-ext-install -j2 gd \
     && rm -rf /var/lib/apt/lists/* \
     && a2enmod headers rewrite \
     && printf 'ServerName localhost\n' > /etc/apache2/conf-available/servername.conf \
     && a2enconf servername
+
+RUN printf 'upload_max_filesize=4G\npost_max_size=4G\nmax_file_uploads=10\nmax_input_time=3600\nmax_execution_time=3600\n' > /usr/local/etc/php/conf.d/logbuch-uploads.ini
 
 ENV APACHE_DOCUMENT_ROOT=/var/www/html/public \
     LOGBUCH_PLATFORM=docker \

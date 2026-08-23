@@ -14,6 +14,7 @@ final class Application
     private readonly Auth $auth;
     private readonly ProjectStore $projects;
     private readonly FolderStore $folders;
+    private readonly TodoStore $todos;
     private readonly UpdateService $updates;
 
     public function __construct(private readonly string $storagePath)
@@ -23,6 +24,7 @@ final class Application
         $this->auth = new Auth($this->db);
         $this->projects = new ProjectStore($storagePath . '/projects');
         $this->folders = new FolderStore($this->db);
+        $this->todos = new TodoStore($this->db);
         $this->updates = new UpdateService($storagePath, \logbuch_root_path(), $this->db, (string) (getenv('LOGBUCH_PLATFORM') ?: 'webhosting'));
     }
 
@@ -74,7 +76,8 @@ final class Application
     public function handle(string $method, string $path): never
     {
         try {
-            $input = $this->jsonBody();
+            $contentType = strtolower((string) ($_SERVER['CONTENT_TYPE'] ?? ''));
+            $input = str_starts_with($contentType, 'multipart/form-data') ? $_POST : $this->jsonBody();
             if ($path === '/api/install/status' && $method === 'GET') {
                 $this->json(200, $this->requirements());
             }
@@ -118,6 +121,10 @@ final class Application
             if ($path === '/api/system' && $method === 'GET') {
                 $this->json(200, $this->systemStatus());
             }
+            if ($path === '/api/storage' && $method === 'GET') {
+                $this->requireAdmin($user);
+                $this->json(200, $this->projects->storageStats());
+            }
             if ($path === '/api/update/status' && $method === 'GET') {
                 $this->requireAdmin($user);
                 $this->json(200, $this->updates->status(false));
@@ -137,6 +144,69 @@ final class Application
             if ($path === '/api/projects' && $method === 'GET') {
                 $visible = array_values(array_filter($this->projects->list(), fn(array $project): bool => $this->canAccess($user, $project['id'])));
                 $this->json(200, ['projects' => $visible]);
+            }
+            if ($path === '/api/todos' && $method === 'GET') {
+                $todos = $this->todos->list($user['id']);
+                $this->json(200, ['todos' => $todos, 'openCount' => count(array_filter($todos, static fn(array $todo): bool => $todo['completedAt'] === ''))]);
+            }
+            if ($path === '/api/todos' && $method === 'POST') {
+                $todo = $this->todos->create($user['id'], $input);
+                $this->audit($user['id'], 'todo.created', $todo['id']);
+                $this->json(201, $todo);
+            }
+            if ($path === '/api/todos/reorder' && $method === 'POST') {
+                $this->todos->reorder($user['id'], $input['ids'] ?? null);
+                $this->json(200, ['saved' => true]);
+            }
+            if ($path === '/api/todos/completed' && $method === 'DELETE') {
+                $removed = $this->todos->deleteCompleted($user['id']);
+                if ($removed > 0) $this->audit($user['id'], 'todos.completed_deleted', (string) $removed);
+                $this->json(200, ['removed' => $removed]);
+            }
+            if (preg_match('#^/api/todos/([^/]+)$#', $path, $match)) {
+                $todoId = rawurldecode($match[1]);
+                if ($method === 'PATCH') {
+                    $todo = $this->todos->update($user['id'], $todoId, $input);
+                    $this->audit($user['id'], 'todo.updated', $todoId);
+                    $this->json(200, $todo);
+                }
+                if ($method === 'DELETE') {
+                    $this->todos->delete($user['id'], $todoId);
+                    $this->audit($user['id'], 'todo.deleted', $todoId);
+                    $this->empty(204);
+                }
+            }
+            if ($path === '/api/search' && $method === 'GET') {
+                $query = trim((string) ($_GET['q'] ?? ''));
+                if (mb_strlen($query) > 200) throw new HttpError(422, 'Der Suchbegriff ist zu lang.');
+                if ($query !== '' && mb_strlen($query) < 2) throw new HttpError(422, 'Der Suchbegriff muss mindestens zwei Zeichen lang sein.');
+                $allowedTypes = ['project', ...ProjectStore::COLLECTIONS, 'files'];
+                $type = (string) ($_GET['type'] ?? 'all');
+                if ($type !== 'all' && !in_array($type, $allowedTypes, true)) throw new HttpError(422, 'Ungültiger Suchbereich.');
+                $status = (string) ($_GET['status'] ?? 'all');
+                if ($status !== 'all' && !in_array($status, ProjectStore::STATUSES, true)) throw new HttpError(422, 'Ungültiger Projektstatus.');
+                $sort = (string) ($_GET['sort'] ?? 'relevance');
+                if (!in_array($sort, ['relevance', 'newest', 'oldest', 'project', 'title'], true)) throw new HttpError(422, 'Ungültige Sortierung.');
+                $visible = array_values(array_filter($this->projects->list(), fn(array $project): bool => $this->canAccess($user, $project['id'])));
+                $results = $query === '' ? [] : $this->projects->search($query, array_column($visible, 'id'));
+                $results = array_values(array_filter($results, static function (array $result) use ($type, $status): bool {
+                    if ($type !== 'all' && ($result['type'] ?? '') !== $type) return false;
+                    if ($status === 'all') return ($result['projectStatus'] ?? '') !== 'trashed';
+                    return ($result['projectStatus'] ?? '') === $status;
+                }));
+                usort($results, static function (array $left, array $right) use ($sort): int {
+                    $leftDate = strtotime((string) ($left['date'] ?? '')) ?: 0;
+                    $rightDate = strtotime((string) ($right['date'] ?? '')) ?: 0;
+                    return match ($sort) {
+                        'newest' => $rightDate <=> $leftDate ?: strcasecmp((string) $left['title'], (string) $right['title']),
+                        'oldest' => $leftDate <=> $rightDate ?: strcasecmp((string) $left['title'], (string) $right['title']),
+                        'project' => strcasecmp((string) $left['projectTitle'], (string) $right['projectTitle']) ?: strcasecmp((string) $left['title'], (string) $right['title']),
+                        'title' => strcasecmp((string) $left['title'], (string) $right['title']) ?: strcasecmp((string) $left['projectTitle'], (string) $right['projectTitle']),
+                        default => ((int) ($right['relevance'] ?? 0)) <=> ((int) ($left['relevance'] ?? 0)) ?: $rightDate <=> $leftDate,
+                    };
+                });
+                $total = count($results);
+                $this->json(200, ['query' => $query, 'total' => $total, 'results' => array_slice($results, 0, 500), 'truncated' => $total > 500]);
             }
             if ($path === '/api/project-browser' && $method === 'GET') {
                 $visible = array_values(array_filter($this->projects->list(), fn(array $project): bool => $this->canAccess($user, $project['id'])));
@@ -199,6 +269,58 @@ final class Application
                 $project['accessUsers'] = $this->projectUsers($projectId);
                 $visible = array_values(array_filter($this->projects->list(), fn(array $candidate): bool => $this->canAccess($user, $candidate['id'])));
                 $this->json(200, ['project' => $project, 'tags' => $this->tagsFor($user, $visible), 'folders' => $this->visibleFolders($user, $visible)]);
+            }
+
+            if (preg_match('#^/api/projects/([^/]+)/files/([^/]+)/content$#', $path, $match) && $method === 'GET') {
+                $projectId = rawurldecode($match[1]);
+                $fileId = rawurldecode($match[2]);
+                $this->requireProjectAccess($user, $projectId);
+                $this->streamAttachment($this->projects->attachmentContent($projectId, $fileId), isset($_GET['download']));
+            }
+            if (preg_match('#^/api/projects/([^/]+)/files/([^/]+)/thumbnail$#', $path, $match) && $method === 'GET') {
+                $projectId = rawurldecode($match[1]);
+                $fileId = rawurldecode($match[2]);
+                $this->requireProjectAccess($user, $projectId);
+                $this->streamAttachment($this->projects->attachmentThumbnail($projectId, $fileId), false);
+            }
+            if (preg_match('#^/api/projects/([^/]+)/files$#', $path, $match) && $method === 'POST') {
+                $projectId = rawurldecode($match[1]);
+                $this->requireProjectEdit($user, $projectId);
+                $file = $this->projects->createAttachment($projectId, (array) ($_FILES['file'] ?? []), $input, $user['id']);
+                $this->audit($user['id'], 'file.created', $projectId . ' · ' . $file['id'], 'name=' . $file['originalName']);
+                $this->json(201, $file);
+            }
+            if (preg_match('#^/api/import/projects/([^/]+)/files$#', $path, $match) && $method === 'POST') {
+                $this->requireAdmin($user);
+                $projectId = rawurldecode($match[1]);
+                $metadata = json_decode((string) ($input['metadata'] ?? ''), true);
+                if (!is_array($metadata)) throw new HttpError(422, 'Ungültige Dateimetadaten im Backup.');
+                $file = $this->projects->importAttachment($projectId, (array) ($_FILES['file'] ?? []), $metadata, $user['id']);
+                $this->audit($user['id'], 'file.imported', $projectId . ' · ' . $file['id'], 'name=' . $file['originalName']);
+                $this->json(201, $file);
+            }
+            if (preg_match('#^/api/projects/([^/]+)/files/([^/]+)/rotate$#', $path, $match) && $method === 'POST') {
+                $projectId = rawurldecode($match[1]);
+                $fileId = rawurldecode($match[2]);
+                $this->requireProjectEdit($user, $projectId);
+                $file = $this->projects->rotateAttachment($projectId, $fileId, (int) ($input['degrees'] ?? 90));
+                $this->audit($user['id'], 'file.rotated', $projectId . ' · ' . $fileId, 'rotation=' . $file['rotation']);
+                $this->json(200, $file);
+            }
+            if (preg_match('#^/api/projects/([^/]+)/files/([^/]+)$#', $path, $match)) {
+                $projectId = rawurldecode($match[1]);
+                $fileId = rawurldecode($match[2]);
+                $this->requireProjectEdit($user, $projectId);
+                if ($method === 'PATCH') {
+                    $file = $this->projects->updateAttachment($projectId, $fileId, $input);
+                    $this->audit($user['id'], 'file.updated', $projectId . ' · ' . $fileId);
+                    $this->json(200, $file);
+                }
+                if ($method === 'DELETE') {
+                    $file = $this->projects->deleteAttachment($projectId, $fileId);
+                    $this->audit($user['id'], 'file.deleted', $projectId . ' · ' . $fileId, 'name=' . $file['originalName']);
+                    $this->empty(204);
+                }
             }
 
             if (preg_match('#^/api/projects/([^/]+)/permanent$#', $path, $match) && $method === 'DELETE') {
@@ -357,9 +479,22 @@ final class Application
                 $this->requireAdmin($user);
                 $this->json(200, $this->importBackupMetadata($user, $input));
             }
+            if ($path === '/api/import/projects-archive' && $method === 'POST') {
+                $this->requireAdmin($user);
+                $this->json(200, $this->importProjectArchive($user, (array) ($_FILES['archive'] ?? []), (string) ($input['conflict'] ?? 'skip')));
+            }
             if ($path === '/api/backup/users' && $method === 'GET') {
                 $this->requireAdmin($user);
                 $this->json(200, ['accounts' => $this->exportUsers()]);
+            }
+            if ($path === '/api/backup/projects' && $method === 'GET') {
+                $this->requireAdmin($user);
+                $this->streamProjectBackup($user);
+            }
+            if (preg_match('#^/api/backup/projects/([^/]+)$#', $path, $match) && $method === 'GET') {
+                $projectId = rawurldecode($match[1]);
+                $this->requireProjectAccess($user, $projectId);
+                $this->streamProjectBackup($user, $projectId);
             }
             if ($path === '/api/import/users' && $method === 'POST') {
                 $this->requireAdmin($user);
@@ -480,6 +615,115 @@ final class Application
     {
         http_response_code($status);
         header('Cache-Control: no-store');
+        exit;
+    }
+
+    private function streamAttachment(array $content, bool $download): never
+    {
+        $file = (array) ($content['metadata'] ?? []);
+        $path = (string) ($content['path'] ?? '');
+        if (!is_file($path)) throw new HttpError(404, 'Dateiinhalt nicht gefunden.');
+        $mimeType = (string) ($file['mimeType'] ?? 'application/octet-stream');
+        $inline = !$download && (str_starts_with($mimeType, 'image/') || $mimeType === 'application/pdf');
+        $originalName = (string) ($file['originalName'] ?? 'datei');
+        $fallbackName = preg_replace('/[^A-Za-z0-9._-]+/', '_', $originalName) ?: 'datei';
+        http_response_code(200);
+        header('Content-Type: ' . $mimeType);
+        header('Content-Length: ' . (string) filesize($path));
+        header('Content-Disposition: ' . ($inline ? 'inline' : 'attachment') . '; filename="' . $fallbackName . '"; filename*=UTF-8\'\'' . rawurlencode($originalName));
+        header('X-Content-Type-Options: nosniff');
+        header('Cache-Control: private, no-store');
+        readfile($path);
+        exit;
+    }
+
+    private function streamProjectBackup(array $user, ?string $projectId = null): never
+    {
+        if (!class_exists(\PharData::class)) throw new HttpError(500, 'Die TAR-Unterstützung ist auf diesem Server nicht verfügbar.');
+        $summaries = $projectId === null
+            ? array_values(array_filter($this->projects->list(), fn(array $project): bool => $this->canAccess($user, $project['id'])))
+            : [array_values(array_filter($this->projects->list(), static fn(array $project): bool => $project['id'] === $projectId))[0] ?? throw new HttpError(404, 'Projekt nicht gefunden.')];
+        $projects = [];
+        foreach ($summaries as $summary) {
+            $project = $this->projects->get((string) $summary['id']);
+            $project['accessUsers'] = $this->projectUsers((string) $project['id']);
+            $projects[] = $project;
+        }
+
+        $allFolders = $this->visibleFolders($user, $summaries);
+        if ($projectId === null) {
+            $folders = $allFolders;
+        } else {
+            $folderById = [];
+            foreach ($this->folders->list() as $folder) $folderById[$folder['id']] = $folder;
+            $included = [];
+            $folderId = (string) ($projects[0]['folderId'] ?? '');
+            while ($folderId !== '' && isset($folderById[$folderId]) && !isset($included[$folderId])) {
+                $included[$folderId] = true;
+                $folderId = (string) ($folderById[$folderId]['parentId'] ?? '');
+            }
+            $folders = array_values(array_filter($this->folders->list(), static fn(array $folder): bool => isset($included[$folder['id']])));
+        }
+        $tags = $this->tagsFor($user, $summaries);
+        if ($projectId !== null) {
+            $usedTagIds = [];
+            foreach ($projects as $project) foreach ((array) ($project['tagIds'] ?? []) as $id) $usedTagIds[$id] = true;
+            foreach ($folders as $folder) foreach ((array) ($folder['tagIds'] ?? []) as $id) $usedTagIds[$id] = true;
+            $tags = array_values(array_filter($tags, static fn(array $tag): bool => isset($usedTagIds[$tag['id']])));
+        }
+        $cleanFolders = array_map(static fn(array $folder): array => array_intersect_key($folder, array_flip(['id', 'parentId', 'name', 'description', 'priority', 'flagged', 'icon', 'tagIds', 'createdAt', 'updatedAt'])), $folders);
+        $cleanTags = array_map(static fn(array $tag): array => array_intersect_key($tag, array_flip(['id', 'name', 'createdAt'])), $tags);
+        $server = $this->serverSettings();
+        $manifest = [
+            'format' => 'logbuch-projects',
+            'version' => 1,
+            'exportedAt' => nowIso(),
+            'source' => ['name' => 'Logbuch', 'host' => parse_url($this->detectedBaseUrl(), PHP_URL_HOST) ?: 'localhost'],
+            'tags' => $cleanTags,
+            'folders' => $cleanFolders,
+            'serverSettings' => $projectId === null ? array_intersect_key($server, array_flip(['siteName', 'baseUrl', 'timezone'])) : null,
+            'projects' => $projects,
+        ];
+
+        $temporaryDirectory = $this->storagePath . '/tmp';
+        if (!is_dir($temporaryDirectory) && !mkdir($temporaryDirectory, 0770, true) && !is_dir($temporaryDirectory)) throw new HttpError(507, 'Temporäres Backup-Verzeichnis konnte nicht angelegt werden.');
+        $base = tempnam($temporaryDirectory, 'backup-');
+        if ($base === false) throw new HttpError(507, 'Temporäre Backup-Datei konnte nicht angelegt werden.');
+        @unlink($base);
+        $archivePath = $base . '.tar';
+        try {
+            $archive = new \PharData($archivePath);
+            $archive->addFromString('manifest.json', json_encode($manifest, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
+            foreach ($projects as $project) {
+                $root = 'projects/' . $project['id'];
+                $archive->addFromString($root . '/README.md', '# ' . $project['title'] . "\n\n" . trim((string) ($project['description'] ?? '')) . "\n");
+                $archive->addFromString($root . '/project.json', json_encode($project, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
+                foreach (ProjectStore::COLLECTIONS as $collection) {
+                    foreach ((array) ($project[$collection] ?? []) as $item) {
+                        $archive->addFromString($root . '/' . $collection . '/' . $item['id'] . '.json', json_encode($item, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
+                    }
+                }
+                foreach ((array) ($project['files'] ?? []) as $file) {
+                    $fileRoot = $root . '/attachments/' . $file['id'];
+                    $archive->addFromString($fileRoot . '/metadata.json', json_encode($file, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
+                    $content = $this->projects->attachmentContent((string) $project['id'], (string) $file['id']);
+                    $archive->addFile((string) $content['path'], $fileRoot . '/original.bin');
+                }
+            }
+            unset($archive);
+            $title = $projectId === null ? 'projekte' : (string) ($projects[0]['title'] ?? 'projekt');
+            $safeTitle = trim(preg_replace('/[^A-Za-z0-9_-]+/', '-', iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $title) ?: $title), '-') ?: 'projekt';
+            $filename = 'logbuch-' . strtolower($safeTitle) . '-' . gmdate('Y-m-d') . '.tar';
+            http_response_code(200);
+            header('Content-Type: application/x-tar');
+            header('Content-Length: ' . (string) filesize($archivePath));
+            header('Content-Disposition: attachment; filename="' . $filename . '"');
+            header('X-Content-Type-Options: nosniff');
+            header('Cache-Control: private, no-store');
+            readfile($archivePath);
+        } finally {
+            @unlink($archivePath);
+        }
         exit;
     }
 
@@ -1060,6 +1304,83 @@ final class Application
         }
     }
 
+    private function importProjectArchive(array $actor, array $upload, string $conflict): array
+    {
+        if (!class_exists(\PharData::class)) throw new HttpError(500, 'Die TAR-Unterstützung ist auf diesem Server nicht verfügbar.');
+        if (!in_array($conflict, ['skip', 'replace'], true)) throw new HttpError(422, 'Ungültige Konfliktbehandlung.');
+        $error = (int) ($upload['error'] ?? UPLOAD_ERR_NO_FILE);
+        if (in_array($error, [UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE], true)) throw new HttpError(413, 'Das Backup-Archiv ist zu groß.');
+        $source = (string) ($upload['tmp_name'] ?? '');
+        $size = (int) ($upload['size'] ?? 0);
+        if ($error !== UPLOAD_ERR_OK || $size < 1 || $size > 4 * 1024 ** 3 || !is_uploaded_file($source)) throw new HttpError(422, 'Das Backup-Archiv konnte nicht hochgeladen werden.');
+        $temporaryDirectory = $this->storagePath . '/tmp';
+        if (!is_dir($temporaryDirectory) && !mkdir($temporaryDirectory, 0770, true) && !is_dir($temporaryDirectory)) throw new HttpError(507, 'Temporäres Import-Verzeichnis konnte nicht angelegt werden.');
+        $base = tempnam($temporaryDirectory, 'import-');
+        if ($base === false) throw new HttpError(507, 'Temporäre Import-Datei konnte nicht angelegt werden.');
+        @unlink($base);
+        $archivePath = $base . '.tar';
+        if (!move_uploaded_file($source, $archivePath)) throw new HttpError(507, 'Das Backup-Archiv konnte nicht für den Import vorbereitet werden.');
+        try {
+            try {
+                $archive = new \PharData($archivePath);
+            } catch (\Throwable) {
+                throw new HttpError(422, 'Das gewählte Archiv ist kein lesbares TAR-Backup.');
+            }
+            if (!isset($archive['manifest.json'])) throw new HttpError(422, 'Im Archiv fehlt manifest.json.');
+            $manifestEntry = $archive['manifest.json'];
+            if ($manifestEntry->getSize() > 64 * 1024 * 1024) throw new HttpError(413, 'Die Backup-Beschreibung ist zu groß.');
+            $manifest = json_decode($manifestEntry->getContent(), true);
+            if (!is_array($manifest) || ($manifest['format'] ?? '') !== 'logbuch-projects' || (int) ($manifest['version'] ?? 0) !== 1 || !is_array($manifest['projects'] ?? null)) throw new HttpError(422, 'Kein unterstütztes Logbuch-Projektarchiv.');
+            if (count($manifest['projects']) > 10000) throw new HttpError(422, 'Das Archiv enthält zu viele Projekte.');
+
+            $seenProjects = [];
+            foreach ($manifest['projects'] as $project) {
+                $id = is_array($project) ? (string) ($project['id'] ?? '') : '';
+                if (!validId($id) || isset($seenProjects[$id])) throw new HttpError(422, 'Das Archiv enthält eine ungültige oder doppelte Projekt-ID.');
+                $seenProjects[$id] = true;
+                $seenFiles = [];
+                foreach ((array) ($project['files'] ?? []) as $file) {
+                    $fileId = is_array($file) ? (string) ($file['id'] ?? '') : '';
+                    $path = 'projects/' . $id . '/attachments/' . $fileId . '/original.bin';
+                    if (!validId($fileId) || isset($seenFiles[$fileId]) || !isset($archive[$path])) throw new HttpError(422, 'Eine Projektdatei fehlt oder besitzt eine ungültige ID.');
+                    $seenFiles[$fileId] = true;
+                    $entry = $archive[$path];
+                    $expectedSize = (int) ($file['size'] ?? 0);
+                    $expectedHash = strtolower((string) ($file['sha256'] ?? ''));
+                    if ($entry->getSize() < 1 || $entry->getSize() > ProjectStore::MAX_ATTACHMENT_BYTES || $expectedSize !== $entry->getSize() || !preg_match('/^[a-f0-9]{64}$/', $expectedHash) || !hash_equals($expectedHash, hash_file('sha256', $entry->getPathname()) ?: '')) {
+                        throw new HttpError(422, 'Größe oder Prüfsumme einer Projektdatei stimmt nicht.');
+                    }
+                }
+            }
+
+            $replace = $conflict === 'replace';
+            $this->importBackupMetadata($actor, ['tags' => (array) ($manifest['tags'] ?? []), 'folders' => (array) ($manifest['folders'] ?? []), 'serverSettings' => $manifest['serverSettings'] ?? null, 'replace' => $replace]);
+            $imported = 0;
+            $skipped = 0;
+            $filesImported = 0;
+            foreach ($manifest['projects'] as $project) {
+                $result = $this->projects->saveImported($project, $replace);
+                if ($result['skipped']) { ++$skipped; continue; }
+                ++$imported;
+                $projectId = (string) $project['id'];
+                foreach ((array) ($project['accessUsers'] ?? []) as $accessUser) {
+                    if (is_string($accessUser) && $this->userExists($accessUser)) $this->setUserProject($accessUser, $projectId, true);
+                }
+                foreach ((array) ($project['files'] ?? []) as $file) {
+                    $path = 'projects/' . $projectId . '/attachments/' . $file['id'] . '/original.bin';
+                    $this->projects->importAttachmentFromPath($projectId, $archive[$path]->getPathname(), $file, $actor['id']);
+                    ++$filesImported;
+                }
+                $this->audit($actor['id'], 'data.project_imported', $projectId);
+            }
+            $this->audit($actor['id'], 'data.project_archive_imported', (string) $imported, 'skipped=' . $skipped . ', files=' . $filesImported);
+            return ['imported' => $imported, 'skipped' => $skipped, 'filesImported' => $filesImported];
+        } finally {
+            unset($archive);
+            @unlink($archivePath);
+        }
+    }
+
     private function importedPreferences(mixed $input): array
     {
         $defaults = $this->auth->defaultPreferences();
@@ -1107,6 +1428,7 @@ final class Application
                 'passwordHash' => $row['password_hash'],
                 'projectIds' => $row['role'] === 'admin' ? array_column($this->projects->list(), 'id') : $this->userProjectIds($row['id']),
                 'preferences' => $preferences,
+                'todos' => $this->todos->list((string) $row['id']),
             ];
         }
         return $accounts;
@@ -1138,9 +1460,11 @@ final class Application
             if ($id === $actor['id'] && ($account['role'] !== 'admin' || ($account['active'] ?? true) === false)) {
                 throw new HttpError(422, 'Der angemeldete Administrator muss aktiv bleiben.');
             }
+            if (array_key_exists('todos', $account)) $this->todos->validateImported($account['todos']);
             $statement = $this->db->prepare('INSERT INTO users (id, role, active, access_mode, password_hash, must_change_password, preferences_json, created_at, last_login_at) VALUES (:id, :role, :active, :access, :hash, :change, :preferences, :created, :last) ON CONFLICT(id) DO UPDATE SET role = excluded.role, active = excluded.active, access_mode = excluded.access_mode, password_hash = excluded.password_hash, must_change_password = excluded.must_change_password, preferences_json = excluded.preferences_json, created_at = excluded.created_at, last_login_at = excluded.last_login_at');
             $statement->execute(['id' => $id, 'role' => $account['role'], 'active' => (int) ($account['active'] ?? true), 'access' => $account['projectAccessMode'] ?? 'include', 'hash' => $account['passwordHash'], 'change' => (int) ($account['mustChangePassword'] ?? false), 'preferences' => json_encode($this->importedPreferences($account['preferences'] ?? null)), 'created' => $account['createdAt'] ?? nowIso(), 'last' => $account['lastLoginAt'] ?? '']);
             $this->replaceUserProjects($id, (array) ($account['projectIds'] ?? []));
+            if (array_key_exists('todos', $account)) $this->todos->replaceImported($id, $account['todos']);
             ++$imported;
         }
         $this->audit($actor['id'], 'data.users_imported', (string) $imported, 'skipped=' . $skipped);

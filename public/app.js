@@ -1,10 +1,11 @@
 const $ = (selector, root = document) => root.querySelector(selector);
-const state = { user: null, users: [], sessions: [], audit: [], tags: [], folders: [], iconLibrary:null, currentFolderId:null, projectStatusFilter:'all', server: null, system: null, update:null, projects: [], current: null, activeTab: 'entries', activeSettings:'general', activityObserver:null, timelineObserver:null, overviewGridObservers:[], projectSort: { field:'status', direction:'asc' }, archiveSort: { field:'createdAt', direction:'desc' }, projectSearch: { active:'', archived:'' }, projectTagFilter:{ active:{ ids:[], mode:'all' }, archived:{ ids:[], mode:'all' } }, projectDialogTagIds:[], projectTagDraftOpen:false, projectTagSearchOpen:false, collapsedProjectFolders:false, collapsedProjectStatusGroups:{ idea:false, active:false, paused:false, completed:false }, collapsedLogSections:{ tasks:false, entries:false } };
+const state = { user: null, users: [], sessions: [], audit: [], tags: [], folders: [], todos:[], todosCompletedOpen:false, editingTodoId:null, iconLibrary:null, currentFolderId:null, projectStatusFilter:'all', server: null, system: null, storage:null, update:null, projects: [], current: null, activeTab: 'entries', activeSettings:'general', fileViewerId:null, visibleProjectFiles:50, activityObserver:null, timelineObserver:null, overviewGridObservers:[], projectSort: { field:'status', direction:'asc' }, archiveSort: { field:'createdAt', direction:'desc' }, projectSearch: { active:'', archived:'' }, projectTagFilter:{ active:{ ids:[], mode:'all' }, archived:{ ids:[], mode:'all' } }, projectDialogTagIds:[], projectTagDraftOpen:false, projectTagSearchOpen:false, collapsedProjectFolders:false, collapsedProjectStatusGroups:{ idea:false, active:false, paused:false, completed:false }, collapsedLogSections:{ tasks:false, entries:false } };
 let iconLibraryPromise = null;
 const api = async (path, options = {}) => {
   const method = (options.method || 'GET').toUpperCase();
   const csrf = !['GET','HEAD'].includes(method) && state.user?.csrfToken ? { 'X-Logbuch-CSRF': state.user.csrfToken } : {};
-  const response = await fetch(`/api${path}`, { ...options, headers: { 'Content-Type': 'application/json', ...csrf, ...(options.headers || {}) } });
+  const contentHeaders = options.body instanceof FormData ? {} : { 'Content-Type': 'application/json' };
+  const response = await fetch(`/api${path}`, { ...options, headers: { ...contentHeaders, ...csrf, ...(options.headers || {}) } });
   if (response.status === 204) return null;
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
@@ -293,6 +294,8 @@ const itemCount = (collection, count) => {
 };
 const regularProjectStatuses = ['idea','active','paused','completed'];
 const projectStatusLabels = { idea:'Idee', active:'Aktiv', paused:'Pausiert', completed:'Abgeschlossen', archived:'Archiviert', trashed:'Papierkorb' };
+const searchTypeLabels = { all:'Alle Bereiche', project:'Projekte', entries:'Logbuch', tasks:'Arbeitsschritte', materials:'Material', contacts:'Kontakte', links:'Links', ideas:'Ideen', learnings:'Erkenntnisse', notes:'Notizen', files:'Dateien' };
+const searchSortLabels = { relevance:'Relevanz', newest:'Neueste zuerst', oldest:'Älteste zuerst', project:'Projektname', title:'Titel' };
 const projectPriority = project => ['Hoch','Mittel','Gering'].includes(project?.priority) ? project.priority : 'Mittel';
 const projectPriorityMarkup = project => `<span class="project-priority ${projectPriority(project).toLocaleLowerCase('de')}">${escapeHtml(projectPriority(project))}</span>`;
 const projectStatusControl = project => mayEditProjects()
@@ -304,8 +307,9 @@ const projectPriorityControl = project => mayEditProjects()
 const projectFlagIcon = () => '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6 21V4"></path><path d="M6 5h10l-2 3 2 3H6Z"></path></svg>';
 const editIcon = () => '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.4 2.6a1 1 0 0 1 3 3l-9 9a2 2 0 0 1-.9.5l-2.9.9a.5.5 0 0 1-.6-.6l.9-2.9a2 2 0 0 1 .5-.9Z"></path></svg>';
 const printIcon = () => '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M7 9V3h10v6"></path><path d="M7 18H5a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><path d="M7 14h10v7H7Z"></path><path d="M17.5 12h.01"></path></svg>';
+const exportIcon = () => '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 3v12"></path><path d="m7 8 5-5 5 5"></path><path d="M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6"></path></svg>';
 const projectEditButton = project => mayEditProjects() ? `<button class="edit-action" type="button" data-edit-project="${escapeHtml(project.id)}" aria-label="Projekt bearbeiten" title="Projekt bearbeiten">${editIcon()}</button>` : '';
-const projectPrintButton = project => `<a class="edit-action project-print-action" href="/#/projects/${encodeURIComponent(project.id)}/print" target="_blank" rel="noopener" aria-label="Projekt drucken oder als PDF speichern" title="Drucken / PDF">${printIcon()}</a>`;
+const projectExportButton = project => `<details class="action-menu project-export-menu"><summary aria-label="Projekt exportieren" title="Projekt exportieren">${exportIcon()}</summary><div class="action-menu-panel"><a class="menu-item" href="/api/backup/projects/${encodeURIComponent(project.id)}"><strong>Rohdaten</strong><small>Für eine andere Logbuch-Instanz</small></a><a class="menu-item" href="/#/projects/${encodeURIComponent(project.id)}/export" target="_blank" rel="noopener"><strong>PDF-Export</strong><small>Farbig, inklusive Bilder</small></a><a class="menu-item" href="/#/projects/${encodeURIComponent(project.id)}/print" target="_blank" rel="noopener"><strong>Druckansicht</strong><small>Schwarz-weiß</small></a></div></details>`;
 const folderEditButton = folder => mayEditProjects() ? `<button class="edit-action" type="button" data-edit-folder="${escapeHtml(folder.id)}" aria-label="Ordner bearbeiten" title="Ordner bearbeiten">${editIcon()}</button>` : '';
 const itemEditButton = (collection, id, label = 'Arbeitsschritt') => `<button class="edit-action" type="button" data-edit-item="${collection}:${escapeHtml(id)}" aria-label="${escapeHtml(label)} bearbeiten" title="${escapeHtml(label)} bearbeiten">${editIcon()}</button>`;
 const entryEditButton = id => `<button class="edit-action" type="button" data-edit-entry="${escapeHtml(id)}" aria-label="Arbeitsschritt bearbeiten" title="Arbeitsschritt bearbeiten">${editIcon()}</button>`;
@@ -377,8 +381,8 @@ function showApp(afterLogin = false) {
   loadIconLibrary().then(updateProjectNavigationIcon).catch(() => {});
   $('#login-view').classList.add('hidden');
   $('#app').classList.remove('hidden');
-  $('#device-host').textContent = location.host;
   document.querySelectorAll('[data-admin-setting]').forEach(node => node.hidden = !state.user.admin);
+  if (!state.user.mustChangePassword) loadTodos().catch(() => {});
   if (state.user.admin && !state.user.mustChangePassword) loadUpdateStatus().catch(() => {});
   if (state.user.mustChangePassword) {
     history.replaceState(null, '', '/#/settings/profile');
@@ -393,6 +397,21 @@ async function loadProjects() {
   const data = await api('/projects');
   state.projects = data.projects || [];
   updateProjectMenuCounts();
+}
+
+function updateTodoMenuCount() {
+  const count = state.todos.filter(todo => !todo.completedAt).length;
+  const badge = $('#todo-nav-count');
+  badge.textContent = String(count);
+  badge.hidden = count === 0;
+  badge.setAttribute('aria-label', `${count} offene To-dos`);
+}
+
+async function loadTodos() {
+  const data = await api('/todos');
+  state.todos = data.todos || [];
+  updateTodoMenuCount();
+  return state.todos;
 }
 
 async function loadTags() {
@@ -482,21 +501,21 @@ function projectCard(project, archived = false, showFolder = false) {
   const searchText = [project.title, project.description, project.latestEntryTitle, project.latestEntryBody, folderPath, ...nextSteps, ...tagNames].filter(Boolean).join(' ').toLocaleLowerCase('de');
   return `<article class="project-card" data-project-card data-project-card-status="${escapeHtml(project.status)}" data-project-tags="${escapeHtml((project.tagIds || []).join(','))}" data-project-search="${escapeHtml(searchText)}">
     <a class="project-card-content" href="/#/projects/${encodeURIComponent(project.id)}"><div class="entity-card-lead"><span class="project-entity-icon" aria-hidden="true">${iconSvg(projectIconName(project))}</span><span class="entity-card-copy"><h3>${escapeHtml(project.title)}</h3><p>${escapeHtml(project.description || 'Noch keine Beschreibung hinterlegt.')}</p></span></div><div class="project-next-step"><small>Nächste anstehende Schritte</small>${nextSteps.length ? `<ul class="project-next-steps">${nextSteps.map(step => `<li>${escapeHtml(step)}</li>`).join('')}</ul>` : '<strong>Kein nächster Schritt hinterlegt</strong>'}</div></a>
-    <aside class="project-card-status project-card-collapsible-status mobile-collapsed" data-mobile-status-panel aria-label="Projektstatus"><div class="project-card-status-head">${mobileStatusToggle('Statusdetails')}<div class="project-card-actions">${projectCardActions(project)}</div></div><div class="project-card-status-content" data-mobile-status-content><div class="project-status-row"><small>Status</small>${projectStatusControl(project)}</div><div class="project-status-row"><small>Priorität</small>${projectPriorityControl(project)}</div><div class="project-status-row"><small>Startdatum</small><span class="project-status-value">${project.createdAt ? formatDate(project.createdAt) : 'ohne'}</span></div><div class="project-status-row"><small>Fälligkeit</small><span class="project-status-value">${project.dueDate ? formatDate(project.dueDate) : 'ohne'}</span></div>${folderPath ? `<div class="project-status-row project-status-folder"><small>Ordner</small><a href="${folderHref(project.folderId)}" title="Ordner öffnen">${escapeHtml(folderPath)}</a></div>` : ''}<div class="project-status-row project-status-tags"><small>Tags</small>${tagChips(project.tagIds, { archived }) || '<span class="project-status-empty">Keine</span>'}</div></div></aside>
+    <aside class="project-card-status project-card-collapsible-status mobile-collapsed" data-mobile-status-panel aria-label="Projektstatus"><div class="project-card-status-head">${mobileStatusToggle('Statusdetails')}<div class="project-card-actions">${projectCardActions(project)}</div></div><div class="project-card-status-content" data-mobile-status-content><div class="project-status-row"><small>Status</small>${projectStatusControl(project)}</div><div class="project-status-row"><small>Priorität</small>${projectPriorityControl(project)}</div><div class="project-status-row"><small>Start</small><span class="project-status-value">${project.createdAt ? formatDate(project.createdAt) : 'ohne'}</span></div><div class="project-status-row"><small>Fällig</small><span class="project-status-value">${project.dueDate ? formatDate(project.dueDate) : 'ohne'}</span></div>${folderPath ? `<div class="project-status-row project-status-folder"><small>Ordner</small><a href="${folderHref(project.folderId)}" title="Ordner öffnen">${escapeHtml(folderPath)}</a></div>` : ''}<div class="project-status-row project-status-tags"><small>Tags</small>${tagChips(project.tagIds, { archived }) || '<span class="project-status-empty">Keine</span>'}</div></div></aside>
   </article>`;
 }
 
 function projectCards(projects, archived = false, showFolder = false, separateStatuses = false) {
-  let previousStatus = '';
-  return projects.map(project => {
-    const startsStatusGroup = separateStatuses && project.status !== previousStatus;
-    const statusGroupLabels = { idea:'Projektideen', active:'Aktive Projekte', paused:'Pausierte Projekte', completed:'Abgeschlossene Projekte' };
-    const collapsed = state.collapsedProjectStatusGroups[project.status] === true;
-    const divider = startsStatusGroup
-      ? `<div class="project-status-divider" data-project-status-divider="${escapeHtml(project.status)}"><button type="button" data-toggle-project-status-group="${escapeHtml(project.status)}" aria-expanded="${!collapsed}"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="m6 8 4 4 4-4"></path></svg><span>${escapeHtml(statusGroupLabels[project.status] || 'Projekte')}</span></button></div>`
-      : '';
-    previousStatus = project.status;
-    return `${divider}${projectCard(project, archived, showFolder)}`;
+  if (!separateStatuses) return projects.map(project => projectCard(project, archived, showFolder)).join('');
+  const statusGroupLabels = { idea:'Projektideen', active:'Aktive Projekte', paused:'Pausierte Projekte', completed:'Abgeschlossene Projekte' };
+  const statuses = state.projectStatusFilter === 'all' ? regularProjectStatuses : [state.projectStatusFilter];
+  return statuses.map(status => {
+    const groupedProjects = projects.filter(project => project.status === status);
+    const collapsed = state.collapsedProjectStatusGroups[status] === true;
+    const label = statusGroupLabels[status] || 'Projekte';
+    const add = mayEditProjects() ? `<button class="button primary compact workstep-add-button project-divider-add" type="button" data-new-project-status="${escapeHtml(status)}" aria-label="${escapeHtml(label)} anlegen" title="${escapeHtml(label)} anlegen">+</button>` : '';
+    const divider = `<div class="project-status-divider project-list-divider"><button type="button" data-toggle-project-status-group="${escapeHtml(status)}" aria-expanded="${!collapsed}" aria-label="${escapeHtml(label)} ${collapsed ? 'ausklappen' : 'einklappen'}" title="${collapsed ? 'Ausklappen' : 'Einklappen'}"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="m6 8 4 4 4-4"></path></svg></button><h2>${escapeHtml(label)} <b data-project-status-count>(${groupedProjects.length})</b></h2></div>`;
+    return `<div class="project-group-head" data-project-status-divider="${escapeHtml(status)}">${divider}${add}</div>${groupedProjects.map(project => projectCard(project, archived, showFolder)).join('')}`;
   }).join('');
 }
 
@@ -636,14 +655,14 @@ function projectSortControls(sort = state.projectSort, includeStatus = true) {
   return `<div class="project-sort-panel" hidden><div class="tag-filter-head"><strong>Projekte sortieren</strong></div><div class="project-sort-options">${options.map(([value, label]) => `<label><input type="radio" name="project-sort" value="${value}"${value === selected ? ' checked' : ''}><span>${label}</span></label>`).join('')}</div></div>`;
 }
 
-function projectListControls(archived = false, projects = []) {
+function projectListControls(archived = false, projects = [], showCreateControl = true) {
   const search = state.projectSearch[archived ? 'archived' : 'active'];
   const searchOpen = Boolean(search.trim());
   const key = archived ? 'archived' : 'active';
   const filter = state.projectTagFilter[key];
   const availableIds = new Set(projects.flatMap(project => project.tagIds || []));
   const availableTags = state.tags.filter(tag => availableIds.has(tag.id)).map(tag => ({ ...tag, viewProjectCount:projects.filter(project => (project.tagIds || []).includes(tag.id)).length })).sort((a,b) => a.name.localeCompare(b.name, 'de', { sensitivity:'base' }));
-  const createControl = !archived && mayEditProjects() ? `<details class="action-menu project-create-control"><summary class="project-tool-toggle project-create-toggle" aria-label="Projekt oder Ordner anlegen" title="Projekt oder Ordner anlegen">+</summary><div class="action-menu-panel project-create-panel"><button class="menu-item" type="button" data-new-project>Projekt anlegen</button><button class="menu-item" type="button" data-new-folder>Ordner anlegen</button></div></details>` : '';
+  const createControl = showCreateControl && !archived && mayEditProjects() ? `<details class="action-menu project-create-control"><summary class="project-tool-toggle project-create-toggle" aria-label="Projekt oder Ordner anlegen" title="Projekt oder Ordner anlegen">+</summary><div class="action-menu-panel project-create-panel"><button class="menu-item" type="button" data-new-project>Projekt anlegen</button><button class="menu-item" type="button" data-new-folder>Ordner anlegen</button></div></details>` : '';
   const foldersVisible = state.user.showProjectFolders !== false;
   const folderToggle = !archived ? `<button class="project-tool-toggle project-folder-toggle" type="button" data-toggle-folders aria-pressed="${!foldersVisible}" aria-label="${foldersVisible ? 'Ordner ausblenden' : 'Ordner einblenden'}" title="${foldersVisible ? 'Ordner ausblenden' : 'Ordner einblenden'}"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3.5 6.5h6l2 2h9v9.5a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2V6.5Z"></path><path d="M3.5 9h17"></path></svg></button>` : '';
   return `<div class="project-list-controls">
@@ -665,7 +684,8 @@ function applyProjectSearch(archived) {
   const key = archived ? 'archived' : 'active';
   const query = state.projectSearch[key].trim().toLocaleLowerCase('de');
   const filter = state.projectTagFilter[key];
-  const groupedByStatus = !archived && state.projectStatusFilter === 'all' && state.projectSort.field === 'status';
+  const filtering = Boolean(query || filter.ids.length);
+  const groupedByStatus = !archived && ((state.projectStatusFilter === 'all' && state.projectSort.field === 'status') || regularProjectStatuses.includes(state.projectStatusFilter));
   let visible = 0;
   document.querySelectorAll('[data-project-card]').forEach(card => {
     const cardTags = new Set((card.dataset.projectTags || '').split(',').filter(Boolean));
@@ -677,11 +697,12 @@ function applyProjectSearch(archived) {
     if (matches) visible += 1;
   });
   document.querySelectorAll('[data-project-status-divider]').forEach(divider => {
-    const statusVisible = [...document.querySelectorAll('[data-project-card]')]
-      .some(card => card.dataset.projectCardStatus === divider.dataset.projectStatusDivider && card.dataset.projectFilterMatch === 'true');
-    divider.classList.toggle('hidden', !statusVisible);
+    const statusCards = [...document.querySelectorAll('[data-project-card]')]
+      .filter(card => card.dataset.projectCardStatus === divider.dataset.projectStatusDivider && card.dataset.projectFilterMatch === 'true');
+    divider.classList.toggle('hidden', filtering && statusCards.length === 0);
+    const count = divider.querySelector('[data-project-status-count]');
+    if (count) count.textContent = `(${statusCards.length})`;
   });
-  const filtering = Boolean(query || filter.ids.length);
   const noResults = $('#project-no-results');
   if (noResults) noResults.classList.toggle('hidden', !filtering || visible > 0);
 }
@@ -690,7 +711,11 @@ function bindProjectStatusGroups() {
   document.querySelectorAll('[data-toggle-project-status-group]').forEach(button => button.onclick = () => {
     const status = button.dataset.toggleProjectStatusGroup;
     state.collapsedProjectStatusGroups[status] = !state.collapsedProjectStatusGroups[status];
-    button.setAttribute('aria-expanded', String(!state.collapsedProjectStatusGroups[status]));
+    const expanded = !state.collapsedProjectStatusGroups[status];
+    const label = button.closest('[data-project-status-divider]')?.querySelector('h2')?.textContent.replace(/\s+\(\d+\)$/, '') || 'Projekte';
+    button.setAttribute('aria-expanded', String(expanded));
+    button.setAttribute('aria-label', `${label} ${expanded ? 'einklappen' : 'ausklappen'}`);
+    button.title = expanded ? 'Einklappen' : 'Ausklappen';
     applyProjectSearch(false);
   });
 }
@@ -700,7 +725,10 @@ function bindProjectFolderGroup() {
   if (!button) return;
   button.onclick = () => {
     state.collapsedProjectFolders = !state.collapsedProjectFolders;
-    button.setAttribute('aria-expanded', String(!state.collapsedProjectFolders));
+    const expanded = !state.collapsedProjectFolders;
+    button.setAttribute('aria-expanded', String(expanded));
+    button.setAttribute('aria-label', `Ordner ${expanded ? 'einklappen' : 'ausklappen'}`);
+    button.title = expanded ? 'Einklappen' : 'Ausklappen';
     const content = $('[data-project-folder-group]');
     if (content) content.classList.toggle('hidden', state.collapsedProjectFolders);
   };
@@ -1328,6 +1356,168 @@ async function renderHome(keepMenuOpen = false) {
   if (keepMenuOpen) document.querySelectorAll('.overview-config-menu').forEach(menu => { menu.open = true; });
 }
 
+const todoReorderHandle = id => `<button class="drag-handle todo-drag-handle" type="button" data-reorder-handle data-reorder-id="${escapeHtml(id)}" aria-label="To-do verschieben" title="Ziehen, um die Reihenfolge zu ändern"><svg viewBox="0 0 16 20" aria-hidden="true"><circle cx="5" cy="4" r="1.25"></circle><circle cx="11" cy="4" r="1.25"></circle><circle cx="5" cy="10" r="1.25"></circle><circle cx="11" cy="10" r="1.25"></circle><circle cx="5" cy="16" r="1.25"></circle><circle cx="11" cy="16" r="1.25"></circle></svg></button>`;
+
+function todoRow(todo, completed = false) {
+  const editing = state.editingTodoId === todo.id;
+  const editForm = `<form class="todo-edit-form" data-todo-edit-form="${escapeHtml(todo.id)}"><input name="title" maxlength="200" value="${escapeHtml(todo.title)}" aria-label="To-do bearbeiten" required></form>`;
+  return `<article class="todo-item${completed ? ' completed' : ''}" data-todo-id="${escapeHtml(todo.id)}"${completed ? '' : ` data-reorder-card data-reorder-id="${escapeHtml(todo.id)}"`}>
+    <label class="todo-check"><input type="checkbox" data-toggle-todo="${escapeHtml(todo.id)}"${completed ? ' checked' : ''}><span aria-hidden="true"></span><span class="visually-hidden">${completed ? 'To-do wieder öffnen' : 'To-do erledigen'}</span></label>
+    <div class="todo-copy">${editing ? editForm : `<span class="todo-title">${escapeHtml(todo.title)}</span>${completed ? `<small>Erledigt ${escapeHtml(formatDateTime(todo.completedAt))}</small>` : ''}`}</div>
+    <div class="todo-actions">${completed || editing ? '' : todoReorderHandle(todo.id)}${editing ? '' : `<button class="edit-action delete-action" type="button" data-delete-todo="${escapeHtml(todo.id)}" aria-label="To-do löschen" title="To-do löschen">${trashIcon()}</button>`}</div>
+  </article>`;
+}
+
+async function renderTodos() {
+  await loadTodos();
+  const open = state.todos.filter(todo => !todo.completedAt);
+  const completed = state.todos.filter(todo => todo.completedAt);
+  const completedSection = completed.length ? `<section class="todo-completed-section"><div class="section-head todo-section-head"><button class="todo-section-toggle" type="button" data-toggle-completed-todos aria-expanded="${state.todosCompletedOpen}"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="m6 8 4 4 4-4"></path></svg><span>Erledigt (${completed.length})</span></button><button class="text-link" type="button" data-delete-completed-todos>Erledigte löschen</button></div><div class="todo-list completed-todo-list"${state.todosCompletedOpen ? '' : ' hidden'}>${completed.map(todo => todoRow(todo, true)).join('')}</div></section>` : '';
+  $('#main').innerHTML = `<header class="page-head todo-page-head"><div><h1>To-dos</h1><p>Kurze persönliche Erinnerungen ohne Projektbezug.</p></div></header>
+    <form class="todo-add-form" id="todo-add-form"><input name="title" maxlength="200" placeholder="Was musst du erledigen?" aria-label="Neues To-do" autocomplete="off" required><button class="button primary" type="submit">Hinzufügen</button></form>
+    <section class="todo-open-section"><div class="section-head todo-section-head"><h2>Offen (${open.length})</h2></div>${open.length ? `<div class="todo-list" data-reorder-list="todos">${open.map(todo => todoRow(todo)).join('')}</div>` : '<div class="empty todo-empty"><strong>Alles erledigt.</strong>Neue kurze Erinnerungen kannst du oben eintragen.</div>'}</section>${completedSection}`;
+
+  $('#todo-add-form').onsubmit = async event => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const title = form.elements.title.value.trim();
+    if (!title) return form.elements.title.focus();
+    const submit = form.querySelector('button[type="submit"]');
+    submit.disabled = true;
+    try {
+      await api('/todos', { method:'POST', body:JSON.stringify({ title }) });
+      form.reset();
+      await renderTodos();
+      $('#todo-add-form input')?.focus();
+    } catch (error) { toast(error.message); submit.disabled = false; }
+  };
+  document.querySelectorAll('[data-toggle-todo]').forEach(input => input.onchange = async () => {
+    input.disabled = true;
+    try {
+      await api(`/todos/${encodeURIComponent(input.dataset.toggleTodo)}`, { method:'PATCH', body:JSON.stringify({ completed:input.checked }) });
+      toast(input.checked ? 'To-do erledigt' : 'To-do wieder geöffnet');
+      await renderTodos();
+    } catch (error) { toast(error.message); input.checked = !input.checked; input.disabled = false; }
+  });
+  document.querySelectorAll('[data-todo-id]').forEach(row => row.onclick = event => {
+    if (state.editingTodoId || event.target.closest('button,input,label,form')) return;
+    state.editingTodoId = row.dataset.todoId;
+    renderTodos().then(() => document.querySelector('[data-todo-edit-form] input')?.select());
+  });
+  const saveTodoEdit = async form => {
+    if (form.dataset.editState) return;
+    const title = form.elements.title.value.trim();
+    if (!title) return form.elements.title.focus();
+    form.dataset.editState = 'saving';
+    const id = form.dataset.todoEditForm;
+    state.editingTodoId = null;
+    const localTodo = state.todos.find(todo => todo.id === id);
+    if (localTodo) localTodo.title = title;
+    const titleNode = document.createElement('span');
+    titleNode.className = 'todo-title';
+    titleNode.textContent = title;
+    form.replaceWith(titleNode);
+    try {
+      const saved = await api(`/todos/${encodeURIComponent(id)}`, { method:'PATCH', body:JSON.stringify({ title }) });
+      const index = state.todos.findIndex(todo => todo.id === id);
+      if (index >= 0) state.todos[index] = saved;
+      toast('To-do aktualisiert');
+      if (!state.editingTodoId) await renderTodos();
+    } catch (error) {
+      toast(error.message);
+      state.editingTodoId = id;
+      await renderTodos();
+      document.querySelector('[data-todo-edit-form] input')?.select();
+    }
+  };
+  document.querySelectorAll('[data-todo-edit-form]').forEach(form => {
+    form.onsubmit = event => { event.preventDefault(); saveTodoEdit(form); };
+    const input = form.elements.title;
+    input.onblur = () => saveTodoEdit(form);
+    input.onkeydown = event => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        saveTodoEdit(form);
+      } else if (event.key === 'Escape') {
+        event.preventDefault();
+        form.dataset.editState = 'cancelled';
+        state.editingTodoId = null;
+        renderTodos();
+      }
+    };
+  });
+  $('#main').onclick = event => {
+    const form = $('[data-todo-edit-form]');
+    if (form && !form.contains(event.target)) saveTodoEdit(form);
+  };
+  document.querySelectorAll('[data-delete-todo]').forEach(button => button.onclick = async () => {
+    const todo = state.todos.find(item => item.id === button.dataset.deleteTodo);
+    if (!todo || !confirm(`To-do „${todo.title}“ löschen?`)) return;
+    try { await api(`/todos/${encodeURIComponent(todo.id)}`, { method:'DELETE' }); toast('To-do gelöscht'); await renderTodos(); }
+    catch (error) { toast(error.message); }
+  });
+  const completedToggle = $('[data-toggle-completed-todos]');
+  if (completedToggle) completedToggle.onclick = () => { state.todosCompletedOpen = !state.todosCompletedOpen; renderTodos(); };
+  const deleteCompleted = $('[data-delete-completed-todos]');
+  if (deleteCompleted) deleteCompleted.onclick = async () => {
+    if (!confirm(`${completed.length} erledigte${completed.length === 1 ? 's To-do' : ' To-dos'} endgültig löschen?`)) return;
+    try { await api('/todos/completed', { method:'DELETE' }); state.todosCompletedOpen = false; toast('Erledigte To-dos gelöscht'); await renderTodos(); }
+    catch (error) { toast(error.message); }
+  };
+  bindReordering();
+}
+
+function searchResultHref(result) {
+  if (result.type === 'project') return `/#/projects/${encodeURIComponent(result.projectId)}`;
+  const tab = ['entries','tasks'].includes(result.type) ? 'entries' : result.type;
+  const query = new URLSearchParams({ tab, item:result.id });
+  return `/#/projects/${encodeURIComponent(result.projectId)}?${query}`;
+}
+
+function searchResultDate(value) {
+  if (!value) return '';
+  return String(value).includes('T') ? formatDateTime(value) : formatDate(value);
+}
+
+function globalSearchResult(result) {
+  const status = projectStatusLabels[result.projectStatus] || result.projectStatus;
+  return `<article class="global-search-result"><a href="${escapeHtml(searchResultHref(result))}"><div class="global-search-result-head"><span class="global-search-result-type">${escapeHtml(searchTypeLabels[result.type] || result.type)}</span><span class="project-status ${escapeHtml(result.projectStatus)}">${escapeHtml(status)}</span></div><h2>${escapeHtml(result.title)}</h2>${result.excerpt ? `<p>${escapeHtml(result.excerpt)}</p>` : ''}<footer><strong>${escapeHtml(result.projectTitle)}</strong>${result.date ? `<span>${escapeHtml(searchResultDate(result.date))}</span>` : ''}</footer></a></article>`;
+}
+
+async function renderGlobalSearch(routeQuery) {
+  const query = (routeQuery.get('q') || '').trim().slice(0, 200);
+  const type = Object.hasOwn(searchTypeLabels, routeQuery.get('type')) ? routeQuery.get('type') : 'all';
+  const status = ['all', ...Object.keys(projectStatusLabels)].includes(routeQuery.get('status')) ? routeQuery.get('status') : 'all';
+  const sort = Object.hasOwn(searchSortLabels, routeQuery.get('sort')) ? routeQuery.get('sort') : 'relevance';
+  $('#global-search-input').value = query;
+  let data = { total:0, results:[], truncated:false };
+  let content = '<div class="empty"><strong>Was möchtest du finden?</strong>Durchsuche Projekte, Logbucheinträge, Arbeitsschritte und alle weiteren Projektinhalte.</div>';
+  if (query.length === 1) {
+    content = '<div class="empty"><strong>Noch ein Zeichen.</strong>Der Suchbegriff muss mindestens zwei Zeichen lang sein.</div>';
+  } else if (query.length >= 2) {
+    const params = new URLSearchParams({ q:query, type, status, sort });
+    data = await api(`/search?${params}`);
+    content = data.results.length
+      ? `<div class="global-search-results">${data.results.map(globalSearchResult).join('')}</div>${data.truncated ? '<p class="global-search-truncated">Es werden die ersten 500 Treffer angezeigt. Grenze die Suche mit Filtern weiter ein.</p>' : ''}`
+      : `<div class="empty"><strong>Keine Treffer für „${escapeHtml(query)}“.</strong>Versuche einen allgemeineren Begriff oder ändere die Filter.</div>`;
+  }
+  const statusOptions = { all:'Alle Status', idea:'Idee', active:'Aktiv', paused:'Pausiert', completed:'Abgeschlossen', archived:'Archiviert', trashed:'Papierkorb' };
+  $('#main').innerHTML = `<header class="page-head global-search-head"><div><h1>Suche</h1><p>${query.length >= 2 ? `${data.total} ${data.total === 1 ? 'Treffer' : 'Treffer'} für „${escapeHtml(query)}“` : 'Alle Projekte und Inhalte an einem Ort'}</p></div></header><form id="search-page-form" class="global-search-controls" role="search"><div class="global-search-query"><span aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><circle cx="10.5" cy="10.5" r="6.5"></circle><path d="m15.5 15.5 5 5"></path></svg></span><input name="q" type="search" maxlength="200" value="${escapeHtml(query)}" placeholder="Suchbegriff eingeben" aria-label="Suchbegriff" autocomplete="off"><button class="button primary" type="submit">Suchen</button></div><div class="global-search-filters"><label>Bereich<select name="type">${Object.entries(searchTypeLabels).map(([value,label]) => `<option value="${value}"${value === type ? ' selected' : ''}>${label}</option>`).join('')}</select></label><label>Projektstatus<select name="status">${Object.entries(statusOptions).map(([value,label]) => `<option value="${value}"${value === status ? ' selected' : ''}>${label}</option>`).join('')}</select></label><label>Sortierung<select name="sort">${Object.entries(searchSortLabels).map(([value,label]) => `<option value="${value}"${value === sort ? ' selected' : ''}>${label}</option>`).join('')}</select></label></div></form><section class="global-search-content" aria-live="polite">${content}</section>`;
+  const form = $('#search-page-form');
+  const navigate = () => {
+    const values = new FormData(form);
+    const params = new URLSearchParams();
+    const nextQuery = String(values.get('q') || '').trim();
+    if (nextQuery) params.set('q', nextQuery);
+    if (values.get('type') !== 'all') params.set('type', String(values.get('type')));
+    if (values.get('status') !== 'all') params.set('status', String(values.get('status')));
+    if (values.get('sort') !== 'relevance') params.set('sort', String(values.get('sort')));
+    location.href = `/#/search${params.size ? `?${params}` : ''}`;
+  };
+  form.onsubmit = event => { event.preventDefault(); navigate(); };
+  form.querySelectorAll('select').forEach(select => select.onchange = navigate);
+}
+
 async function renderProjects() {
   await loadProjectBrowser();
   if (state.currentFolderId && !folderById(state.currentFolderId)) state.currentFolderId = null;
@@ -1342,11 +1532,14 @@ async function renderProjects() {
   const folders = showFolders ? state.folders.filter(folder => folder.parentId === state.currentFolderId).sort((a,b) => a.name.localeCompare(b.name, 'de', { sensitivity:'base' })) : [];
   const currentFolder = folderById(state.currentFolderId);
   const title = { all:'Alle', idea:'Idee', active:'Aktiv', paused:'Pausiert', completed:'Abgeschlossen' }[state.projectStatusFilter] || 'Alle';
-  const separateStatuses = state.projectStatusFilter === 'all' && state.projectSort.field === 'status';
-  const collapsibleFolders = state.projectStatusFilter === 'all';
-  const folderGroup = folders.length ? `${collapsibleFolders ? `<div class="project-status-divider"><button type="button" data-toggle-project-folder-group aria-expanded="${!state.collapsedProjectFolders}"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="m6 8 4 4 4-4"></path></svg><span>Ordner</span></button></div>` : ''}<div class="folder-grid${collapsibleFolders && state.collapsedProjectFolders ? ' hidden' : ''}" data-project-folder-group>${folders.map(folderCard).join('')}</div>` : '';
-  $('#main').innerHTML = `${folderBreadcrumbs(state.currentFolderId)}<header class="page-head project-browser-head"><div><h1>${escapeHtml(title)}</h1>${currentFolder?.description ? `<p>${escapeHtml(currentFolder.description)}</p>` : ''}</div><div class="page-actions">${projectListControls(false, projects)}</div></header><div id="active-tag-filters">${selectedTagFiltersMarkup(false)}</div>
-    ${folders.length || projects.length ? `<div class="project-grid project-list">${folderGroup}${projectCards(projects, false, !showFolders, separateStatuses)}</div>${projects.length ? '<div id="project-no-results" class="empty hidden"><strong>Keine passenden Projekte gefunden.</strong>Versuche einen anderen Suchbegriff.</div>' : ''}` : `<div class="empty"><strong>${currentFolder ? 'Dieser Ordner enthält keine passenden Projekte.' : state.projectStatusFilter === 'idea' ? 'Noch keine Projektideen vorhanden.' : state.projectStatusFilter === 'paused' ? 'Keine pausierten Projekte vorhanden.' : state.projectStatusFilter === 'completed' ? 'Noch keine abgeschlossenen Projekte vorhanden.' : state.projectStatusFilter === 'active' ? 'Keine aktiven Projekte vorhanden.' : 'Noch keine Projekte vorhanden.'}</strong></div>`}`;
+  const dedicatedStatusSection = regularProjectStatuses.includes(state.projectStatusFilter);
+  const separateStatuses = dedicatedStatusSection || (state.projectStatusFilter === 'all' && state.projectSort.field === 'status');
+  const collapsibleFolders = dedicatedStatusSection || state.projectStatusFilter === 'all';
+  const folderAdd = mayEditProjects() ? '<button class="button primary compact workstep-add-button project-divider-add" type="button" data-new-folder aria-label="Ordner anlegen" title="Ordner anlegen">+</button>' : '';
+  const folderGroup = collapsibleFolders && showFolders ? `<div class="project-group-head folder-group-head"><div class="project-status-divider project-list-divider folder-list-divider"><button type="button" data-toggle-project-folder-group aria-expanded="${!state.collapsedProjectFolders}" aria-label="Ordner ${state.collapsedProjectFolders ? 'ausklappen' : 'einklappen'}" title="${state.collapsedProjectFolders ? 'Ausklappen' : 'Einklappen'}"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="m6 8 4 4 4-4"></path></svg></button><h2>Ordner <b>(${folders.length})</b></h2></div>${folderAdd}</div><div class="folder-grid${state.collapsedProjectFolders ? ' hidden' : ''}" data-project-folder-group>${folders.map(folderCard).join('')}</div>` : folders.length ? `<div class="folder-grid" data-project-folder-group>${folders.map(folderCard).join('')}</div>` : '';
+  const groupedProjects = projectCards(projects, false, !showFolders, separateStatuses);
+  $('#main').innerHTML = `${folderBreadcrumbs(state.currentFolderId)}<header class="page-head project-browser-head"><div><h1>${escapeHtml(title)}</h1>${currentFolder?.description ? `<p>${escapeHtml(currentFolder.description)}</p>` : ''}</div><div class="page-actions">${projectListControls(false, projects, !separateStatuses)}</div></header><div id="active-tag-filters">${selectedTagFiltersMarkup(false)}</div>
+    ${folderGroup || groupedProjects ? `<div class="project-grid project-list">${folderGroup}${groupedProjects}</div>${projects.length ? '<div id="project-no-results" class="empty hidden"><strong>Keine passenden Projekte gefunden.</strong>Versuche einen anderen Suchbegriff.</div>' : ''}` : `<div class="empty"><strong>${currentFolder ? 'Dieser Ordner enthält keine passenden Projekte.' : 'Noch keine Projekte vorhanden.'}</strong></div>`}`;
   bindMobileProjectControls();
   bindNewProject();
   bindFolderActions();
@@ -1374,7 +1567,7 @@ function trashProjectCard(project) {
   const actions = mayEditProjects() ? `<details class="action-menu card-menu"><summary aria-label="Papierkorbaktionen">☰</summary><div class="action-menu-panel"><button class="menu-item" data-restore-project="${escapeHtml(project.id)}">Wiederherstellen</button><button class="menu-item danger" data-purge-project="${escapeHtml(project.id)}">Endgültig löschen</button></div></details>` : '';
   return `<article class="project-card trash-project-card" data-project-card>
     <div class="project-card-content"><div class="entity-card-lead"><span class="project-entity-icon" aria-hidden="true">${iconSvg(projectIconName(project))}</span><span class="entity-card-copy"><h3>${escapeHtml(project.title)}</h3><p>${escapeHtml(project.description || 'Noch keine Beschreibung hinterlegt.')}</p></span></div><div class="project-next-step trash-deleted-at"><small>In den Papierkorb verschoben</small><strong>${escapeHtml(deletedAt)}</strong></div></div>
-    <aside class="project-card-status" aria-label="Papierkorbstatus"><div class="project-card-actions">${actions}</div><div class="project-status-row"><small>Status</small><span class="project-status trashed">Papierkorb</span></div><div class="project-status-row"><small>Priorität</small>${projectPriorityMarkup(project)}</div><div class="project-status-row"><small>Startdatum</small><span class="project-status-value">${project.createdAt ? formatDate(project.createdAt) : 'ohne'}</span></div><div class="project-status-row project-status-tags"><small>Tags</small>${tagChips(project.tagIds, { linked:false }) || '<span class="project-status-empty">Keine</span>'}</div></aside>
+    <aside class="project-card-status" aria-label="Papierkorbstatus"><div class="project-card-actions">${actions}</div><div class="project-status-row"><small>Status</small><span class="project-status trashed">Papierkorb</span></div><div class="project-status-row"><small>Priorität</small>${projectPriorityMarkup(project)}</div><div class="project-status-row"><small>Start</small><span class="project-status-value">${project.createdAt ? formatDate(project.createdAt) : 'ohne'}</span></div><div class="project-status-row project-status-tags"><small>Tags</small>${tagChips(project.tagIds, { linked:false }) || '<span class="project-status-empty">Keine</span>'}</div></aside>
   </article>`;
 }
 
@@ -1425,13 +1618,21 @@ function generalSettingsContent() {
 function dataContent() {
   const projectCount = state.projects.length;
   const userCount = state.users.length;
+  const storage = state.storage || {};
+  const usedPercent = storage.totalBytes ? Math.max(0, Math.min(100, Math.round((storage.totalBytes - storage.freeBytes) / storage.totalBytes * 100))) : 0;
+  const storageWarning = storage.warning ? '<div class="storage-warning"><strong>Speicher wird knapp</strong><span>Bitte räume Speicher frei oder vergrößere das Docker-Volume. Backups sollten weiterhin extern aufbewahrt werden.</span></div>' : '';
   return `<div class="settings-group data-settings">
+    <section class="backup-area storage-area"><div class="backup-area-head"><div><h2>Speicher</h2><p>Überblick über Projektdateien und den freien Platz des eingebundenen Datenträgers.</p></div></div>${storageWarning}<div class="storage-summary">
+      <div><small>Dateien</small><strong>${Number(storage.attachmentCount || 0)}</strong><span>${formatBytes(storage.attachmentBytes || 0)}</span></div>
+      <div><small>Gesamte Projektdaten</small><strong>${formatBytes(storage.projectBytes || 0)}</strong><span>inklusive Metadaten und Vorschaubildern</span></div>
+      <div><small>Datenträger frei</small><strong>${formatBytes(storage.freeBytes || 0)}</strong><span>von ${formatBytes(storage.totalBytes || 0)} · ${usedPercent}% belegt</span></div>
+    </div></section>
     <section class="backup-area"><div class="backup-area-head"><div><h2>Backup herunterladen</h2><p>Projektdaten und Benutzerkonten getrennt als Archiv herunterladen. Für eine vollständige Wiederherstellung werden beide Archive benötigt.</p></div></div><div class="backup-export-grid">
-      <article class="backup-card"><div><h3>Projekte herunterladen</h3><p>${projectCount} ${projectCount === 1 ? 'Projekt' : 'Projekte'} mit Ordnerstruktur, Logbucheinträgen, Material, Kontakten, Links, Ideen und Servereinstellungen. Markdown und JSON bleiben offen lesbar; stabile IDs erhalten bestehende NFC-Links.</p></div><button class="button primary" data-export-projects>Projektdaten herunterladen</button></article>
+      <article class="backup-card"><div><h3>Projekte herunterladen</h3><p>${projectCount} ${projectCount === 1 ? 'Projekt' : 'Projekte'} mit Ordnerstruktur, allen Inhalten und den vollständigen Projektdateien. JSON bleibt offen lesbar; stabile IDs erhalten bestehende NFC-Links. Das Archiv wird speicherschonend auf dem Server erzeugt.</p></div><a class="button primary" href="/api/backup/projects">Projektdaten herunterladen</a></article>
       <article class="backup-card sensitive-backup"><div><h3>Benutzer herunterladen</h3><p>${userCount} ${userCount === 1 ? 'Benutzerkonto' : 'Benutzerkonten'} mit Rollen, Status, Projektfreigaben, persönlichen Einstellungen und Passwort-Hashes. Klartextpasswörter und aktive Sitzungen werden nicht exportiert.</p><small>Dieses Archiv ist sicherheitskritisch. Bewahre es geschützt auf.</small></div><button class="button primary" data-export-users>Benutzerkonten herunterladen</button></article>
     </div></section>
-    <section class="backup-area"><div class="backup-area-head"><div><h2>Backup einspielen</h2><p>Bei einer vollständigen Wiederherstellung zuerst das Benutzerarchiv und danach das Projektarchiv einspielen. Archive älterer Versionen werden weiterhin akzeptiert.</p></div></div><div class="backup-import-grid">
-      <article class="backup-card backup-import-card"><div><h3>Projektarchiv einspielen</h3></div><div class="backup-restore-form"><label>Projektarchiv<input id="project-backup-file" type="file" accept=".tar,application/x-tar"></label><label>Bei vorhandenen Projekten<select id="project-backup-conflict"><option value="skip">Vorhandenes Projekt überspringen</option><option value="replace">Vorhandenes Projekt ersetzen</option></select></label><div id="project-backup-preview" class="backup-preview">Noch kein Projektarchiv ausgewählt.</div><button class="button secondary" data-import-projects disabled>Projektdaten einspielen</button></div></article>
+    <section class="backup-area"><div class="backup-area-head"><div><h2>Import & Wiederherstellung</h2><p>Hier lassen sich einzelne exportierte Projekte und vollständige Projektbackups einspielen. Bei einer vollständigen Wiederherstellung zuerst das Benutzerarchiv und danach das Projektarchiv importieren.</p></div></div><div class="backup-import-grid">
+      <article class="backup-card backup-import-card"><div><h3>Projekt importieren</h3><p>Akzeptiert den Rohdatenexport eines einzelnen Projekts ebenso wie ein vollständiges Projektarchiv. Inhalte, Zuordnungen, Metadaten und Dateien werden übernommen.</p></div><div class="backup-restore-form"><label>Projekt- oder Backup-Archiv<input id="project-backup-file" type="file" accept=".tar,application/x-tar"></label><label>Bei vorhandenen Projekten<select id="project-backup-conflict"><option value="skip">Vorhandenes Projekt überspringen</option><option value="replace">Vorhandenes Projekt ersetzen</option></select></label><div id="project-backup-preview" class="backup-preview">Noch kein Projektarchiv ausgewählt.</div><button class="button secondary" data-import-projects disabled>Projekt importieren</button></div></article>
       <article class="backup-card backup-import-card sensitive-backup"><div><h3>Benutzerarchiv einspielen</h3></div><div class="backup-restore-form"><label>Benutzerarchiv<input id="user-backup-file" type="file" accept=".tar,application/x-tar"></label><label>Bei vorhandenen Benutzern<select id="user-backup-conflict"><option value="skip">Vorhandenen Benutzer überspringen</option><option value="replace">Vorhandenen Benutzer ersetzen</option></select></label><div id="user-backup-preview" class="backup-preview">Noch kein Benutzerarchiv ausgewählt.</div><button class="button secondary" data-import-users disabled>Benutzerkonten einspielen</button></div></article>
     </div></section>
   </div>`;
@@ -1456,7 +1657,7 @@ const deviceLabel = userAgent => {
   if (/Windows/i.test(value)) return 'Windows-PC';
   return value.slice(0, 55);
 };
-const auditLabel = action => ({ 'user.created':'Benutzer angelegt', 'user.updated':'Benutzer geändert', 'user.deleted':'Benutzer gelöscht', 'password.changed':'Passwort geändert', 'session.revoked':'Sitzung beendet', 'log.created':'Log angelegt', 'log.updated':'Log bearbeitet', 'log.deleted':'Log gelöscht', 'tag.created':'Tag angelegt', 'tag.updated':'Tag geändert', 'tag.merged':'Tags zusammengeführt', 'tag.deleted':'Tag gelöscht', 'data.project_imported':'Projekt aus Backup importiert', 'data.users_exported':'Benutzerkonten exportiert', 'data.users_imported':'Benutzerkonten importiert', 'server.settings_updated':'Servereinstellungen geändert', 'system.update_requested':'Logbuch-Update angefordert', 'system.content_cleared':'Alle Projektinhalte gelöscht', 'system.users_cleared':'Benutzerkonten zurückgesetzt', 'demo.installed':'Beispieldaten eingespielt', 'demo.removed':'Beispieldaten entfernt' }[action] || action);
+const auditLabel = action => ({ 'user.created':'Benutzer angelegt', 'user.updated':'Benutzer geändert', 'user.deleted':'Benutzer gelöscht', 'password.changed':'Passwort geändert', 'session.revoked':'Sitzung beendet', 'log.created':'Log angelegt', 'log.updated':'Log bearbeitet', 'log.deleted':'Log gelöscht', 'tag.created':'Tag angelegt', 'tag.updated':'Tag geändert', 'tag.merged':'Tags zusammengeführt', 'tag.deleted':'Tag gelöscht', 'file.imported':'Datei aus Backup importiert', 'data.project_imported':'Projekt aus Backup importiert', 'data.users_exported':'Benutzerkonten exportiert', 'data.users_imported':'Benutzerkonten importiert', 'server.settings_updated':'Servereinstellungen geändert', 'system.update_requested':'Logbuch-Update angefordert', 'system.content_cleared':'Alle Projektinhalte gelöscht', 'system.users_cleared':'Benutzerkonten zurückgesetzt', 'demo.installed':'Beispieldaten eingespielt', 'demo.removed':'Beispieldaten entfernt' }[action] || action);
 
 function updateCardContent() {
   const update = state.update || {};
@@ -1584,6 +1785,11 @@ async function loadServerSettings() {
   state.server = await api('/settings/server');
 }
 
+async function loadStorageStats() {
+  if (!state.user.admin) { state.storage = null; return; }
+  state.storage = await api('/storage');
+}
+
 function bindServerActions() {
   const form = $('#server-form');
   if (!form) return;
@@ -1606,7 +1812,7 @@ async function renderSettings() {
   const [, title, description] = settingsSections.find(([id]) => id === active);
   if (active === 'users' && state.user?.admin) await Promise.all([loadUsers(), loadProjects()]);
   if (active === 'tags' && state.user?.admin) await loadTags();
-  if (active === 'data' && state.user?.admin) await Promise.all([loadUsers(), loadProjects(), loadTags(), loadServerSettings()]);
+  if (active === 'data' && state.user?.admin) await Promise.all([loadUsers(), loadProjects(), loadTags(), loadFolders(), loadServerSettings(), loadStorageStats()]);
   if (active === 'profile') await loadProjects();
   if (active === 'security' && !state.user.mustChangePassword) await loadSessions();
   if (active === 'audit' && state.user?.admin) await loadAudit();
@@ -1643,68 +1849,10 @@ async function renderSettings() {
   }
 }
 
-const tarEncoder = new TextEncoder();
 const tarDecoder = new TextDecoder();
-const markdownValue = value => String(value ?? '').replace(/\r\n/g, '\n');
-const yamlValue = value => JSON.stringify(String(value ?? ''));
 
-function projectMarkdown(project) {
-  const tagNames = (project.tagIds || []).map(tagById).filter(Boolean).map(tag => `\n  - ${yamlValue(tag.name)}`).join('');
-  return `---\nid: ${project.id}\ntitle: ${yamlValue(project.title)}\nstatus: ${project.status || 'active'}\npriority: ${yamlValue(projectPriority(project))}\nflagged: ${project.flagged === true}\nicon: ${yamlValue(entityIconName(project, 'box'))}\niconInherited: ${projectUsesDefaultIcon(project)}\ncreatedAt: ${yamlValue(project.createdAt)}\ndueDate: ${yamlValue(project.dueDate || '')}\ntags:${tagNames}\n---\n\n${markdownValue(project.description)}\n`;
-}
-
-function entryMarkdown(entry) {
-  const sourceTask = entry.sourceTaskId ? `\nsourceTaskId: ${yamlValue(entry.sourceTaskId)}` : '';
-  const sortOrder = Number.isInteger(entry.sortOrder) ? `\nsortOrder: ${entry.sortOrder}` : '';
-  return `---\nid: ${entry.id}\ndate: ${yamlValue(entry.date)}\ntitle: ${yamlValue(entry.title)}\nauthor: ${yamlValue(entry.author)}${sourceTask}${sortOrder}\n---\n\n## Gemacht\n\n${markdownValue(entry.body)}\n`;
-}
-
-function itemMarkdown(collection, item) {
-  const labels = { name:'Bezeichnung', title:'Titel', quantity:'Menge', status:'Status', priority:'Priorität', dueDate:'Fällig am', completedAt:'Erledigt am', completedEntryId:'Erledigter Arbeitsschritt', price:'Preis', url:'Link', properties:'Eigenschaften', role:'Rolle', company:'Firma oder Organisation', email:'E-Mail', phone:'Telefon', notes:'Notizen', description:'Beschreibung' };
-  const fields = Object.keys(labels).filter(field => item[field]);
-  const sortOrder = Number.isInteger(item.sortOrder) ? `\nsortOrder: ${item.sortOrder}` : '';
-  return `---\nid: ${item.id}\ntype: ${collection}\ncreatedAt: ${yamlValue(item.createdAt)}\nauthor: ${yamlValue(item.author)}${sortOrder}\n---\n${fields.map(field => `\n## ${labels[field]}\n\n${markdownValue(item[field])}\n`).join('')}`;
-}
-
-function tarHeader(name, size) {
-  const header = new Uint8Array(512);
-  const write = (offset, length, value) => header.set(tarEncoder.encode(String(value)).slice(0, length), offset);
-  const octal = (offset, length, value) => write(offset, length, Math.floor(value).toString(8).padStart(length - 1, '0') + '\0');
-  write(0, 100, name); octal(100, 8, 0o644); octal(108, 8, 0); octal(116, 8, 0); octal(124, 12, size); octal(136, 12, Date.now() / 1000);
-  header.fill(32, 148, 156); header[156] = 48; write(257, 6, 'ustar\0'); write(263, 2, '00');
-  const checksum = header.reduce((sum, byte) => sum + byte, 0).toString(8).padStart(6, '0');
-  write(148, 8, `${checksum}\0 `);
-  return header;
-}
-
-function createTar(files) {
-  const chunks = [];
-  for (const [name, content] of files) {
-    const data = tarEncoder.encode(content);
-    chunks.push(tarHeader(name, data.length), data);
-    const padding = (512 - data.length % 512) % 512;
-    if (padding) chunks.push(new Uint8Array(padding));
-  }
-  chunks.push(new Uint8Array(1024));
-  return new Blob(chunks, { type:'application/x-tar' });
-}
-
-function parseTar(buffer) {
-  const bytes = new Uint8Array(buffer);
-  const files = new Map();
-  let offset = 0;
-  while (offset + 512 <= bytes.length) {
-    const header = bytes.slice(offset, offset + 512);
-    if (header.every(byte => byte === 0)) break;
-    const text = (start, length) => tarDecoder.decode(header.slice(start, start + length)).replace(/\0.*$/, '').trim();
-    const name = text(0, 100);
-    const size = Number.parseInt(text(124, 12) || '0', 8);
-    if (!name || !Number.isFinite(size) || size < 0 || offset + 512 + size > bytes.length) throw new Error('Das TAR-Archiv ist beschädigt');
-    files.set(name, tarDecoder.decode(bytes.slice(offset + 512, offset + 512 + size)));
-    offset += 512 + Math.ceil(size / 512) * 512;
-  }
-  return files;
-}
+const createTar = files => LogbuchBackupArchive.create(files);
+const parseTar = buffer => LogbuchBackupArchive.parse(buffer);
 
 function validateProjectBackup(manifest) {
   if (!LogbuchBackupFormat.isProjectManifest(manifest) || !Array.isArray(manifest.projects)) throw new Error('Kein unterstütztes Logbuch-Projektarchiv');
@@ -1714,6 +1862,7 @@ function validateProjectBackup(manifest) {
       if (['tasks','learnings','notes'].includes(collection) && !Array.isArray(project[collection])) project[collection] = [];
       if (!Array.isArray(project[collection])) throw new Error(`Der Bereich „${collection}“ fehlt im Backup`);
     }
+    if (!Array.isArray(project.files)) project.files = [];
   }
   if (manifest.tags != null && !Array.isArray(manifest.tags)) throw new Error('Die Tag-Definitionen im Backup sind ungültig');
   if (manifest.folders != null && (!Array.isArray(manifest.folders) || manifest.folders.length > 1000)) throw new Error('Die Projektordner im Backup sind ungültig');
@@ -1734,25 +1883,6 @@ function validateUserBackup(manifest) {
   return manifest;
 }
 
-async function buildProjectBackup() {
-  const fullProjects = await Promise.all(state.projects.map(project => api(`/projects/${encodeURIComponent(project.id)}`)));
-  const metadataUsers = state.users.map(({ id, name, role, active, projectAccessMode, projectIds }) => ({ id, name, role, active, projectAccessMode, projectIds }));
-  const projects = fullProjects.map(project => ({ ...project, accessUsers:metadataUsers.filter(user => user.role !== 'admin' && user.projectIds?.includes(project.id)).map(user => user.id) }));
-  const folders = state.folders.map(({ id, parentId, name, description, priority, flagged, icon, tagIds, createdAt, updatedAt }) => ({ id, parentId, name, description, priority, flagged, icon, tagIds, createdAt, updatedAt }));
-  const usedTagIds = new Set([...projects.flatMap(project => project.tagIds || []), ...folders.flatMap(folder => folder.tagIds || [])]);
-  const tags = state.tags.filter(tag => usedTagIds.has(tag.id)).map(({ id, name, createdAt }) => ({ id, name, createdAt }));
-  const serverSettings = state.server ? { siteName:state.server.siteName, baseUrl:state.server.baseUrl, timezone:state.server.timezone } : null;
-  const manifest = { format:'logbuch-projects', version:1, exportedAt:new Date().toISOString(), source:{ name:'Logbuch', host:location.host }, tags, folders, serverSettings, projects };
-  const files = [['manifest.json', JSON.stringify(manifest, null, 2)]];
-  for (const project of projects) {
-    const root = `projects/${project.id}`;
-    files.push([`${root}/README.md`, projectMarkdown(project)], [`${root}/project.json`, JSON.stringify(project, null, 2)]);
-    for (const entry of project.entries) files.push([`${root}/entries/${entry.id}.md`, entryMarkdown(entry)], [`${root}/entries/${entry.id}.json`, JSON.stringify(entry, null, 2)]);
-    for (const collection of backupCollections.slice(1)) for (const item of project[collection]) files.push([`${root}/${collection}/${item.id}.md`, itemMarkdown(collection, item)], [`${root}/${collection}/${item.id}.json`, JSON.stringify(item, null, 2)]);
-  }
-  return createTar(files);
-}
-
 async function buildUserBackup() {
   const data = await api('/backup/users');
   const manifest = { format:'logbuch-users', version:1, exportedAt:new Date().toISOString(), source:{ name:'Logbuch', host:location.host }, accounts:data.accounts || [] };
@@ -1765,29 +1895,22 @@ function downloadBlob(blob, filename) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-async function readBackupFile(file, validator, maxMegabytes = 25) {
+async function readBackupFile(file, validator, maxMegabytes = 1024) {
   if (!file) return null;
   if (file.size > maxMegabytes * 1024 * 1024) throw new Error(`Das Archiv ist größer als ${maxMegabytes} MB`);
   const files = parseTar(await file.arrayBuffer());
   if (!files.has('manifest.json')) throw new Error('Im Archiv fehlt manifest.json');
-  return validator(JSON.parse(files.get('manifest.json')));
+  const manifest = validator(JSON.parse(tarDecoder.decode(files.get('manifest.json'))));
+  Object.defineProperty(manifest, '_archiveFiles', { value:files, enumerable:false });
+  return manifest;
 }
 
 function bindDataActions() {
   let selectedProjects = null;
   let selectedUsers = null;
-  const projectExport = $('[data-export-projects]');
   const userExport = $('[data-export-users]');
   const projectImport = $('[data-import-projects]');
   const userImport = $('[data-import-users]');
-
-  projectExport.onclick = async () => {
-    projectExport.disabled = true; projectExport.textContent = 'Archiv wird erstellt …';
-    try {
-      downloadBlob(await buildProjectBackup(), `logbuch-projekte-${today()}.tar`); toast('Projektdaten wurden gesichert');
-    } catch (error) { toast(error.message); }
-    finally { projectExport.disabled = false; projectExport.textContent = 'Projektdaten herunterladen'; }
-  };
 
   userExport.onclick = async () => {
     userExport.disabled = true; userExport.textContent = 'Archiv wird erstellt …';
@@ -1801,12 +1924,11 @@ function bindDataActions() {
     selectedProjects = null; projectImport.disabled = true;
     const file = event.target.files?.[0]; const preview = $('#project-backup-preview');
     if (!file) { preview.textContent = 'Noch kein Projektarchiv ausgewählt.'; return; }
-    try {
-      selectedProjects = await readBackupFile(file, validateProjectBackup);
-      const entries = selectedProjects.projects.reduce((sum, project) => sum + project.entries.length, 0);
-      preview.innerHTML = `<strong>${escapeHtml(file.name)}</strong><span>${selectedProjects.projects.length} ${selectedProjects.projects.length === 1 ? 'Projekt' : 'Projekte'} · ${entries} ${entries === 1 ? 'erledigter Arbeitsschritt' : 'erledigte Arbeitsschritte'} · Export ${escapeHtml(formatDateTime(selectedProjects.exportedAt))}</span>`;
-      projectImport.disabled = false;
-    } catch (error) { preview.textContent = error.message; toast(error.message); }
+    if (file.size > 4 * 1024 ** 3) { preview.textContent = 'Das Archiv ist größer als 4 GB.'; return; }
+    selectedProjects = file;
+    preview.innerHTML = `<strong>${escapeHtml(file.name)}</strong><span>${escapeHtml(formatBytes(file.size))} · Inhalt und Prüfsummen werden beim Import auf dem Server geprüft.</span>`;
+    projectImport.textContent = 'Projektarchiv importieren';
+    projectImport.disabled = false;
   };
 
   $('#user-backup-file').onchange = async event => {
@@ -1814,7 +1936,7 @@ function bindDataActions() {
     const file = event.target.files?.[0]; const preview = $('#user-backup-preview');
     if (!file) { preview.textContent = 'Noch kein Benutzerarchiv ausgewählt.'; return; }
     try {
-      selectedUsers = await readBackupFile(file, validateUserBackup, 5);
+      selectedUsers = await readBackupFile(file, validateUserBackup, 10);
       preview.innerHTML = `<strong>${escapeHtml(file.name)}</strong><span>${selectedUsers.accounts.length} ${selectedUsers.accounts.length === 1 ? 'Benutzerkonto' : 'Benutzerkonten'} · Export ${escapeHtml(formatDateTime(selectedUsers.exportedAt))}</span>`;
       userImport.disabled = false;
     } catch (error) { preview.textContent = error.message; toast(error.message); }
@@ -1825,21 +1947,14 @@ function bindDataActions() {
     const replace = $('#project-backup-conflict').value === 'replace';
     if (replace && !confirm('Vorhandene Projekte mit gleicher ID werden vollständig ersetzt. Fortfahren?')) return;
     projectImport.disabled = true; projectImport.textContent = 'Import läuft …';
-    let imported = 0; let skipped = 0;
     try {
-      if (selectedProjects.folders.length || selectedProjects.serverSettings) {
-        await api('/import/backup-metadata', { method:'POST', body:JSON.stringify({ tags:selectedProjects.tags || [], folders:selectedProjects.folders, serverSettings:selectedProjects.serverSettings, replace }) });
-        await loadProjects();
-      }
-      const knownFolderIds = new Set(state.folders.map(folder => folder.id));
-      for (const project of selectedProjects.projects) {
-        const importedProject = project.folderId && !knownFolderIds.has(project.folderId) ? { ...project, folderId:null } : project;
-        const result = await api('/import/project', { method:'POST', body:JSON.stringify({ project:importedProject, tags:selectedProjects.tags || [], accessUsers:project.accessUsers || [], replace }) });
-        result.skipped ? skipped++ : imported++;
-      }
-      toast(`${imported} Projekte importiert${skipped ? `, ${skipped} übersprungen` : ''}`);
-      await Promise.all([loadProjects(), loadUsers()]); renderSettings();
-    } catch (error) { toast(`Import abgebrochen: ${error.message}`); projectImport.disabled = false; projectImport.textContent = 'Projektdaten einspielen'; }
+      const payload = new FormData();
+      payload.append('archive', selectedProjects, selectedProjects.name);
+      payload.append('conflict', replace ? 'replace' : 'skip');
+      const result = await api('/import/projects-archive', { method:'POST', body:payload });
+      toast(`${result.imported || 0} Projekte importiert${result.skipped ? `, ${result.skipped} übersprungen` : ''} · ${result.filesImported || 0} Dateien`);
+      await Promise.all([loadProjects(), loadUsers(), loadTags(), loadFolders(), loadStorageStats()]); renderSettings();
+    } catch (error) { toast(`Import abgebrochen: ${error.message}`); projectImport.disabled = false; projectImport.textContent = 'Projektarchiv importieren'; }
   };
 
   userImport.onclick = async () => {
@@ -1901,6 +2016,63 @@ function mobileEntryControls(entry) {
   return `<div class="mobile-workstep-actions">${reorderHandle('entries', entry.id)}${mobileActionMenu('Arbeitsschrittaktionen', items)}</div>`;
 }
 
+const attachmentCollectionLabels = { entries:'Logbucheintrag', tasks:'Arbeitsschritt', materials:'Material', contacts:'Kontakt', links:'Link', ideas:'Idee', learnings:'Erkenntnis', notes:'Notiz' };
+const attachmentTabByCollection = { entries:'entries', tasks:'entries', materials:'materials', contacts:'contacts', links:'links', ideas:'ideas', learnings:'learnings', notes:'notes' };
+
+function attachmentEntity(collection, itemId, project = state.current) {
+  const item = project?.[collection]?.find(candidate => candidate.id === itemId);
+  if (!item) return null;
+  return { item, label:attachmentCollectionLabels[collection] || 'Eintrag', title:item.name || item.title || entryTitle(item) };
+}
+
+function attachmentContentUrl(file, download = false) {
+  return `/api/projects/${encodeURIComponent(state.current.id)}/files/${encodeURIComponent(file.id)}/content${download ? '?download=1' : ''}`;
+}
+
+function attachmentThumbnailUrl(file) {
+  return `/api/projects/${encodeURIComponent(state.current.id)}/files/${encodeURIComponent(file.id)}/thumbnail`;
+}
+
+function entityAttachments(collection, itemId) {
+  return (state.current?.files || []).filter(file => file.association?.collection === collection && file.association?.itemId === itemId);
+}
+
+function attachmentStrip(collection, itemId) {
+  const files = entityAttachments(collection, itemId);
+  const links = files.map(file => {
+    const image = String(file.mimeType || '').startsWith('image/');
+    const thumbnail = image
+      ? `<span class="attachment-thumbnail image"><img data-file-image="${escapeHtml(file.id)}" src="${attachmentThumbnailUrl(file)}" alt="" loading="lazy" decoding="async" style="transform:rotate(${Number(file.rotation) || 0}deg)"></span>`
+      : `<span class="attachment-thumbnail document" aria-hidden="true"><small>${String(file.mimeType || '').includes('pdf') ? 'PDF' : 'DATEI'}</small></span>`;
+    const content = `${thumbnail}<span class="attachment-name">${escapeHtml(file.displayName || file.originalName)}</span><span class="attachment-size">${escapeHtml(formatBytes(file.size))}</span>`;
+    return image
+      ? `<button class="attachment-row attachment-view" type="button" data-view-file="${escapeHtml(file.id)}" title="${escapeHtml(file.originalName)}">${content}</button>`
+      : `<a class="attachment-row" href="${attachmentContentUrl(file, true)}" title="${escapeHtml(file.originalName)}">${content}</a>`;
+  }).join('');
+  const add = mayEditProjects() ? `<button class="attachment-add" type="button" data-upload-file="${collection}:${escapeHtml(itemId)}"><span aria-hidden="true">+</span> Datei anhängen</button>` : '';
+  if (!files.length && !add) return '';
+  return `<div class="entity-attachments" aria-label="Dateianhänge">${links}${add}</div>`;
+}
+
+function filesView(project) {
+  const files = project.files || [];
+  const visibleFiles = files.slice(0, state.visibleProjectFiles);
+  const addButton = mayEditProjects() ? '<button class="button primary compact" data-upload-file>Datei hochladen</button>' : '';
+  const cards = visibleFiles.map(file => {
+    const association = file.association ? attachmentEntity(file.association.collection, file.association.itemId, project) : null;
+    const image = String(file.mimeType || '').startsWith('image/');
+    const preview = image
+      ? `<button class="file-preview image" type="button" data-view-file="${escapeHtml(file.id)}" aria-label="${escapeHtml(file.displayName || file.originalName)} im Bildbetrachter öffnen"><img data-file-image="${escapeHtml(file.id)}" src="${attachmentThumbnailUrl(file)}" alt="" loading="lazy" decoding="async" style="transform:rotate(${Number(file.rotation) || 0}deg)"></button>`
+      : `<a class="file-preview document" href="${attachmentContentUrl(file, true)}"><span aria-hidden="true">${String(file.mimeType || '').includes('pdf') ? 'PDF' : 'DATEI'}</span></a>`;
+    const relation = association ? `<button class="file-association" type="button" data-file-jump="${escapeHtml(file.association.collection)}:${escapeHtml(file.association.itemId)}"><small>Zugeordnet zu</small><strong>${escapeHtml(association.label)} · ${escapeHtml(association.title)}</strong></button>` : '<span class="file-unassigned">Ohne Eintragszuordnung</span>';
+    const actions = mayEditProjects() ? `<div class="file-actions">${image ? `<button class="icon-button" type="button" data-rotate-file="${escapeHtml(file.id)}" aria-label="Bild im Uhrzeigersinn drehen" title="Bild drehen">↻</button>` : ''}<button class="icon-button" type="button" data-edit-file="${escapeHtml(file.id)}" aria-label="Dateimetadaten bearbeiten" title="Bearbeiten">✎</button><button class="icon-button delete-action" type="button" data-delete-file="${escapeHtml(file.id)}" aria-label="Datei löschen" title="Löschen">×</button></div>` : '';
+    return `<article class="file-card" id="${escapeHtml(file.id)}" data-file-card="${escapeHtml(file.id)}">${preview}<div class="file-card-copy"><h3>${escapeHtml(file.displayName || file.originalName)}</h3><p class="file-original-name">${escapeHtml(file.originalName)}</p><p class="file-description"${file.description ? '' : ' hidden'}>${escapeHtml(file.description || '')}</p><div class="file-meta"><span>${escapeHtml(formatBytes(file.size))}</span><span>${escapeHtml(file.mimeType || 'Datei')}</span><span>${escapeHtml(formatDateTime(file.uploadedAt))}</span></div>${relation}</div>${actions}</article>`;
+  }).join('');
+  const remaining = files.length - visibleFiles.length;
+  const more = remaining > 0 ? `<button class="button secondary files-load-more" type="button" data-load-more-files>Weitere ${Math.min(50, remaining)} anzeigen <small>(${remaining} übrig)</small></button>` : '';
+  return `<section class="project-item-section files-section"><div class="section-head"><div><h2>${files.length} ${files.length === 1 ? 'Datei' : 'Dateien'}</h2><p>Alle Projektdateien – mit und ohne Zuordnung zu einem Eintrag.</p></div>${addButton}</div>${files.length ? `<div class="file-grid">${cards}</div>${more}` : '<div class="empty"><strong>Noch keine Dateien vorhanden.</strong>Lade eine Datei hier oder direkt an einem Projektelement hoch.</div>'}</section>`;
+}
+
 function entriesView(project) {
   if (!project.entries?.length) return `<div class="empty">Halte fest, was du an diesem Projekt gemacht hast.</div>`;
   const entries = orderedItems(project.entries, (a, b) => String(b.date || '').localeCompare(String(a.date || '')));
@@ -1909,7 +2081,7 @@ function entriesView(project) {
     const empty = !body ? '<div class="entry-empty">Arbeitsschritt ohne zusätzliche Notiz</div>' : '';
     const editCard = mayEditProjects() ? ` data-edit-entry-card="${escapeHtml(entry.id)}" role="button" tabindex="0" aria-label="${escapeHtml(entryTitle(entry))} bearbeiten"` : '';
     const controls = mayEditProjects() ? `<div class="workstep-card-actions desktop-workstep-actions">${entryEditButton(entry.id)}<div class="workstep-action-group">${entryCopyButton(entry.id)}${reopenButton(entry.id)}${reorderHandle('entries', entry.id)}${entryDeleteButton(entry.id)}</div></div>` : '';
-    return `<article class="entry workstep-card" id="${escapeHtml(entry.id)}" data-reorder-card data-reorder-id="${escapeHtml(entry.id)}"${editCard}><div class="workstep-card-content"><strong>${escapeHtml(entryTitle(entry))}</strong>${body}${empty}</div><aside class="workstep-card-status mobile-collapsed" data-mobile-status-panel aria-label="Attribute des erledigten Arbeitsschritts"><div class="mobile-workstep-status-head">${mobileStatusToggle('Statusdetails')}${mobileEntryControls(entry)}</div><div class="workstep-status-content" data-mobile-status-content>${controls}<div class="project-status-row"><small>Status</small><span class="project-status completed">Erledigt</span></div><div class="project-status-row"><small>Erledigt am</small><span class="project-status-value">${formatDate(entry.date)}</span></div><div class="project-status-row"><small>Bearbeitet von</small><span class="project-status-value">${escapeHtml(entry.author)}</span></div></div></aside></article>`;
+    return `<article class="entry workstep-card" id="${escapeHtml(entry.id)}" data-reorder-card data-reorder-id="${escapeHtml(entry.id)}"${editCard}><div class="workstep-card-content"><strong>${escapeHtml(entryTitle(entry))}</strong>${body}${empty}${attachmentStrip('entries', entry.id)}</div><aside class="workstep-card-status mobile-collapsed" data-mobile-status-panel aria-label="Attribute des erledigten Arbeitsschritts"><div class="mobile-workstep-status-head">${mobileStatusToggle('Statusdetails')}${mobileEntryControls(entry)}</div><div class="workstep-status-content" data-mobile-status-content>${controls}<div class="project-status-row"><small>Erledigt am</small><span class="project-status-value">${formatDate(entry.date)}</span></div><div class="project-status-row"><small>Bearbeitet von</small><span class="project-status-value">${escapeHtml(entry.author)}</span></div></div></aside></article>`;
   }).join('')}</div>`;
 }
 
@@ -1926,7 +2098,7 @@ function itemCard(collection, item) {
   const url = item.url ? `<a class="item-link" href="${escapeHtml(safeUrl(item.url))}" target="_blank" rel="noopener">${escapeHtml(item.url)}</a>` : '';
   const actions = mayEditProjects() ? `<div class="item-actions">${reorderHandle(collection, item.id)}<details class="action-menu"><summary aria-label="${config.singular}aktionen">☰</summary><div class="action-menu-panel"><button class="menu-item" data-edit-item="${collection}:${escapeHtml(item.id)}">Bearbeiten</button><button class="menu-item danger" data-delete-item="${collection}:${escapeHtml(item.id)}">Löschen</button></div></details></div>` : '';
   const editCard = mayEditProjects() ? ` data-edit-item-card="${collection}:${escapeHtml(item.id)}" role="button" tabindex="0" aria-label="${escapeHtml(title)} bearbeiten"` : '';
-  return `<article class="item-card" data-reorder-card data-reorder-id="${escapeHtml(item.id)}"${editCard}><div class="item-card-copy"><h3>${escapeHtml(title)}</h3>${meta ? `<small>${meta}</small>` : ''}${description ? `<p>${description}</p>` : ''}${item.futureUse && collection === 'learnings' ? `<p><strong>Für die Zukunft:</strong> ${escapeHtml(item.futureUse)}</p>` : ''}${url}${item.properties ? `<p>${escapeHtml(item.properties)}</p>` : ''}${item.notes && collection === 'contacts' ? `<p>${escapeHtml(item.notes)}</p>` : ''}</div>${actions}</article>`;
+  return `<article class="item-card" id="${escapeHtml(item.id)}" data-reorder-card data-reorder-id="${escapeHtml(item.id)}"${editCard}><div class="item-card-copy"><h3>${escapeHtml(title)}</h3>${meta ? `<small>${meta}</small>` : ''}${description ? `<p>${description}</p>` : ''}${item.futureUse && collection === 'learnings' ? `<p><strong>Für die Zukunft:</strong> ${escapeHtml(item.futureUse)}</p>` : ''}${url}${item.properties ? `<p>${escapeHtml(item.properties)}</p>` : ''}${item.notes && collection === 'contacts' ? `<p>${escapeHtml(item.notes)}</p>` : ''}${attachmentStrip(collection, item.id)}</div>${actions}</article>`;
 }
 
 function itemsView(project, collection) {
@@ -1940,14 +2112,11 @@ function itemsView(project, collection) {
 
 function taskCard(task) {
   const editCard = mayEditProjects() ? ` data-edit-item-card="tasks:${escapeHtml(task.id)}" role="button" tabindex="0" aria-label="${escapeHtml(task.title)} bearbeiten"` : '';
-  const status = ['Offen','In Arbeit'].includes(task.status) ? task.status : 'Offen';
   const priority = ['Normal','Hoch','Niedrig'].includes(task.priority) ? task.priority : 'Normal';
-  const statusClass = status === 'In Arbeit' ? 'in-progress' : 'open';
   const priorityClass = priority.toLocaleLowerCase('de');
-  const statusControl = mayEditProjects() ? `<select class="project-inline-select project-status task-attribute-select task-status ${statusClass}" data-task-inline-status="${escapeHtml(task.id)}" aria-label="Status von ${escapeHtml(task.title)} ändern"><option${status === 'Offen' ? ' selected' : ''}>Offen</option><option${status === 'In Arbeit' ? ' selected' : ''}>In Arbeit</option></select>` : `<span class="project-status task-status ${statusClass}">${escapeHtml(status)}</span>`;
   const priorityControl = mayEditProjects() ? `<select class="project-inline-select project-priority task-attribute-select task-priority ${priorityClass}" data-task-inline-priority="${escapeHtml(task.id)}" aria-label="Priorität von ${escapeHtml(task.title)} ändern"><option${priority === 'Hoch' ? ' selected' : ''}>Hoch</option><option${priority === 'Normal' ? ' selected' : ''}>Normal</option><option${priority === 'Niedrig' ? ' selected' : ''}>Niedrig</option></select>` : `<span class="project-priority task-priority ${priorityClass}">${escapeHtml(priority)}</span>`;
   const controls = mayEditProjects() ? `<div class="workstep-card-actions desktop-workstep-actions">${itemEditButton('tasks', task.id)}<div class="workstep-action-group">${taskFlagControl(task)}${completeButton(task.id)}${reorderHandle('tasks', task.id)}${itemDeleteButton('tasks', task.id, 'Arbeitsschritt')}</div></div>` : task.flagged === true ? `<div class="workstep-card-actions desktop-workstep-actions"><span></span><div class="workstep-action-group">${taskFlagControl(task)}</div></div>` : '';
-  return `<article class="task-card workstep-card" data-reorder-card data-reorder-id="${escapeHtml(task.id)}"${editCard}><div class="workstep-card-content"><h3>${escapeHtml(task.title)}</h3>${task.description ? `<p>${escapeHtml(task.description)}</p>` : ''}</div><aside class="workstep-card-status mobile-collapsed" data-mobile-status-panel aria-label="Attribute des Arbeitsschritts"><div class="mobile-workstep-status-head">${mobileStatusToggle('Statusdetails')}${mobileTaskControls(task)}</div><div class="workstep-status-content" data-mobile-status-content>${controls}<div class="project-status-row"><small>Status</small>${statusControl}</div><div class="project-status-row"><small>Priorität</small>${priorityControl}</div><div class="project-status-row"><small>Fälligkeit</small><span class="project-status-value">${task.dueDate ? formatDate(task.dueDate) : 'ohne'}</span></div></div></aside></article>`;
+  return `<article class="task-card workstep-card" id="${escapeHtml(task.id)}" data-reorder-card data-reorder-id="${escapeHtml(task.id)}"${editCard}><div class="workstep-card-content"><h3>${escapeHtml(task.title)}</h3>${task.description ? `<p>${escapeHtml(task.description)}</p>` : ''}${attachmentStrip('tasks', task.id)}</div><aside class="workstep-card-status mobile-collapsed" data-mobile-status-panel aria-label="Attribute des Arbeitsschritts"><div class="mobile-workstep-status-head">${mobileStatusToggle('Statusdetails')}${mobileTaskControls(task)}</div><div class="workstep-status-content" data-mobile-status-content>${controls}<div class="project-status-row"><small>Priorität</small>${priorityControl}</div><div class="project-status-row"><small>Fälligkeit</small><span class="project-status-value">${task.dueDate ? formatDate(task.dueDate) : 'ohne'}</span></div></div></aside></article>`;
 }
 
 function diaryView(project) {
@@ -1955,10 +2124,10 @@ function diaryView(project) {
   const entries = project.entries || [];
   const taskHeading = workStepCount(tasks.length);
   const entryHeading = workStepCount(entries.length, true);
-  const sectionToggle = (section, label) => `<button class="section-toggle" type="button" data-toggle-log-section="${section}" aria-expanded="${!state.collapsedLogSections[section]}" aria-label="${label} ${state.collapsedLogSections[section] ? 'ausklappen' : 'einklappen'}" title="${state.collapsedLogSections[section] ? 'Ausklappen' : 'Einklappen'}"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="m5 7.5 5 5 5-5"></path></svg></button>`;
+  const sectionToggle = (section, label) => `<div class="project-status-divider log-section-divider"><button type="button" data-toggle-log-section="${section}" aria-expanded="${!state.collapsedLogSections[section]}" aria-label="${label} ${state.collapsedLogSections[section] ? 'ausklappen' : 'einklappen'}" title="${state.collapsedLogSections[section] ? 'Ausklappen' : 'Einklappen'}"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="m6 8 4 4 4-4"></path></svg></button><h2>${escapeHtml(label)}</h2></div>`;
   const taskButton = mayEditProjects() ? '<button class="button primary compact workstep-add-button" data-new-item="tasks" aria-label="Arbeitsschritt hinzufügen" title="Arbeitsschritt hinzufügen">+</button>' : '';
   const entryButton = mayEditProjects() ? '<button class="button primary compact workstep-add-button" data-new-entry aria-label="Abgeschlossenen Arbeitsschritt hinzufügen" title="Abgeschlossenen Arbeitsschritt hinzufügen">+</button>' : '';
-  return `<section class="next-steps-section"><div class="section-head"><h2>${taskHeading}</h2><div class="section-head-actions">${taskButton}${sectionToggle('tasks', taskHeading)}</div></div><div data-log-section-content="tasks"${state.collapsedLogSections.tasks ? ' hidden' : ''}>${tasks.length ? `<div class="next-steps-list" data-reorder-list="tasks">${tasks.map(taskCard).join('')}</div>` : '<div class="empty compact-empty">Füge einen Arbeitsschritt hinzu, wenn klar ist, wie es weitergeht.</div>'}</div></section><section class="diary-section"><div class="section-head"><h2>${entryHeading}</h2><div class="section-head-actions">${entryButton}${sectionToggle('entries', entryHeading)}</div></div><div data-log-section-content="entries"${state.collapsedLogSections.entries ? ' hidden' : ''}>${entriesView(project)}</div></section>`;
+  return `<section class="next-steps-section"><div class="section-head log-section-head">${sectionToggle('tasks', taskHeading)}<div class="section-head-actions">${taskButton}</div></div><div data-log-section-content="tasks"${state.collapsedLogSections.tasks ? ' hidden' : ''}>${tasks.length ? `<div class="next-steps-list" data-reorder-list="tasks">${tasks.map(taskCard).join('')}</div>` : '<div class="empty compact-empty">Füge einen Arbeitsschritt hinzu, wenn klar ist, wie es weitergeht.</div>'}</div></section><section class="diary-section"><div class="section-head log-section-head">${sectionToggle('entries', entryHeading)}<div class="section-head-actions">${entryButton}</div></div><div data-log-section-content="entries"${state.collapsedLogSections.entries ? ' hidden' : ''}>${entriesView(project)}</div></section>`;
 }
 
 const printDate = value => value ? formatDate(String(value).slice(0, 10)) : 'ohne';
@@ -1980,7 +2149,6 @@ function printSection(title, items) {
 
 function printTaskRecord(task) {
   return printRecord(task.title || 'Arbeitsschritt', [
-    ['Status', task.status || 'Offen'],
     ['Priorität', task.priority || 'Normal'],
     ['Fälligkeit', printDate(task.dueDate)],
     ...(task.flagged === true ? [['Markiert', 'Ja']] : []),
@@ -2014,7 +2182,26 @@ function printItemRecord(collection, item) {
   return printRecord(item.title || item.name || 'Eintrag');
 }
 
-function projectPrintMarkup(project) {
+function projectExportFileRecord(project, file) {
+  const isImage = String(file.mimeType || '').startsWith('image/');
+  const association = file.association ? attachmentEntity(file.association.collection, file.association.itemId, project) : null;
+  const associationLabel = association ? `${association.label}: ${association.title}` : 'Ohne Zuordnung';
+  const rotation = ((Number(file.rotation) || 0) % 360 + 360) % 360;
+  const preview = isImage
+    ? `<figure class="project-export-image"><img src="${attachmentContentUrl(file)}" alt="${escapeHtml(file.displayName || file.originalName)}" style="transform:rotate(${rotation}deg)"></figure>`
+    : `<div class="project-export-document" aria-hidden="true"><strong>${String(file.mimeType || '').includes('pdf') ? 'PDF' : 'DATEI'}</strong></div>`;
+  const description = String(file.description || '').trim() ? `<p class="project-export-file-description">${escapeHtml(file.description)}</p>` : '';
+  return `<article class="project-print-record project-export-file-record">${preview}<div class="project-export-file-copy"><h3>${escapeHtml(file.displayName || file.originalName || 'Datei')}</h3>${description}${printRecordMeta([
+    ['Originaldatei', file.originalName || 'ohne'],
+    ['Dateityp', file.mimeType || 'Unbekannt'],
+    ['Größe', formatBytes(file.size)],
+    ['Zuordnung', associationLabel],
+    ['Hochgeladen', formatDateTime(file.uploadedAt)],
+    ['Von', file.uploadedBy || 'Unbekannt'],
+  ])}</div></article>`;
+}
+
+function projectPrintMarkup(project, includeFiles = false) {
   const allTasks = orderedItems(project.tasks || [], (a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
   const taskById = new Map(allTasks.map(task => [task.id, task]));
   const orderedEntries = orderedItems(project.entries || [], (a, b) => String(b.date || '').localeCompare(String(a.date || '')));
@@ -2049,7 +2236,8 @@ function projectPrintMarkup(project) {
     const items = orderedItems(project[collection] || []).map(item => printItemRecord(collection, item));
     return printSection(label, items);
   }).join('');
-  return `<article class="project-print-sheet"><header class="project-print-header"><img src="/logbuch-logo.svg?v=20260822-3" alt="Logbuch"><p>Projektbericht</p><h1>${escapeHtml(project.title)}</h1><div class="project-print-description">${escapeHtml(project.description || 'Keine Projektbeschreibung hinterlegt.')}</div></header><section class="project-print-facts" aria-label="Projektstatus">${projectFacts.map(([label, value]) => `<div><small>${escapeHtml(label)}</small><strong>${escapeHtml(value)}</strong></div>`).join('')}</section>${logbook}${itemSections}<footer class="project-print-footer"><span>Logbuch</span><span>Erstellt am ${escapeHtml(formatDate(today()))}</span></footer></article>`;
+  const files = includeFiles ? printSection('Dateien & Bilder', (project.files || []).map(file => projectExportFileRecord(project, file))) : '';
+  return `<article class="project-print-sheet"><header class="project-print-header"><img src="/logbuch-logo.svg?v=20260822-3" alt="Logbuch"><p>Projektbericht</p><h1>${escapeHtml(project.title)}</h1><div class="project-print-description">${escapeHtml(project.description || 'Keine Projektbeschreibung hinterlegt.')}</div></header><section class="project-print-facts" aria-label="Projektstatus">${projectFacts.map(([label, value]) => `<div><small>${escapeHtml(label)}</small><strong>${escapeHtml(value)}</strong></div>`).join('')}</section>${logbook}${itemSections}${files}<footer class="project-print-footer"><span>Logbuch</span><span>Erstellt am ${escapeHtml(formatDate(today()))}</span></footer></article>`;
 }
 
 async function renderProjectPrint(id) {
@@ -2063,6 +2251,28 @@ async function renderProjectPrint(id) {
   setProjectsMenu(true, project.status);
   $('#main').innerHTML = `<div class="project-print-shell"><div class="project-print-toolbar"><a class="button secondary compact" href="/#/projects/${encodeURIComponent(project.id)}">Zurück zum Projekt</a><div><span>DIN A4 · Hochformat</span><button class="button primary compact" type="button" data-print-now>${printIcon()} Drucken / als PDF speichern</button></div></div>${projectPrintMarkup(project)}</div>`;
   $('[data-print-now]').onclick = () => window.print();
+}
+
+async function renderProjectExport(id) {
+  const view = await api(`/project-view/${encodeURIComponent(id)}`);
+  state.current = view.project;
+  state.tags = view.tags || [];
+  state.folders = view.folders || [];
+  const project = state.current;
+  document.body.classList.add('project-print-mode', 'project-export-mode');
+  document.title = `${project.title} – PDF-Export – Logbuch`;
+  setProjectsMenu(true, project.status);
+  $('#main').innerHTML = `<div class="project-print-shell"><div class="project-print-toolbar"><a class="button secondary compact" href="/#/projects/${encodeURIComponent(project.id)}">Zurück zum Projekt</a><div><span>Farbiges DIN A4 · inklusive Bilder und Metadaten</span><button class="button primary compact" type="button" data-export-pdf>${exportIcon()} Als PDF speichern</button></div></div>${projectPrintMarkup(project, true)}</div>`;
+  $('[data-export-pdf]').onclick = async buttonEvent => {
+    const button = buttonEvent.currentTarget;
+    button.disabled = true;
+    button.lastChild.textContent = ' PDF wird vorbereitet …';
+    await Promise.all([...document.images].map(image => image.complete ? Promise.resolve() : image.decode?.().catch(() => null) || Promise.resolve()));
+    await document.fonts?.ready;
+    button.disabled = false;
+    button.lastChild.textContent = ' Als PDF speichern';
+    window.print();
+  };
 }
 
 function bindMobileProjectControls() {
@@ -2082,6 +2292,7 @@ function bindMobileProjectControls() {
 
 async function renderProject(id) {
   const [view] = await Promise.all([api(`/project-view/${encodeURIComponent(id)}`), loadIconLibrary().catch(() => null)]);
+  if (state.current?.id !== view.project.id) state.visibleProjectFiles = 50;
   state.current = view.project;
   state.tags = view.tags || [];
   state.folders = view.folders || [];
@@ -2097,13 +2308,14 @@ async function renderProject(id) {
     ['contacts','Kontakte',(p.contacts || []).length],
     ['links','Links',(p.links || []).length],
     ['ideas','Ideen',(p.ideas || []).length],
-    ['learnings','Erkenntnisse',(p.learnings || []).length]
+    ['learnings','Erkenntnisse',(p.learnings || []).length],
+    ['files','Dateien',(p.files || []).length]
   ];
-  const content = state.activeTab === 'entries' ? diaryView(p) : itemsView(p, state.activeTab);
+  const content = state.activeTab === 'entries' ? diaryView(p) : state.activeTab === 'files' ? filesView(p) : itemsView(p, state.activeTab);
   const breadcrumbs = p.status === 'archived' ? '<nav class="folder-breadcrumbs" aria-label="Projektpfad"><a href="/#/archive">Archiviert</a></nav>' : folderBreadcrumbs(p.folderId || null);
   const tabButtons = tabs.map(([id,label,count]) => `<button class="tab ${state.activeTab===id?'active':''}" data-tab="${id}"><span>${label}</span><span class="tab-count">(${count})</span></button>`).join('');
   const mobileTabMenu = `<details class="action-menu mobile-project-nav"><summary aria-label="Projektbereich wählen" title="Projektbereich wählen">☰</summary><div class="action-menu-panel">${tabs.map(([id,label,count]) => `<button class="menu-item${state.activeTab===id?' active':''}" type="button" data-tab="${id}"><span>${label}</span><small>(${count})</small></button>`).join('')}</div></details>`;
-  $('#main').innerHTML = `<div class="project-page-breadcrumbs">${breadcrumbs}</div><div class="project-page-head"><section class="project-hero"><div class="project-hero-layout"><div class="project-hero-main"><div class="project-heading-row"><span class="project-hero-icon" aria-hidden="true">${iconSvg(projectIconName(p))}</span><div class="project-heading-content"><div class="project-title-line"><h1>${escapeHtml(p.title)}</h1></div><p class="project-description">${escapeHtml(p.description || 'Noch keine Projektbeschreibung hinterlegt.')}</p></div></div></div><aside class="project-hero-status mobile-collapsed" data-mobile-status-panel aria-label="Projektstatus"><div class="project-hero-status-head"><span class="desktop-status-label">Projektstatus</span><div class="mobile-project-status-controls">${mobileTabMenu}${mobileStatusToggle('Projektstatus')}</div><div class="project-hero-actions">${projectPrintButton(p)}${projectCardActions(p)}</div></div><div class="project-hero-facts" data-mobile-status-content><div class="project-hero-fact"><small>Status</small>${projectStatusControl(p)}</div><div class="project-hero-fact"><small>Priorität</small>${projectPriorityControl(p)}</div><div class="project-hero-fact"><small>Startdatum</small><span class="project-status-value">${p.createdAt ? formatDate(p.createdAt) : 'ohne'}</span></div><div class="project-hero-fact"><small>Fälligkeit</small><span class="project-status-value">${p.dueDate ? formatDate(p.dueDate) : 'ohne'}</span></div><div class="project-hero-fact project-hero-tags"><small>Tags</small>${tagChips(p.tagIds, { limit:20, archived:p.status === 'archived' }) || '<span class="project-status-empty">Keine</span>'}</div></div></aside></div><div class="project-subnav"><nav class="tabs" aria-label="Projektbereiche">${tabButtons}</nav></div></section></div><section class="project-page-content">${content}</section>`;
+  $('#main').innerHTML = `<div class="project-page-breadcrumbs">${breadcrumbs}</div><div class="project-page-head"><section class="project-hero"><div class="project-hero-layout"><div class="project-hero-main"><div class="project-heading-row"><span class="project-hero-icon" aria-hidden="true">${iconSvg(projectIconName(p))}</span><div class="project-heading-content"><div class="project-title-line"><h1>${escapeHtml(p.title)}</h1></div><p class="project-description">${escapeHtml(p.description || 'Noch keine Projektbeschreibung hinterlegt.')}</p></div></div></div><aside class="project-hero-status mobile-collapsed" data-mobile-status-panel aria-label="Projektstatus"><div class="project-hero-status-head"><span class="desktop-status-label">Projektdaten</span><div class="mobile-project-status-controls">${mobileTabMenu}${mobileStatusToggle('Statusdetails')}</div><div class="project-hero-actions">${projectExportButton(p)}${projectCardActions(p)}</div></div><div class="project-hero-facts" data-mobile-status-content><div class="project-hero-fact"><small>Status</small>${projectStatusControl(p)}</div><div class="project-hero-fact"><small>Priorität</small>${projectPriorityControl(p)}</div><div class="project-hero-fact"><small>Start</small><span class="project-status-value">${p.createdAt ? formatDate(p.createdAt) : 'ohne'}</span></div><div class="project-hero-fact"><small>Fällig</small><span class="project-status-value">${p.dueDate ? formatDate(p.dueDate) : 'ohne'}</span></div><div class="project-hero-fact project-hero-tags"><small>Tags</small>${tagChips(p.tagIds, { limit:20, archived:p.status === 'archived' }) || '<span class="project-status-empty">Keine</span>'}</div></div></aside></div><div class="project-subnav"><nav class="tabs" aria-label="Projektbereiche">${tabButtons}</nav></div></section></div><section class="project-page-content">${content}</section>`;
   const newEntryButton = $('[data-new-entry]');
   if (newEntryButton) newEntryButton.onclick = () => openEntryDialog(p.id);
   const newItemButton = $('[data-new-item]');
@@ -2123,6 +2335,9 @@ async function renderProject(id) {
   });
   bindEntryActions();
   bindItemActions();
+  bindFileActions();
+  const loadMoreFiles = $('[data-load-more-files]');
+  if (loadMoreFiles) loadMoreFiles.onclick = () => { state.visibleProjectFiles += 50; renderProject(p.id); };
   bindProjectActions();
   bindReordering();
   document.querySelectorAll('[data-complete-task]').forEach(button => button.onclick = async event => {
@@ -2147,7 +2362,7 @@ async function renderProject(id) {
   document.querySelectorAll('[data-reopen-entry]').forEach(button => button.onclick = async event => {
     event.stopPropagation();
     const entry = p.entries?.find(item => item.id === button.dataset.reopenEntry);
-    if (!entry || !confirm(`„${entryTitle(entry)}“ wieder zu den anstehenden Arbeitsschritten verschieben?`)) return;
+    if (!entry) return;
     button.disabled = true;
     try {
       await api(`/projects/${encodeURIComponent(p.id)}/entries/${encodeURIComponent(entry.id)}/reopen`, { method:'POST', body:'{}' });
@@ -2186,6 +2401,7 @@ function currentProjectMenuStatus() {
 
 function setNav(routeName, projectStatus = '') {
   document.querySelectorAll('[data-route]').forEach(node => node.classList.toggle('active', node.dataset.route === routeName));
+  $('#global-search-form').classList.toggle('active', routeName === 'search');
   const settingsActive = routeName === 'settings';
   const projectsActive = routeName === 'projects';
   setSettingsMenu(settingsActive);
@@ -2194,7 +2410,7 @@ function setNav(routeName, projectStatus = '') {
 }
 async function route() {
   if (!state.user) return;
-  document.body.classList.remove('project-print-mode');
+  document.body.classList.remove('project-print-mode', 'project-export-mode');
   $('#mobile-header-actions').innerHTML = '';
   document.title = 'Logbuch';
   const hashValue = location.hash.replace(/^#\/?/, '');
@@ -2206,15 +2422,30 @@ async function route() {
   const directEntry = directProject && pathParts[2] === 'e' && pathParts[3];
   const parts = hashParts.length ? hashParts : directProject ? ['projects', pathParts[1]] : [];
   try {
-    if (parts[0] === 'projects' && parts[1] && parts[2] === 'print') {
+    if (parts[0] === 'todos') { setNav('todos'); await renderTodos(); }
+    else if (parts[0] === 'projects' && parts[1] && parts[2] === 'export') {
+      setNav('projects');
+      await renderProjectExport(parts[1]);
+    }
+    else if (parts[0] === 'projects' && parts[1] && parts[2] === 'print') {
       setNav('projects');
       await renderProjectPrint(parts[1]);
     }
     else if (parts[0] === 'projects' && parts[1]) {
       setNav('projects');
+      const requestedTab = routeQuery.get('tab');
+      if (['entries','materials','contacts','links','ideas','learnings','notes','files'].includes(requestedTab)) state.activeTab = requestedTab;
       if (directEntry) state.activeTab = 'entries';
       await renderProject(parts[1]);
       if (directEntry) document.getElementById(pathParts[3])?.scrollIntoView({ block:'center' });
+      const searchItem = routeQuery.get('item');
+      if (searchItem) requestAnimationFrame(() => {
+        const target = document.getElementById(searchItem);
+        if (!target) return;
+        target.classList.add('search-target');
+        target.scrollIntoView({ block:'center', behavior:'smooth' });
+        setTimeout(() => target.classList.remove('search-target'), 2400);
+      });
     }
     else if (parts[0] === 'projects') {
       state.currentFolderId = routeQuery.get('folder') || null;
@@ -2229,6 +2460,7 @@ async function route() {
       setNav('projects', 'archived'); await renderArchive();
     }
     else if (parts[0] === 'trash') { setNav('projects', 'trashed'); await renderTrash(); }
+    else if (parts[0] === 'search') { setNav('search'); await renderGlobalSearch(routeQuery); }
     else if (parts[0] === 'settings') {
       const requestedSection = parts[1] === 'device' ? 'server' : parts[1];
       if (parts[1] === 'device') history.replaceState(null, '', '/#/settings/server');
@@ -2409,7 +2641,7 @@ function showFormDialog(dialog) {
   });
 }
 
-function openProjectDialog(project = null) {
+function openProjectDialog(project = null, { status = null } = {}) {
   document.querySelectorAll('.action-menu[open]').forEach(menu => menu.removeAttribute('open'));
   const form = $('#project-form');
   form.reset();
@@ -2423,7 +2655,7 @@ function openProjectDialog(project = null) {
     form.elements.title.removeAttribute('aria-invalid');
   };
   form.elements.description.value = project?.description || '';
-  form.elements.status.value = project?.status || 'active';
+  form.elements.status.value = project?.status || (regularProjectStatuses.includes(status) ? status : 'active');
   form.elements.iconInherited.value = project ? (projectUsesDefaultIcon(project) ? '1' : '0') : '1';
   form.elements.icon.value = project ? entityIconName(project, 'box') : defaultProjectIconName();
   renderIconPicker('project');
@@ -2497,7 +2729,63 @@ function openEntryDialog(projectId, entry = null) {
   if (form.elements.nextStep) form.elements.nextStep.value = entry?.nextStep || '';
   $('#entry-dialog-title').textContent = entry ? 'Arbeitsschritt bearbeiten' : 'Erledigten Arbeitsschritt festhalten';
   $('#entry-submit').textContent = entry ? 'Änderungen speichern' : 'Arbeitsschritt speichern';
+  updateDialogAttachmentSummary(form.elements.attachments);
   showFormDialog($('#entry-dialog'));
+}
+
+function updateDialogAttachmentSummary(input) {
+  const summary = input?.closest('.dialog-attachments')?.querySelector('[data-attachment-summary]');
+  if (!summary) return;
+  const files = [...(input.files || [])];
+  summary.innerHTML = files.length
+    ? files.map((file, index) => `<span class="dialog-selected-file"><strong>${escapeHtml(file.name)}</strong><small>${escapeHtml(formatBytes(file.size))}</small><button type="button" data-remove-dialog-attachment="${index}" aria-label="${escapeHtml(file.name)} aus der Upload-Liste entfernen" title="Aus Upload-Liste entfernen">${iconSvg('x')}</button></span>`).join('')
+    : '<span class="dialog-no-files">Keine Dateien ausgewählt</span>';
+  summary.classList.toggle('has-files', files.length > 0);
+  summary.classList.remove('is-overflowing');
+  requestAnimationFrame(() => summary.classList.toggle('is-overflowing', summary.scrollHeight > summary.clientHeight));
+}
+
+function removeDialogAttachment(button) {
+  const input = button.closest('.dialog-attachments')?.querySelector('input[type="file"]');
+  const removeIndex = Number(button.dataset.removeDialogAttachment);
+  if (!input || !Number.isInteger(removeIndex)) return;
+  const transfer = new DataTransfer();
+  [...input.files].forEach((file, index) => { if (index !== removeIndex) transfer.items.add(file); });
+  input.files = transfer.files;
+  updateDialogAttachmentSummary(input);
+}
+
+function selectedDialogAttachments(form) {
+  const files = [...(form.elements.attachments?.files || [])];
+  const oversized = files.find(file => file.size > 50 * 1024 * 1024);
+  if (oversized) throw new Error(`Die Datei „${oversized.name}“ ist größer als 50 MB.`);
+  return files;
+}
+
+async function uploadDialogAttachments(projectId, collection, itemId, files) {
+  let uploaded = 0;
+  const failed = [];
+  for (const file of files) {
+    const payload = new FormData();
+    payload.append('file', file);
+    payload.append('displayName', '');
+    payload.append('description', '');
+    payload.append('associationCollection', collection);
+    payload.append('associationItemId', itemId);
+    try {
+      await api(`/projects/${encodeURIComponent(projectId)}/files`, { method:'POST', body:payload });
+      uploaded += 1;
+    } catch (error) { failed.push(`${file.name}: ${error.message}`); }
+  }
+  return { uploaded, failed };
+}
+
+function savedWithAttachmentsMessage(label, editing, result) {
+  const base = `${label} ${editing ? 'aktualisiert' : 'gespeichert'}`;
+  if (!result.uploaded && !result.failed.length) return base;
+  const uploaded = result.uploaded ? ` · ${result.uploaded} ${result.uploaded === 1 ? 'Datei' : 'Dateien'} hochgeladen` : '';
+  const failed = result.failed.length ? ` · ${result.failed.length} fehlgeschlagen: ${result.failed[0]}` : '';
+  return `${base}${uploaded}${failed}`;
 }
 
 function fieldMarkup(field, value = '') {
@@ -2520,7 +2808,84 @@ function openItemDialog(projectId, collection, item = null) {
   $('#item-submit').textContent = item ? 'Änderungen speichern' : `${config.singular} speichern`;
   $('#item-fields').innerHTML = config.fields.map(field => fieldMarkup(field, item?.[field.name] || '')).join('');
   enhanceDateInputs($('#item-fields'));
+  updateDialogAttachmentSummary(form.elements.attachments);
   showFormDialog($('#item-dialog'));
+}
+
+function openFileDialog(projectId, association = null, file = null) {
+  document.querySelectorAll('.action-menu[open]').forEach(menu => menu.removeAttribute('open'));
+  const form = $('#file-form');
+  form.reset();
+  form.elements.projectId.value = projectId;
+  form.elements.fileId.value = file?.id || '';
+  form.elements.associationCollection.value = association?.collection || file?.association?.collection || '';
+  form.elements.associationItemId.value = association?.itemId || file?.association?.itemId || '';
+  form.elements.displayName.value = file?.displayName || '';
+  form.elements.description.value = file?.description || '';
+  form.elements.file.required = !file;
+  $('#file-input-label').hidden = Boolean(file);
+  $('#file-dialog-title').textContent = file ? 'Dateiinformationen bearbeiten' : 'Datei hochladen';
+  $('#file-submit').textContent = file ? 'Änderungen speichern' : 'Datei hochladen';
+  const entity = association ? attachmentEntity(association.collection, association.itemId) : file?.association ? attachmentEntity(file.association.collection, file.association.itemId) : null;
+  $('#file-dialog-context').textContent = entity ? `Zuordnung: ${entity.label} · ${entity.title}` : 'Ohne Eintragszuordnung – die Datei gehört weiterhin zu diesem Projekt.';
+  showFormDialog($('#file-dialog'));
+}
+
+function replaceFileInState(file) {
+  const index = state.current?.files?.findIndex(candidate => candidate.id === file.id) ?? -1;
+  if (index >= 0) state.current.files[index] = file;
+  document.querySelectorAll(`[data-file-image="${CSS.escape(file.id)}"]`).forEach(image => { image.style.transform = `rotate(${Number(file.rotation) || 0}deg)`; });
+  const card = document.querySelector(`[data-file-card="${CSS.escape(file.id)}"]`);
+  if (card) {
+    const title = card.querySelector('h3');
+    if (title) title.textContent = file.displayName || file.originalName;
+    const description = card.querySelector('.file-description');
+    if (description) { description.textContent = file.description || ''; description.hidden = !file.description; }
+  }
+  document.querySelectorAll(`.attachment-row[data-view-file="${CSS.escape(file.id)}"] .attachment-name`).forEach(name => { name.textContent = file.displayName || file.originalName; });
+}
+
+function renderFileViewer(file) {
+  const form = $('#file-viewer-form');
+  const editable = mayEditProjects();
+  const association = file.association ? attachmentEntity(file.association.collection, file.association.itemId) : null;
+  form.elements.fileId.value = file.id;
+  form.elements.displayName.value = file.displayName || file.originalName;
+  form.elements.description.value = file.description || '';
+  form.elements.displayName.disabled = !editable;
+  form.elements.description.disabled = !editable;
+  $('#file-viewer-save').hidden = !editable;
+  $('#file-viewer-rotate-left').hidden = !editable;
+  $('#file-viewer-rotate-right').hidden = !editable;
+  $('#file-viewer-title').textContent = file.displayName || file.originalName;
+  $('#file-viewer-subtitle').textContent = file.originalName;
+  $('#file-viewer-size').textContent = formatBytes(file.size);
+  $('#file-viewer-download').href = attachmentContentUrl(file, true);
+  $('#file-viewer-content').innerHTML = `<img data-file-image="${escapeHtml(file.id)}" src="${attachmentContentUrl(file)}" alt="${escapeHtml(file.displayName || file.originalName)}" style="transform:rotate(${Number(file.rotation) || 0}deg)">`;
+  $('#file-viewer-association').innerHTML = association ? `<small>Zugeordnet zu</small><strong>${escapeHtml(association.label)}</strong><span>${escapeHtml(association.title)}</span>` : '<small>Zuordnung</small><span>Ohne Eintragszuordnung</span>';
+  $('#file-viewer-meta').innerHTML = `<div><small>Dateityp</small><span>${escapeHtml(file.mimeType || 'Unbekannt')}</span></div><div><small>Hochgeladen</small><span>${escapeHtml(formatDateTime(file.uploadedAt))}</span></div><div><small>Von</small><span>${escapeHtml(file.uploadedBy || 'Unbekannt')}</span></div>`;
+}
+
+function openFileViewer(file) {
+  if (!String(file?.mimeType || '').startsWith('image/')) return;
+  state.fileViewerId = file.id;
+  renderFileViewer(file);
+  const dialog = $('#file-viewer-dialog');
+  dialog.showModal();
+  requestAnimationFrame(() => dialog.querySelector('button[value="cancel"]')?.focus());
+}
+
+async function rotateViewedFile(degrees, button) {
+  const file = state.current?.files?.find(candidate => candidate.id === state.fileViewerId);
+  if (!file) return;
+  button.disabled = true;
+  try {
+    const updated = await api(`/projects/${encodeURIComponent(state.current.id)}/files/${encodeURIComponent(file.id)}/rotate`, { method:'POST', body:JSON.stringify({ degrees }) });
+    replaceFileInState(updated);
+    renderFileViewer(updated);
+    toast(degrees > 0 ? 'Bild nach rechts gedreht' : 'Bild nach links gedreht');
+  } catch (error) { toast(error.message); }
+  finally { button.disabled = false; }
 }
 
 function openTagDialog(tag = null) {
@@ -2765,7 +3130,11 @@ function bindSystemActions() {
   };
 }
 
-function bindNewProject() { const button = $('[data-new-project]'); if (button) button.onclick = () => openProjectDialog(); }
+function bindNewProject() {
+  const button = $('[data-new-project]');
+  if (button) button.onclick = () => openProjectDialog();
+  document.querySelectorAll('[data-new-project-status]').forEach(statusButton => statusButton.onclick = () => openProjectDialog(null, { status:statusButton.dataset.newProjectStatus }));
+}
 
 function bindFolderActions() {
   document.querySelectorAll('[data-folder-flag]').forEach(button => button.onclick = async event => {
@@ -2778,8 +3147,7 @@ function bindFolderActions() {
       await renderProjects();
     } catch (error) { toast(error.message); button.disabled = false; }
   });
-  const create = $('[data-new-folder]');
-  if (create) create.onclick = () => openFolderDialog();
+  document.querySelectorAll('[data-new-folder]').forEach(create => create.onclick = () => openFolderDialog());
   document.querySelectorAll('[data-edit-folder]').forEach(button => button.onclick = event => {
     event.preventDefault();
     const folder = folderById(button.dataset.editFolder);
@@ -2977,16 +3345,6 @@ function bindItemActions() {
     const item = state.current[collection]?.find(candidate => candidate.id === id);
     if (item) openItemDialog(state.current.id, collection, item);
   });
-  document.querySelectorAll('[data-task-inline-status]').forEach(select => select.onchange = async event => {
-    event.stopPropagation();
-    const id = select.dataset.taskInlineStatus;
-    select.disabled = true;
-    try {
-      await api(`/projects/${encodeURIComponent(state.current.id)}/tasks/${encodeURIComponent(id)}`, { method:'PATCH', body:JSON.stringify({ status:select.value }) });
-      toast('Status des Arbeitsschritts geändert');
-      await renderProject(state.current.id);
-    } catch (error) { toast(error.message); await renderProject(state.current.id); }
-  });
   document.querySelectorAll('[data-task-flag]').forEach(button => button.onclick = async event => {
     event.stopPropagation();
     const id = button.dataset.taskFlag;
@@ -3019,6 +3377,54 @@ function bindItemActions() {
   });
 }
 
+function bindFileActions() {
+  document.querySelectorAll('[data-view-file]').forEach(button => button.onclick = event => {
+    event.stopPropagation();
+    const file = state.current.files?.find(candidate => candidate.id === button.dataset.viewFile);
+    if (file) openFileViewer(file);
+  });
+  document.querySelectorAll('[data-upload-file]').forEach(button => button.onclick = event => {
+    event.stopPropagation();
+    const value = button.dataset.uploadFile || '';
+    if (!value) return openFileDialog(state.current.id);
+    const separator = value.indexOf(':');
+    openFileDialog(state.current.id, { collection:value.slice(0, separator), itemId:value.slice(separator + 1) });
+  });
+  document.querySelectorAll('[data-edit-file]').forEach(button => button.onclick = () => {
+    const file = state.current.files?.find(candidate => candidate.id === button.dataset.editFile);
+    if (file) openFileDialog(state.current.id, null, file);
+  });
+  document.querySelectorAll('[data-rotate-file]').forEach(button => button.onclick = async () => {
+    button.disabled = true;
+    try {
+      await api(`/projects/${encodeURIComponent(state.current.id)}/files/${encodeURIComponent(button.dataset.rotateFile)}/rotate`, { method:'POST', body:JSON.stringify({ degrees:90 }) });
+      toast('Bild gedreht');
+      await renderProject(state.current.id);
+    } catch (error) { toast(error.message); button.disabled = false; }
+  });
+  document.querySelectorAll('[data-delete-file]').forEach(button => button.onclick = async () => {
+    const file = state.current.files?.find(candidate => candidate.id === button.dataset.deleteFile);
+    if (!file || !confirm(`Datei „${file.displayName || file.originalName}“ endgültig löschen?`)) return;
+    button.disabled = true;
+    try {
+      await api(`/projects/${encodeURIComponent(state.current.id)}/files/${encodeURIComponent(file.id)}`, { method:'DELETE' });
+      toast('Datei gelöscht');
+      await renderProject(state.current.id);
+    } catch (error) { toast(error.message); button.disabled = false; }
+  });
+  document.querySelectorAll('[data-file-jump]').forEach(button => button.onclick = async () => {
+    const [collection, itemId] = button.dataset.fileJump.split(':');
+    state.activeTab = attachmentTabByCollection[collection] || collection;
+    await renderProject(state.current.id);
+    requestAnimationFrame(() => {
+      const target = document.getElementById(itemId);
+      target?.scrollIntoView({ behavior:'smooth', block:'center' });
+      target?.classList.add('search-target');
+      setTimeout(() => target?.classList.remove('search-target'), 2200);
+    });
+  });
+}
+
 async function persistReorder(list) {
   const collection = list.dataset.reorderList;
   const ids = [...list.querySelectorAll(':scope > [data-reorder-card]')].map(card => card.dataset.reorderId);
@@ -3031,6 +3437,20 @@ async function persistReorder(list) {
       toast(error.message);
     }
     await renderHome(true);
+    return;
+  }
+  if (collection === 'todos') {
+    try {
+      await api('/todos/reorder', { method:'POST', body:JSON.stringify({ ids }) });
+      ids.forEach((id, sortOrder) => {
+        const todo = state.todos.find(candidate => candidate.id === id);
+        if (todo) todo.sortOrder = sortOrder;
+      });
+      toast('Reihenfolge gespeichert');
+    } catch (error) {
+      toast(error.message);
+      await renderTodos();
+    }
     return;
   }
   try {
@@ -3287,14 +3707,22 @@ $('#folder-dialog-delete').addEventListener('click', async event => {
   } catch (error) { toast(error.message); }
   finally { button.disabled = false; }
 });
+document.querySelectorAll('.dialog-attachments input[type="file"]').forEach(input => input.addEventListener('change', () => updateDialogAttachmentSummary(input)));
 $('#entry-form').addEventListener('submit', async event => {
   event.preventDefault();
   const formElement = event.currentTarget;
   const form = Object.fromEntries(new FormData(formElement));
   const editing = Boolean(form.entryId);
   const path = `/projects/${encodeURIComponent(form.projectId)}/entries${editing ? `/${encodeURIComponent(form.entryId)}` : ''}`;
-  try { await api(path, { method:editing ? 'PATCH' : 'POST', body:JSON.stringify({ title:form.title, body:form.body, nextStep:'', date:form.date }) }); $('#entry-dialog').close(); formElement.reset(); toast(editing ? 'Arbeitsschritt aktualisiert' : 'Arbeitsschritt gespeichert'); await renderProject(form.projectId); }
-  catch (error) { toast(error.message); }
+  const submit = $('#entry-submit');
+  submit.disabled = true;
+  try {
+    const files = selectedDialogAttachments(formElement);
+    const saved = await api(path, { method:editing ? 'PATCH' : 'POST', body:JSON.stringify({ title:form.title, body:form.body, nextStep:'', date:form.date }) });
+    const uploads = await uploadDialogAttachments(form.projectId, 'entries', saved.id, files);
+    $('#entry-dialog').close(); formElement.reset(); toast(savedWithAttachmentsMessage('Arbeitsschritt', editing, uploads)); await renderProject(form.projectId);
+  } catch (error) { toast(error.message); }
+  finally { submit.disabled = false; }
 });
 $('#item-form').addEventListener('submit', async event => {
   event.preventDefault();
@@ -3303,12 +3731,66 @@ $('#item-form').addEventListener('submit', async event => {
   const editing = Boolean(form.itemId);
   const path = `/projects/${encodeURIComponent(form.projectId)}/${form.collection}${editing ? `/${encodeURIComponent(form.itemId)}` : ''}`;
   const payload = { ...form, createdAt:today() };
-  delete payload.projectId; delete payload.collection; delete payload.itemId;
+  delete payload.projectId; delete payload.collection; delete payload.itemId; delete payload.attachments;
+  const submit = $('#item-submit');
+  submit.disabled = true;
   try {
-    await api(path, { method:editing ? 'PATCH' : 'POST', body:JSON.stringify(payload) });
-    $('#item-dialog').close(); formElement.reset(); toast(`${sections[form.collection].singular} ${editing ? 'aktualisiert' : 'gespeichert'}`); await renderProject(form.projectId);
+    const files = selectedDialogAttachments(formElement);
+    const saved = await api(path, { method:editing ? 'PATCH' : 'POST', body:JSON.stringify(payload) });
+    const uploads = await uploadDialogAttachments(form.projectId, form.collection, saved.id, files);
+    $('#item-dialog').close(); formElement.reset(); toast(savedWithAttachmentsMessage(sections[form.collection].singular, editing, uploads)); await renderProject(form.projectId);
   } catch (error) { toast(error.message); }
+  finally { submit.disabled = false; }
 });
+$('#file-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  const formElement = event.currentTarget;
+  const values = Object.fromEntries(new FormData(formElement));
+  const editing = Boolean(values.fileId);
+  const submit = $('#file-submit');
+  submit.disabled = true;
+  try {
+    if (editing) {
+      await api(`/projects/${encodeURIComponent(values.projectId)}/files/${encodeURIComponent(values.fileId)}`, { method:'PATCH', body:JSON.stringify({ displayName:values.displayName, description:values.description }) });
+      toast('Dateiinformationen aktualisiert');
+    } else {
+      const file = formElement.elements.file.files?.[0];
+      if (!file) throw new Error('Wähle zuerst eine Datei aus.');
+      if (file.size > 50 * 1024 * 1024) throw new Error('Die Datei ist größer als 50 MB.');
+      const payload = new FormData();
+      payload.append('file', file);
+      payload.append('displayName', values.displayName || '');
+      payload.append('description', values.description || '');
+      payload.append('associationCollection', values.associationCollection || '');
+      payload.append('associationItemId', values.associationItemId || '');
+      await api(`/projects/${encodeURIComponent(values.projectId)}/files`, { method:'POST', body:payload });
+      toast('Datei hochgeladen');
+    }
+    $('#file-dialog').close();
+    formElement.reset();
+    await renderProject(values.projectId);
+  } catch (error) { toast(error.message); }
+  finally { submit.disabled = false; }
+});
+$('#file-viewer-rotate-left').onclick = event => rotateViewedFile(-90, event.currentTarget);
+$('#file-viewer-rotate-right').onclick = event => rotateViewedFile(90, event.currentTarget);
+$('#file-viewer-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  if (!mayEditProjects()) return;
+  const form = event.currentTarget;
+  const file = state.current?.files?.find(candidate => candidate.id === form.elements.fileId.value);
+  if (!file) return;
+  const save = $('#file-viewer-save');
+  save.disabled = true;
+  try {
+    const updated = await api(`/projects/${encodeURIComponent(state.current.id)}/files/${encodeURIComponent(file.id)}`, { method:'PATCH', body:JSON.stringify({ displayName:form.elements.displayName.value, description:form.elements.description.value }) });
+    replaceFileInState(updated);
+    renderFileViewer(updated);
+    toast('Dateiinformationen gespeichert');
+  } catch (error) { toast(error.message); }
+  finally { save.disabled = false; }
+});
+$('#file-viewer-dialog').addEventListener('close', () => { state.fileViewerId = null; });
 $('#user-form').addEventListener('submit', async event => {
   event.preventDefault();
   const form = event.currentTarget;
@@ -3397,6 +3879,11 @@ $('#update-form').addEventListener('submit', async event => {
 });
 $('#update-manual-reload').onclick = () => location.reload();
 $('#logout').onclick = async () => { await api('/logout', { method:'POST' }); location.reload(); };
+$('#global-search-form').onsubmit = event => {
+  event.preventDefault();
+  const query = $('#global-search-input').value.trim();
+  location.href = `/#/search${query ? `?q=${encodeURIComponent(query)}` : ''}`;
+};
 $('#settings-toggle').onclick = () => {
   const open = $('#settings-toggle').getAttribute('aria-expanded') !== 'true';
   if (open) {
@@ -3439,6 +3926,8 @@ window.addEventListener('hashchange', () => {
   route();
 });
 document.addEventListener('click', event => {
+  const removeAttachment = event.target.closest('[data-remove-dialog-attachment]');
+  if (removeAttachment) removeDialogAttachment(removeAttachment);
   document.querySelectorAll('.action-menu[open]').forEach(menu => { if (!menu.contains(event.target)) menu.removeAttribute('open'); });
   document.querySelectorAll('[data-filter-control]').forEach(control => {
     if (control.contains(event.target)) return;

@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#f6f7f9">
   <title>Logbuch</title>
   <link rel="icon" href="/favicon.svg?v=20260822-2" type="image/svg+xml">
-  <link rel="stylesheet" href="/styles.css?v=20260823-223">
+  <link rel="stylesheet" href="/styles.css?v=20260823-253">
 </head>
 <body>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
@@ -34,6 +34,7 @@
       <a class="brand" href="/#/" aria-label="Logbuch"><img src="/logbuch-logo.svg?v=20260822-3" alt=""></a>
       <nav aria-label="Hauptnavigation">
         <a class="nav-item active" href="/#/" data-route="home"><span aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="8.5"></circle><path d="m8.2 12.2 2.5 2.5 5.4-5.6"></path></svg></span> Übersicht</a>
+        <a class="nav-item" href="/#/todos" data-route="todos"><span aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M9 6h11M9 12h11M9 18h11"></path><path d="m3.5 6 1 1 2-2M3.5 12l1 1 2-2M3.5 18l1 1 2-2"></path></svg></span> To-dos <i id="todo-nav-count" class="todo-nav-count" hidden>0</i></a>
         <div class="projects-menu">
           <button id="projects-toggle" class="nav-item bare" type="button" data-route="projects" aria-expanded="false" aria-controls="projects-subnav"><span data-project-nav-icon aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M12 3 20 7.5v9L12 21l-8-4.5v-9L12 3Z"></path><path d="m4 7.5 8 4.5 8-4.5M12 12v9"></path></svg></span><b>Projekte</b></button>
           <div id="projects-subnav" class="settings-subnav projects-subnav" hidden>
@@ -63,7 +64,10 @@
         <button id="logout" class="nav-item bare"><span aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><path d="m16 17 5-5-5-5M21 12H9"></path></svg></span> Abmelden</button>
       </nav>
       <div class="sidebar-bottom">
-        <div class="device-state"><span class="pulse"></span><div><strong>Logbuch online</strong><small id="device-host">Server</small></div></div>
+        <form id="global-search-form" class="sidebar-search" role="search">
+          <button type="submit" aria-label="Suche starten" title="Suche starten"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"></circle><path d="m15.5 15.5 5 5"></path></svg></button>
+          <input id="global-search-input" name="q" type="search" maxlength="200" placeholder="Alles durchsuchen" aria-label="Logbuch durchsuchen" autocomplete="off">
+        </form>
       </div>
     </aside>
 
@@ -118,6 +122,7 @@
       <label>Datum des Arbeitsschritts<input name="date" type="date" required></label>
       <label>Titel <span class="optional">Optional</span><input name="title" maxlength="100" placeholder="z. B. Halterung montiert"></label>
       <label><span>Was hast du gemacht? <span class="optional">Optional</span></span><textarea name="body" rows="5" placeholder="Beschreibe Änderungen, Entscheidungen und Ergebnisse …"></textarea></label>
+      <label class="dialog-attachments">Dateien anhängen <span class="optional">Optional · jeweils maximal 50 MB</span><input name="attachments" type="file" multiple><span class="dialog-attachment-summary" data-attachment-summary>Keine Dateien ausgewählt</span></label>
       <div class="dialog-actions"><button class="button secondary" type="button" value="cancel">Abbrechen</button><button class="button primary" id="entry-submit" type="submit">Arbeitsschritt speichern</button></div>
     </form>
   </dialog>
@@ -129,7 +134,48 @@
       <input type="hidden" name="itemId">
       <div class="dialog-head"><div><h2 id="item-dialog-title">Projektinhalt anlegen</h2></div><button class="icon-button" type="button" value="cancel" aria-label="Schließen">×</button></div>
       <div id="item-fields" class="item-fields"></div>
+      <label class="dialog-attachments">Dateien anhängen <span class="optional">Optional · jeweils maximal 50 MB</span><input name="attachments" type="file" multiple><span class="dialog-attachment-summary" data-attachment-summary>Keine Dateien ausgewählt</span></label>
       <div class="dialog-actions"><button class="button secondary" type="button" value="cancel">Abbrechen</button><button class="button primary" id="item-submit" type="submit">Speichern</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="file-dialog">
+    <form id="file-form" method="dialog">
+      <input type="hidden" name="projectId">
+      <input type="hidden" name="fileId">
+      <input type="hidden" name="associationCollection">
+      <input type="hidden" name="associationItemId">
+      <div class="dialog-head"><div><h2 id="file-dialog-title">Datei hochladen</h2><p id="file-dialog-context" class="dialog-copy"></p></div><button class="icon-button" type="button" value="cancel" aria-label="Schließen">×</button></div>
+      <label id="file-input-label">Datei <span class="optional">Maximal 50 MB</span><input name="file" type="file" required></label>
+      <label>Anzeigename <span class="optional">Optional</span><input name="displayName" maxlength="160" placeholder="Wird sonst aus dem Dateinamen übernommen"></label>
+      <label>Beschreibung <span class="optional">Optional</span><textarea name="description" rows="4" maxlength="4000" placeholder="Inhalt, Version oder Verwendungszweck der Datei …"></textarea></label>
+      <p class="file-storage-hint">Die Originaldatei wird im Ordner dieses Projekts gespeichert. Office-, CAD- und andere Dokumente werden nur abgelegt, nicht im Logbuch bearbeitet.</p>
+      <div class="dialog-actions"><button class="button secondary" type="button" value="cancel">Abbrechen</button><button class="button primary" id="file-submit" type="submit">Datei hochladen</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="file-viewer-dialog" class="file-viewer-dialog">
+    <form id="file-viewer-form" method="dialog">
+      <input type="hidden" name="fileId">
+      <div class="dialog-head file-viewer-head"><div><small id="file-viewer-kind">Bildbetrachter</small><h2 id="file-viewer-title">Bild</h2><p id="file-viewer-subtitle" class="dialog-copy"></p></div><button class="icon-button" type="button" value="cancel" aria-label="Betrachter schließen">×</button></div>
+      <div class="file-viewer-layout">
+        <section class="file-viewer-workspace" aria-label="Bildvorschau">
+          <div id="file-viewer-content" class="file-viewer-content"></div>
+          <div class="file-viewer-toolbar" aria-label="Bildwerkzeuge">
+            <button class="button secondary compact" id="file-viewer-rotate-left" type="button" aria-label="Bild nach links drehen" title="Nach links drehen">↶ <span>Links drehen</span></button>
+            <button class="button secondary compact" id="file-viewer-rotate-right" type="button" aria-label="Bild nach rechts drehen" title="Nach rechts drehen">↷ <span>Rechts drehen</span></button>
+            <a class="button secondary compact" id="file-viewer-download" href="#">Original herunterladen</a>
+          </div>
+        </section>
+        <aside class="file-viewer-details" aria-label="Dateiinformationen">
+          <div class="file-viewer-details-head"><h3>Informationen</h3><span id="file-viewer-size"></span></div>
+          <label>Anzeigename<input name="displayName" maxlength="160"></label>
+          <label>Beschreibung <span class="optional">Optional</span><textarea name="description" rows="7" maxlength="4000"></textarea></label>
+          <div id="file-viewer-association" class="file-viewer-association"></div>
+          <div class="file-viewer-meta" id="file-viewer-meta"></div>
+          <button class="button primary" id="file-viewer-save" type="submit">Informationen speichern</button>
+        </aside>
+      </div>
     </form>
   </dialog>
 
@@ -196,8 +242,8 @@
     </form>
   </dialog>
 
-  <script src="/backup-format.js?v=20260822-141" defer></script>
+  <script src="/backup-format.js?v=20260823-142" defer></script>
   <script src="/update-monitor.js?v=20260822-001" defer></script>
-  <script src="/app.js?v=20260823-154" defer></script>
+  <script src="/app.js?v=20260823-189" defer></script>
 </body>
 </html>

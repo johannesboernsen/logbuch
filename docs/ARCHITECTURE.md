@@ -25,7 +25,7 @@ Der öffentliche Webserver zeigt ausschließlich auf `public/`. Anwendungscode u
 
 Jeder fachliche Datensatz besitzt eine JSON-Datei und eine Markdown-Datei mit YAML-Frontmatter. JSON ermöglicht eine verlustfreie Wiederherstellung und schnelle Verarbeitung; Markdown bleibt ohne das Logbuch lesbar. Schreibvorgänge verwenden eine temporäre Datei und ein anschließendes atomisches Umbenennen.
 
-SQLite ist für transaktionale Daten vorgesehen: Benutzer, Argon2id-Hashes, Sitzungen, Anmeldebegrenzung, Projektfreigaben, Tags, Einstellungen und Auditereignisse.
+SQLite ist für transaktionale Daten vorgesehen: Benutzer, persönliche To-dos, Argon2id-Hashes, Sitzungen, Anmeldebegrenzung, Projektfreigaben, Tags, Einstellungen und Auditereignisse. To-dos gehören jeweils genau einem Benutzer und bleiben von Projektarbeitsschritten und Logbucheinträgen getrennt.
 
 Der versionierte Beispieldatensatz liegt in `public/demo-data.json`. Seine Projekt-, Ordner- und Tag-IDs verwenden den reservierten Präfix `demo-`. Installation und Entfernen laufen ausschließlich serverseitig über administrative API-Endpunkte. Beim Entfernen werden nur die im Manifest aufgeführten Projekt-IDs gelöscht. Ein Demo-Ordner wird anschließend nur entfernt, wenn er weder eigene Projekte noch Unterordner enthält; belegte Demo-Ordner und die darin einsortierten eigenen Inhalte bleiben unverändert erhalten. Nachträglich innerhalb eines Demo-Projekts gespeicherte Einträge liegen in dessen Projektverzeichnis und werden zusammen mit diesem entfernt. Gleichnamige, bereits vorhandene Nutzertags werden beim Einspielen wiederverwendet und beim Entfernen nicht gelöscht.
 
@@ -58,6 +58,6 @@ In Docker endet die Verantwortung der Anwendung beim Schreiben einer Update-Anfo
 
 ## Backups
 
-Projekt- und Benutzerbackups bleiben getrennt. Projektarchive enthalten Projekte, verwendete Tags, Projektordner und Servereinstellungen; Benutzerarchive enthalten Konten, Projektfreigaben, persönliche Einstellungen und Passwort-Hashes. Klartextpasswörter und Sitzungen werden nicht exportiert. Benutzerarchive müssen deshalb wie Geheimnisse behandelt werden. Für eine vollständige Wiederherstellung wird zuerst das Benutzer- und danach das Projektarchiv eingespielt; ältere Archive bleiben importierbar, können aber nur Daten wiederherstellen, die sie bereits enthielten.
+Projekt- und Benutzerbackups bleiben getrennt. Projektarchive enthalten Projekte, verwendete Tags, Projektordner und Servereinstellungen; Benutzerarchive enthalten Konten, persönliche To-dos, Projektfreigaben, persönliche Einstellungen und Passwort-Hashes. Klartextpasswörter und Sitzungen werden nicht exportiert. Benutzerarchive müssen deshalb wie Geheimnisse behandelt werden. Für eine vollständige Wiederherstellung wird zuerst das Benutzer- und danach das Projektarchiv eingespielt; ältere Archive bleiben importierbar, können aber nur Daten wiederherstellen, die sie bereits enthielten.
 
 Backups werden bewusst manuell heruntergeladen und wieder eingespielt. Das Logbuch speichert keine SMTP-Zugangsdaten und führt keine Hintergrundjobs aus.

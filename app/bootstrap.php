@@ -7,6 +7,7 @@ require_once __DIR__ . '/Database.php';
 require_once __DIR__ . '/Auth.php';
 require_once __DIR__ . '/ProjectStore.php';
 require_once __DIR__ . '/FolderStore.php';
+require_once __DIR__ . '/TodoStore.php';
 require_once __DIR__ . '/UpdateService.php';
 require_once __DIR__ . '/Application.php';
 
