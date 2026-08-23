@@ -283,12 +283,7 @@ function enhanceDateInputs(root = document) {
 const toast = message => { const node = $('#toast'); node.textContent = message; node.classList.add('show'); setTimeout(() => node.classList.remove('show'), 2600); };
 const entryTitle = entry => entry?.title || entry?.body?.split('\n')[0]?.slice(0, 70) || 'Arbeitsschritt ohne Titel';
 const countWords = ['null', 'ein', 'zwei', 'drei', 'vier', 'fünf', 'sechs', 'sieben', 'acht', 'neun'];
-const workStepCount = (count, completed = false) => {
-  if (count === 0) return completed ? 'Keine erledigten Arbeitsschritte' : 'Keine anstehenden Arbeitsschritte';
-  if (count === 1) return completed ? 'Ein erledigter Arbeitsschritt' : 'Ein anstehender Arbeitsschritt';
-  const value = count < 10 ? countWords[count][0].toUpperCase() + countWords[count].slice(1) : String(count);
-  return `${value} ${completed ? 'erledigte' : 'anstehende'} Arbeitsschritte`;
-};
+const workStepCount = (count, completed = false) => `${completed ? 'Abgeschlossen' : 'Anstehend'} (${count})`;
 const itemCount = (collection, count) => {
   const config = sections[collection];
   if (count === 0) return `Keine ${config.plural}`;
@@ -487,7 +482,7 @@ function projectCard(project, archived = false, showFolder = false) {
   const searchText = [project.title, project.description, project.latestEntryTitle, project.latestEntryBody, folderPath, ...nextSteps, ...tagNames].filter(Boolean).join(' ').toLocaleLowerCase('de');
   return `<article class="project-card" data-project-card data-project-card-status="${escapeHtml(project.status)}" data-project-tags="${escapeHtml((project.tagIds || []).join(','))}" data-project-search="${escapeHtml(searchText)}">
     <a class="project-card-content" href="/#/projects/${encodeURIComponent(project.id)}"><div class="entity-card-lead"><span class="project-entity-icon" aria-hidden="true">${iconSvg(projectIconName(project))}</span><span class="entity-card-copy"><h3>${escapeHtml(project.title)}</h3><p>${escapeHtml(project.description || 'Noch keine Beschreibung hinterlegt.')}</p></span></div><div class="project-next-step"><small>Nächste anstehende Schritte</small>${nextSteps.length ? `<ul class="project-next-steps">${nextSteps.map(step => `<li>${escapeHtml(step)}</li>`).join('')}</ul>` : '<strong>Kein nächster Schritt hinterlegt</strong>'}</div></a>
-    <aside class="project-card-status" aria-label="Projektstatus"><div class="project-card-actions">${projectCardActions(project)}</div><div class="project-status-row"><small>Status</small>${projectStatusControl(project)}</div><div class="project-status-row"><small>Priorität</small>${projectPriorityControl(project)}</div><div class="project-status-row"><small>Startdatum</small><span class="project-status-value">${project.createdAt ? formatDate(project.createdAt) : 'ohne'}</span></div><div class="project-status-row"><small>Fälligkeit</small><span class="project-status-value">${project.dueDate ? formatDate(project.dueDate) : 'ohne'}</span></div>${folderPath ? `<div class="project-status-row project-status-folder"><small>Ordner</small><a href="${folderHref(project.folderId)}" title="Ordner öffnen">${escapeHtml(folderPath)}</a></div>` : ''}<div class="project-status-row project-status-tags"><small>Tags</small>${tagChips(project.tagIds, { archived }) || '<span class="project-status-empty">Keine</span>'}</div></aside>
+    <aside class="project-card-status project-card-collapsible-status mobile-collapsed" data-mobile-status-panel aria-label="Projektstatus"><div class="project-card-status-head">${mobileStatusToggle('Statusdetails')}<div class="project-card-actions">${projectCardActions(project)}</div></div><div class="project-card-status-content" data-mobile-status-content><div class="project-status-row"><small>Status</small>${projectStatusControl(project)}</div><div class="project-status-row"><small>Priorität</small>${projectPriorityControl(project)}</div><div class="project-status-row"><small>Startdatum</small><span class="project-status-value">${project.createdAt ? formatDate(project.createdAt) : 'ohne'}</span></div><div class="project-status-row"><small>Fälligkeit</small><span class="project-status-value">${project.dueDate ? formatDate(project.dueDate) : 'ohne'}</span></div>${folderPath ? `<div class="project-status-row project-status-folder"><small>Ordner</small><a href="${folderHref(project.folderId)}" title="Ordner öffnen">${escapeHtml(folderPath)}</a></div>` : ''}<div class="project-status-row project-status-tags"><small>Tags</small>${tagChips(project.tagIds, { archived }) || '<span class="project-status-empty">Keine</span>'}</div></div></aside>
   </article>`;
 }
 
@@ -1089,7 +1084,7 @@ function currentOverviewOrder() {
 }
 const overviewOrderHandle = label => `<button class="drag-handle overview-order-handle" type="button" data-reorder-handle aria-label="${escapeHtml(label)} verschieben" title="Ziehen, um die Reihenfolge zu ändern"><svg viewBox="0 0 16 20" aria-hidden="true"><circle cx="5" cy="4" r="1.25"></circle><circle cx="11" cy="4" r="1.25"></circle><circle cx="5" cy="10" r="1.25"></circle><circle cx="11" cy="10" r="1.25"></circle><circle cx="5" cy="16" r="1.25"></circle><circle cx="11" cy="16" r="1.25"></circle></svg></button>`;
 
-function overviewMenuContent() {
+function overviewMenuContent(extraClass = '') {
   const checked = key => state.user[key] !== false ? ' checked' : '';
   const rowControl = (setting, label, selected) => `<details class="overview-row-select"><summary aria-label="Zeilen ${escapeHtml(label)}">${selected} ${selected === 1 ? 'Zeile' : 'Zeilen'}</summary><div class="overview-row-options" role="menu" aria-label="Zeilen ${escapeHtml(label)}">${Array.from({ length:6 }, (_, index) => index + 1).map(rows => `<button type="button" role="menuitemradio" aria-checked="${rows === selected ? 'true' : 'false'}" data-overview-row-setting="${setting}" data-overview-row-value="${rows}">${rows} ${rows === 1 ? 'Zeile' : 'Zeilen'}</button>`).join('')}</div></details>`;
   const rows = currentOverviewOrder().map(section => {
@@ -1097,7 +1092,7 @@ function overviewMenuContent() {
     const select = config.rows ? rowControl(config.rows, config.label, Math.min(6, Math.max(1, Number(state.user[config.rows]) || config.fallbackRows))) : '';
     return `<div class="overview-config-row" data-reorder-card data-reorder-id="${section}"><label><input type="checkbox" data-overview-setting="${config.flag}"${checked(config.flag)}><span>${escapeHtml(config.label)}</span></label>${select}${overviewOrderHandle(config.label)}</div>`;
   }).join('');
-  return `<details class="action-menu overview-config-menu"><summary aria-label="Übersicht konfigurieren" title="Übersicht konfigurieren">☰</summary><div class="action-menu-panel overview-config-panel"><strong>Übersicht konfigurieren</strong><div class="overview-config-list" data-reorder-list="overview">${rows}</div></div></details>`;
+  return `<details class="action-menu overview-config-menu${extraClass ? ` ${extraClass}` : ''}"><summary aria-label="Übersicht konfigurieren" title="Übersicht konfigurieren">☰</summary><div class="action-menu-panel overview-config-panel"><strong>Übersicht konfigurieren</strong><div class="overview-config-list" data-reorder-list="overview">${rows}</div></div></details>`;
 }
 
 function bindOverviewPreferenceControls() {
@@ -1302,7 +1297,8 @@ async function renderHome(keepMenuOpen = false) {
     activity:showActivity ? activityView(activityEntries) : '',
     timeline:showTimeline ? projectTimelineView(detailProjects) : ''
   };
-  $('#main').innerHTML = `<header class="page-head overview-head"><div><h1>Übersicht</h1></div>${overviewMenuContent()}</header>${currentOverviewOrder().map(section => sectionMarkup[section] || '').join('')}`;
+  $('#main').innerHTML = `<header class="page-head overview-head"><div><h1>Übersicht</h1></div>${overviewMenuContent('desktop-overview-config')}</header>${currentOverviewOrder().map(section => sectionMarkup[section] || '').join('')}`;
+  $('#mobile-header-actions').innerHTML = overviewMenuContent('mobile-overview-config');
   document.querySelectorAll('[data-overview-complete-task]').forEach(button => button.onclick = async event => {
     event.stopPropagation();
     const project = activeProjects.find(item => item.id === button.dataset.overviewProject);
@@ -1329,7 +1325,7 @@ async function renderHome(keepMenuOpen = false) {
   if (showTimeline) bindProjectTimeline(); else state.timelineObserver?.disconnect();
   bindOverviewPreferenceControls();
   bindReordering();
-  if (keepMenuOpen) $('.overview-config-menu').open = true;
+  if (keepMenuOpen) document.querySelectorAll('.overview-config-menu').forEach(menu => { menu.open = true; });
 }
 
 async function renderProjects() {
@@ -1351,6 +1347,7 @@ async function renderProjects() {
   const folderGroup = folders.length ? `${collapsibleFolders ? `<div class="project-status-divider"><button type="button" data-toggle-project-folder-group aria-expanded="${!state.collapsedProjectFolders}"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="m6 8 4 4 4-4"></path></svg><span>Ordner</span></button></div>` : ''}<div class="folder-grid${collapsibleFolders && state.collapsedProjectFolders ? ' hidden' : ''}" data-project-folder-group>${folders.map(folderCard).join('')}</div>` : '';
   $('#main').innerHTML = `${folderBreadcrumbs(state.currentFolderId)}<header class="page-head project-browser-head"><div><h1>${escapeHtml(title)}</h1>${currentFolder?.description ? `<p>${escapeHtml(currentFolder.description)}</p>` : ''}</div><div class="page-actions">${projectListControls(false, projects)}</div></header><div id="active-tag-filters">${selectedTagFiltersMarkup(false)}</div>
     ${folders.length || projects.length ? `<div class="project-grid project-list">${folderGroup}${projectCards(projects, false, !showFolders, separateStatuses)}</div>${projects.length ? '<div id="project-no-results" class="empty hidden"><strong>Keine passenden Projekte gefunden.</strong>Versuche einen anderen Suchbegriff.</div>' : ''}` : `<div class="empty"><strong>${currentFolder ? 'Dieser Ordner enthält keine passenden Projekte.' : state.projectStatusFilter === 'idea' ? 'Noch keine Projektideen vorhanden.' : state.projectStatusFilter === 'paused' ? 'Keine pausierten Projekte vorhanden.' : state.projectStatusFilter === 'completed' ? 'Noch keine abgeschlossenen Projekte vorhanden.' : state.projectStatusFilter === 'active' ? 'Keine aktiven Projekte vorhanden.' : 'Noch keine Projekte vorhanden.'}</strong></div>`}`;
+  bindMobileProjectControls();
   bindNewProject();
   bindFolderActions();
   bindProjectListControls(false);
@@ -1366,6 +1363,7 @@ async function renderArchive() {
   $('#main').innerHTML = `<header class="page-head project-browser-head"><div><h1>Archiv</h1></div><div class="page-actions">${projectListControls(true, projects)}</div></header><div id="active-tag-filters">${selectedTagFiltersMarkup(true)}</div>
     ${projects.length ? `<div class="project-grid project-list">${projectCards(projects, true)}</div><div id="project-no-results" class="empty hidden"><strong>Keine passenden Projekte gefunden.</strong>Versuche einen anderen Suchbegriff.</div>` : `<div class="empty"><strong>Das Archiv ist leer.</strong>Archivierte Projekte erscheinen hier und können jederzeit wiederhergestellt werden.</div>`}
     <aside class="archive-note"><p>Das Archiv dient dazu, deine Projektliste übersichtlich zu halten. Archivierte Projekte und ihre Logs bleiben erhalten, werden in der Aktivitätsanzeige und der Projekt-Timeline in der Übersicht jedoch nicht mehr berücksichtigt.</p></aside>`;
+  bindMobileProjectControls();
   bindProjectListControls(true);
   bindTagFilterSummary();
   bindProjectActions();
@@ -1886,6 +1884,22 @@ function orderedItems(items, fallbackCompare) {
 const reorderHandle = (collection, id) => mayEditProjects() ? `<button class="drag-handle" type="button" data-reorder-handle data-reorder-collection="${collection}" data-reorder-id="${escapeHtml(id)}" aria-label="Reihenfolge ändern" title="Ziehen, um die Reihenfolge zu ändern"><svg viewBox="0 0 16 20" aria-hidden="true"><circle cx="5" cy="4" r="1.25"></circle><circle cx="11" cy="4" r="1.25"></circle><circle cx="5" cy="10" r="1.25"></circle><circle cx="11" cy="10" r="1.25"></circle><circle cx="5" cy="16" r="1.25"></circle><circle cx="11" cy="16" r="1.25"></circle></svg></button>` : '';
 const completeButton = id => `<button class="status-action complete-action" type="button" data-complete-task="${escapeHtml(id)}" aria-label="Als erledigt loggen" title="Als erledigt loggen"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="m4.5 10.5 3.4 3.4 7.6-8"></path></svg></button>`;
 const reopenButton = id => `<button class="status-action reopen-action" type="button" data-reopen-entry="${escapeHtml(id)}" aria-label="Zu den anstehenden Arbeitsschritten zurückstellen" title="Zu den anstehenden Arbeitsschritten zurückstellen"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M10 15.5v-11m-5 5 5-5 5 5"></path></svg></button>`;
+const mobileStatusToggle = label => `<button class="mobile-status-toggle" type="button" data-mobile-status-toggle aria-expanded="false"><span>${escapeHtml(label)}</span><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="m5 7.5 5 5 5-5"></path></svg></button>`;
+const mobileActionMenu = (label, items) => `<details class="action-menu mobile-workstep-menu"><summary aria-label="${escapeHtml(label)}" title="${escapeHtml(label)}">⋯</summary><div class="action-menu-panel">${items}</div></details>`;
+
+function mobileTaskControls(task) {
+  if (!mayEditProjects()) return task.flagged === true ? `<div class="mobile-workstep-actions">${taskFlagControl(task)}</div>` : '';
+  const id = escapeHtml(task.id);
+  const items = `<button class="menu-item" type="button" data-edit-item="tasks:${id}">Bearbeiten</button><button class="menu-item" type="button" data-task-flag="${id}" data-flagged="${task.flagged === true}">${task.flagged === true ? 'Markierung entfernen' : 'Markieren'}</button><button class="menu-item" type="button" data-complete-task="${id}">Als erledigt loggen</button><button class="menu-item danger" type="button" data-delete-item="tasks:${id}">Löschen</button>`;
+  return `<div class="mobile-workstep-actions">${reorderHandle('tasks', task.id)}${mobileActionMenu('Arbeitsschrittaktionen', items)}</div>`;
+}
+
+function mobileEntryControls(entry) {
+  if (!mayEditProjects()) return '';
+  const id = escapeHtml(entry.id);
+  const items = `<button class="menu-item" type="button" data-edit-entry="${id}">Bearbeiten</button><button class="menu-item" type="button" data-copy-entry-link="${id}">Link kopieren</button><button class="menu-item" type="button" data-reopen-entry="${id}">Zurückstellen</button><button class="menu-item danger" type="button" data-delete-entry="${id}">Löschen</button>`;
+  return `<div class="mobile-workstep-actions">${reorderHandle('entries', entry.id)}${mobileActionMenu('Arbeitsschrittaktionen', items)}</div>`;
+}
 
 function entriesView(project) {
   if (!project.entries?.length) return `<div class="empty">Halte fest, was du an diesem Projekt gemacht hast.</div>`;
@@ -1894,8 +1908,8 @@ function entriesView(project) {
     const body = entry.body ? `<div class="entry-body">${escapeHtml(entry.body)}</div>` : '';
     const empty = !body ? '<div class="entry-empty">Arbeitsschritt ohne zusätzliche Notiz</div>' : '';
     const editCard = mayEditProjects() ? ` data-edit-entry-card="${escapeHtml(entry.id)}" role="button" tabindex="0" aria-label="${escapeHtml(entryTitle(entry))} bearbeiten"` : '';
-    const controls = mayEditProjects() ? `<div class="workstep-card-actions">${entryEditButton(entry.id)}<div class="workstep-action-group">${entryCopyButton(entry.id)}${reopenButton(entry.id)}${reorderHandle('entries', entry.id)}${entryDeleteButton(entry.id)}</div></div>` : '';
-    return `<article class="entry workstep-card" id="${escapeHtml(entry.id)}" data-reorder-card data-reorder-id="${escapeHtml(entry.id)}"${editCard}><div class="workstep-card-content"><strong>${escapeHtml(entryTitle(entry))}</strong>${body}${empty}</div><aside class="workstep-card-status" aria-label="Attribute des erledigten Arbeitsschritts">${controls}<div class="project-status-row"><small>Status</small><span class="project-status completed">Erledigt</span></div><div class="project-status-row"><small>Erledigt am</small><span class="project-status-value">${formatDate(entry.date)}</span></div><div class="project-status-row"><small>Bearbeitet von</small><span class="project-status-value">${escapeHtml(entry.author)}</span></div></aside></article>`;
+    const controls = mayEditProjects() ? `<div class="workstep-card-actions desktop-workstep-actions">${entryEditButton(entry.id)}<div class="workstep-action-group">${entryCopyButton(entry.id)}${reopenButton(entry.id)}${reorderHandle('entries', entry.id)}${entryDeleteButton(entry.id)}</div></div>` : '';
+    return `<article class="entry workstep-card" id="${escapeHtml(entry.id)}" data-reorder-card data-reorder-id="${escapeHtml(entry.id)}"${editCard}><div class="workstep-card-content"><strong>${escapeHtml(entryTitle(entry))}</strong>${body}${empty}</div><aside class="workstep-card-status mobile-collapsed" data-mobile-status-panel aria-label="Attribute des erledigten Arbeitsschritts"><div class="mobile-workstep-status-head">${mobileStatusToggle('Statusdetails')}${mobileEntryControls(entry)}</div><div class="workstep-status-content" data-mobile-status-content>${controls}<div class="project-status-row"><small>Status</small><span class="project-status completed">Erledigt</span></div><div class="project-status-row"><small>Erledigt am</small><span class="project-status-value">${formatDate(entry.date)}</span></div><div class="project-status-row"><small>Bearbeitet von</small><span class="project-status-value">${escapeHtml(entry.author)}</span></div></div></aside></article>`;
   }).join('')}</div>`;
 }
 
@@ -1932,8 +1946,8 @@ function taskCard(task) {
   const priorityClass = priority.toLocaleLowerCase('de');
   const statusControl = mayEditProjects() ? `<select class="project-inline-select project-status task-attribute-select task-status ${statusClass}" data-task-inline-status="${escapeHtml(task.id)}" aria-label="Status von ${escapeHtml(task.title)} ändern"><option${status === 'Offen' ? ' selected' : ''}>Offen</option><option${status === 'In Arbeit' ? ' selected' : ''}>In Arbeit</option></select>` : `<span class="project-status task-status ${statusClass}">${escapeHtml(status)}</span>`;
   const priorityControl = mayEditProjects() ? `<select class="project-inline-select project-priority task-attribute-select task-priority ${priorityClass}" data-task-inline-priority="${escapeHtml(task.id)}" aria-label="Priorität von ${escapeHtml(task.title)} ändern"><option${priority === 'Hoch' ? ' selected' : ''}>Hoch</option><option${priority === 'Normal' ? ' selected' : ''}>Normal</option><option${priority === 'Niedrig' ? ' selected' : ''}>Niedrig</option></select>` : `<span class="project-priority task-priority ${priorityClass}">${escapeHtml(priority)}</span>`;
-  const controls = mayEditProjects() ? `<div class="workstep-card-actions">${itemEditButton('tasks', task.id)}<div class="workstep-action-group">${taskFlagControl(task)}${completeButton(task.id)}${reorderHandle('tasks', task.id)}${itemDeleteButton('tasks', task.id, 'Arbeitsschritt')}</div></div>` : task.flagged === true ? `<div class="workstep-card-actions"><span></span><div class="workstep-action-group">${taskFlagControl(task)}</div></div>` : '';
-  return `<article class="task-card workstep-card" data-reorder-card data-reorder-id="${escapeHtml(task.id)}"${editCard}><div class="workstep-card-content"><h3>${escapeHtml(task.title)}</h3>${task.description ? `<p>${escapeHtml(task.description)}</p>` : ''}</div><aside class="workstep-card-status" aria-label="Attribute des Arbeitsschritts">${controls}<div class="project-status-row"><small>Status</small>${statusControl}</div><div class="project-status-row"><small>Priorität</small>${priorityControl}</div><div class="project-status-row"><small>Fälligkeit</small><span class="project-status-value">${task.dueDate ? formatDate(task.dueDate) : 'ohne'}</span></div></aside></article>`;
+  const controls = mayEditProjects() ? `<div class="workstep-card-actions desktop-workstep-actions">${itemEditButton('tasks', task.id)}<div class="workstep-action-group">${taskFlagControl(task)}${completeButton(task.id)}${reorderHandle('tasks', task.id)}${itemDeleteButton('tasks', task.id, 'Arbeitsschritt')}</div></div>` : task.flagged === true ? `<div class="workstep-card-actions desktop-workstep-actions"><span></span><div class="workstep-action-group">${taskFlagControl(task)}</div></div>` : '';
+  return `<article class="task-card workstep-card" data-reorder-card data-reorder-id="${escapeHtml(task.id)}"${editCard}><div class="workstep-card-content"><h3>${escapeHtml(task.title)}</h3>${task.description ? `<p>${escapeHtml(task.description)}</p>` : ''}</div><aside class="workstep-card-status mobile-collapsed" data-mobile-status-panel aria-label="Attribute des Arbeitsschritts"><div class="mobile-workstep-status-head">${mobileStatusToggle('Statusdetails')}${mobileTaskControls(task)}</div><div class="workstep-status-content" data-mobile-status-content>${controls}<div class="project-status-row"><small>Status</small>${statusControl}</div><div class="project-status-row"><small>Priorität</small>${priorityControl}</div><div class="project-status-row"><small>Fälligkeit</small><span class="project-status-value">${task.dueDate ? formatDate(task.dueDate) : 'ohne'}</span></div></div></aside></article>`;
 }
 
 function diaryView(project) {
@@ -1942,8 +1956,8 @@ function diaryView(project) {
   const taskHeading = workStepCount(tasks.length);
   const entryHeading = workStepCount(entries.length, true);
   const sectionToggle = (section, label) => `<button class="section-toggle" type="button" data-toggle-log-section="${section}" aria-expanded="${!state.collapsedLogSections[section]}" aria-label="${label} ${state.collapsedLogSections[section] ? 'ausklappen' : 'einklappen'}" title="${state.collapsedLogSections[section] ? 'Ausklappen' : 'Einklappen'}"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="m5 7.5 5 5 5-5"></path></svg></button>`;
-  const taskButton = mayEditProjects() ? '<button class="button primary compact" data-new-item="tasks">Arbeitsschritt hinzufügen</button>' : '';
-  const entryButton = mayEditProjects() ? '<button class="button primary compact" data-new-entry>Erledigten Arbeitsschritt hinzufügen</button>' : '';
+  const taskButton = mayEditProjects() ? '<button class="button primary compact workstep-add-button" data-new-item="tasks" aria-label="Arbeitsschritt hinzufügen" title="Arbeitsschritt hinzufügen">+</button>' : '';
+  const entryButton = mayEditProjects() ? '<button class="button primary compact workstep-add-button" data-new-entry aria-label="Abgeschlossenen Arbeitsschritt hinzufügen" title="Abgeschlossenen Arbeitsschritt hinzufügen">+</button>' : '';
   return `<section class="next-steps-section"><div class="section-head"><h2>${taskHeading}</h2><div class="section-head-actions">${taskButton}${sectionToggle('tasks', taskHeading)}</div></div><div data-log-section-content="tasks"${state.collapsedLogSections.tasks ? ' hidden' : ''}>${tasks.length ? `<div class="next-steps-list" data-reorder-list="tasks">${tasks.map(taskCard).join('')}</div>` : '<div class="empty compact-empty">Füge einen Arbeitsschritt hinzu, wenn klar ist, wie es weitergeht.</div>'}</div></section><section class="diary-section"><div class="section-head"><h2>${entryHeading}</h2><div class="section-head-actions">${entryButton}${sectionToggle('entries', entryHeading)}</div></div><div data-log-section-content="entries"${state.collapsedLogSections.entries ? ' hidden' : ''}>${entriesView(project)}</div></section>`;
 }
 
@@ -1959,8 +1973,9 @@ function printRecord(title, rows = [], body = '') {
   return `<article class="project-print-record"><h3>${escapeHtml(title)}</h3>${rows.length ? printRecordMeta(rows) : ''}${body}</article>`;
 }
 
-function printSection(title, items, emptyText = 'Keine Inhalte vorhanden.') {
-  return `<section class="project-print-section"><div class="project-print-section-head"><h2>${escapeHtml(title)}</h2><span>${items.length}</span></div>${items.length ? `<div class="project-print-records">${items.join('')}</div>` : `<p class="project-print-empty">${escapeHtml(emptyText)}</p>`}</section>`;
+function printSection(title, items) {
+  if (!items.length) return '';
+  return `<section class="project-print-section"><div class="project-print-section-head"><h2>${escapeHtml(title)}</h2><span>${items.length}</span></div><div class="project-print-records">${items.join('')}</div></section>`;
 }
 
 function printTaskRecord(task) {
@@ -2021,7 +2036,8 @@ function projectPrintMarkup(project) {
     ['Tags', tagNames],
     ...(project.flagged === true ? [['Markiert', 'Ja']] : []),
   ];
-  const logbook = `<section class="project-print-section project-print-logbook"><div class="project-print-section-head"><h2>Logbuch</h2><span>${tasks.length + entries.length}</span></div><div class="project-print-subsection"><h3>Anstehende Arbeitsschritte <span>${tasks.length}</span></h3>${tasks.length ? `<div class="project-print-records">${tasks.join('')}</div>` : '<p class="project-print-empty">Keine anstehenden Arbeitsschritte.</p>'}</div><div class="project-print-subsection"><h3>Erledigte Arbeitsschritte <span>${entries.length}</span></h3>${entries.length ? `<div class="project-print-records">${entries.join('')}</div>` : '<p class="project-print-empty">Keine erledigten Arbeitsschritte.</p>'}</div></section>`;
+  const logbookContents = `${tasks.length ? `<div class="project-print-subsection"><h3>Anstehende Arbeitsschritte <span>${tasks.length}</span></h3><div class="project-print-records">${tasks.join('')}</div></div>` : ''}${entries.length ? `<div class="project-print-subsection"><h3>Erledigte Arbeitsschritte <span>${entries.length}</span></h3><div class="project-print-records">${entries.join('')}</div></div>` : ''}`;
+  const logbook = logbookContents ? `<section class="project-print-section project-print-logbook"><div class="project-print-section-head"><h2>Logbuch</h2><span>${tasks.length + entries.length}</span></div>${logbookContents}</section>` : '';
   const itemSections = [
     ['notes', 'Notizen'],
     ['materials', 'Material'],
@@ -2049,6 +2065,21 @@ async function renderProjectPrint(id) {
   $('[data-print-now]').onclick = () => window.print();
 }
 
+function bindMobileProjectControls() {
+  const mobile = window.matchMedia('(max-width: 780px)').matches;
+  document.querySelectorAll('[data-mobile-status-panel]').forEach(panel => {
+    const toggle = panel.querySelector('[data-mobile-status-toggle]');
+    if (!toggle) return;
+    panel.classList.toggle('mobile-collapsed', mobile);
+    toggle.setAttribute('aria-expanded', String(!mobile));
+    toggle.onclick = event => {
+      event.stopPropagation();
+      const collapsed = panel.classList.toggle('mobile-collapsed');
+      toggle.setAttribute('aria-expanded', String(!collapsed));
+    };
+  });
+}
+
 async function renderProject(id) {
   const [view] = await Promise.all([api(`/project-view/${encodeURIComponent(id)}`), loadIconLibrary().catch(() => null)]);
   state.current = view.project;
@@ -2070,11 +2101,14 @@ async function renderProject(id) {
   ];
   const content = state.activeTab === 'entries' ? diaryView(p) : itemsView(p, state.activeTab);
   const breadcrumbs = p.status === 'archived' ? '<nav class="folder-breadcrumbs" aria-label="Projektpfad"><a href="/#/archive">Archiviert</a></nav>' : folderBreadcrumbs(p.folderId || null);
-  $('#main').innerHTML = `<div class="project-page-breadcrumbs">${breadcrumbs}</div><div class="project-page-head"><section class="project-hero"><div class="project-hero-layout"><div class="project-hero-main"><div class="project-heading-row"><span class="project-hero-icon" aria-hidden="true">${iconSvg(projectIconName(p))}</span><div class="project-heading-content"><div class="project-title-line"><h1>${escapeHtml(p.title)}</h1></div><p class="project-description">${escapeHtml(p.description || 'Noch keine Projektbeschreibung hinterlegt.')}</p></div></div></div><aside class="project-hero-status" aria-label="Projektstatus"><div class="project-hero-status-head"><span>Projektstatus</span><div class="project-hero-actions">${projectPrintButton(p)}${projectCardActions(p)}</div></div><div class="project-hero-facts"><div class="project-hero-fact"><small>Status</small>${projectStatusControl(p)}</div><div class="project-hero-fact"><small>Priorität</small>${projectPriorityControl(p)}</div><div class="project-hero-fact"><small>Startdatum</small><span class="project-status-value">${p.createdAt ? formatDate(p.createdAt) : 'ohne'}</span></div><div class="project-hero-fact"><small>Fälligkeit</small><span class="project-status-value">${p.dueDate ? formatDate(p.dueDate) : 'ohne'}</span></div><div class="project-hero-fact project-hero-tags"><small>Tags</small>${tagChips(p.tagIds, { limit:20, archived:p.status === 'archived' }) || '<span class="project-status-empty">Keine</span>'}</div></div></aside></div><div class="project-subnav"><nav class="tabs" aria-label="Projektbereiche">${tabs.map(([id,label,count]) => `<button class="tab ${state.activeTab===id?'active':''}" data-tab="${id}"><span>${label}</span><span class="tab-count">(${count})</span></button>`).join('')}</nav></div></section></div><section class="project-page-content">${content}</section>`;
+  const tabButtons = tabs.map(([id,label,count]) => `<button class="tab ${state.activeTab===id?'active':''}" data-tab="${id}"><span>${label}</span><span class="tab-count">(${count})</span></button>`).join('');
+  const mobileTabMenu = `<details class="action-menu mobile-project-nav"><summary aria-label="Projektbereich wählen" title="Projektbereich wählen">☰</summary><div class="action-menu-panel">${tabs.map(([id,label,count]) => `<button class="menu-item${state.activeTab===id?' active':''}" type="button" data-tab="${id}"><span>${label}</span><small>(${count})</small></button>`).join('')}</div></details>`;
+  $('#main').innerHTML = `<div class="project-page-breadcrumbs">${breadcrumbs}</div><div class="project-page-head"><section class="project-hero"><div class="project-hero-layout"><div class="project-hero-main"><div class="project-heading-row"><span class="project-hero-icon" aria-hidden="true">${iconSvg(projectIconName(p))}</span><div class="project-heading-content"><div class="project-title-line"><h1>${escapeHtml(p.title)}</h1></div><p class="project-description">${escapeHtml(p.description || 'Noch keine Projektbeschreibung hinterlegt.')}</p></div></div></div><aside class="project-hero-status mobile-collapsed" data-mobile-status-panel aria-label="Projektstatus"><div class="project-hero-status-head"><span class="desktop-status-label">Projektstatus</span><div class="mobile-project-status-controls">${mobileTabMenu}${mobileStatusToggle('Projektstatus')}</div><div class="project-hero-actions">${projectPrintButton(p)}${projectCardActions(p)}</div></div><div class="project-hero-facts" data-mobile-status-content><div class="project-hero-fact"><small>Status</small>${projectStatusControl(p)}</div><div class="project-hero-fact"><small>Priorität</small>${projectPriorityControl(p)}</div><div class="project-hero-fact"><small>Startdatum</small><span class="project-status-value">${p.createdAt ? formatDate(p.createdAt) : 'ohne'}</span></div><div class="project-hero-fact"><small>Fälligkeit</small><span class="project-status-value">${p.dueDate ? formatDate(p.dueDate) : 'ohne'}</span></div><div class="project-hero-fact project-hero-tags"><small>Tags</small>${tagChips(p.tagIds, { limit:20, archived:p.status === 'archived' }) || '<span class="project-status-empty">Keine</span>'}</div></div></aside></div><div class="project-subnav"><nav class="tabs" aria-label="Projektbereiche">${tabButtons}</nav></div></section></div><section class="project-page-content">${content}</section>`;
   const newEntryButton = $('[data-new-entry]');
   if (newEntryButton) newEntryButton.onclick = () => openEntryDialog(p.id);
   const newItemButton = $('[data-new-item]');
   if (newItemButton) newItemButton.onclick = () => openItemDialog(p.id, newItemButton.dataset.newItem);
+  bindMobileProjectControls();
   document.querySelectorAll('[data-tab]').forEach(button => button.onclick = () => { state.activeTab = button.dataset.tab; renderProject(p.id); });
   document.querySelectorAll('[data-toggle-log-section]').forEach(button => button.onclick = () => {
     const section = button.dataset.toggleLogSection;
@@ -2161,6 +2195,7 @@ function setNav(routeName, projectStatus = '') {
 async function route() {
   if (!state.user) return;
   document.body.classList.remove('project-print-mode');
+  $('#mobile-header-actions').innerHTML = '';
   document.title = 'Logbuch';
   const hashValue = location.hash.replace(/^#\/?/, '');
   const [hashPath, hashQuery = ''] = hashValue.split('?');
@@ -3387,13 +3422,22 @@ $('#projects-toggle').onclick = async () => {
   }
   setProjectsMenu(open, currentProjectMenuStatus());
 };
-$('#menu-button').onclick = () => $('.sidebar').classList.toggle('open');
+$('#menu-button').onclick = () => {
+  const open = $('.sidebar').classList.toggle('open');
+  $('#menu-button').setAttribute('aria-expanded', String(open));
+  $('#menu-button').setAttribute('aria-label', open ? 'Menü schließen' : 'Menü öffnen');
+};
 document.querySelectorAll('dialog button[value="cancel"]').forEach(button => button.addEventListener('click', event => {
   event.preventDefault();
   const dialog = button.closest('dialog');
   if (dialog.dataset.updating !== 'true') dialog.close();
 }));
-window.addEventListener('hashchange', () => { $('.sidebar').classList.remove('open'); route(); });
+window.addEventListener('hashchange', () => {
+  $('.sidebar').classList.remove('open');
+  $('#menu-button').setAttribute('aria-expanded', 'false');
+  $('#menu-button').setAttribute('aria-label', 'Menü öffnen');
+  route();
+});
 document.addEventListener('click', event => {
   document.querySelectorAll('.action-menu[open]').forEach(menu => { if (!menu.contains(event.target)) menu.removeAttribute('open'); });
   document.querySelectorAll('[data-filter-control]').forEach(control => {
