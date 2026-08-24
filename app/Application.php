@@ -168,6 +168,10 @@ final class Application
                 if ($removed > 0) $this->audit($user['id'], 'todos.completed_deleted', (string) $removed);
                 $this->json(200, ['removed' => $removed]);
             }
+            if (preg_match('#^/api/todos/([^/]+)/convert-to-project$#', $path, $match) && $method === 'POST') {
+                $this->requireEditor($user);
+                $this->json(201, $this->convertTodoToProject($user, rawurldecode($match[1])));
+            }
             if (preg_match('#^/api/todos/([^/]+)$#', $path, $match)) {
                 $todoId = rawurldecode($match[1]);
                 if ($method === 'PATCH') {
@@ -763,6 +767,66 @@ final class Application
     {
         if (!$user['admin'] && $user['role'] !== 'editor') {
             throw new HttpError(403, 'Bearbeitungsrechte erforderlich.');
+        }
+    }
+
+    private function convertTodoToProject(array $user, string $todoId): array
+    {
+        $todos = $this->todos->list((string) $user['id']);
+        $todo = current(array_filter($todos, static fn(array $item): bool => $item['id'] === $todoId));
+        if (!is_array($todo)) throw new HttpError(404, 'Erinnerung nicht gefunden.');
+        if (mb_strlen((string) $todo['title']) > 120) {
+            throw new HttpError(422, 'Kürze den Erinnerungstitel vor der Umwandlung auf höchstens 120 Zeichen.');
+        }
+        $children = array_values(array_filter($todos, static fn(array $item): bool => $item['parentId'] === $todoId));
+        foreach ($children as $child) {
+            if (mb_strlen((string) $child['title']) > 160) {
+                throw new HttpError(422, 'Kürze die untergeordneten Erinnerungen vor der Umwandlung auf höchstens 160 Zeichen.');
+            }
+        }
+
+        $project = null;
+        $transactionActive = false;
+        try {
+            $project = $this->projects->create([
+                'title' => $todo['title'],
+                'description' => '',
+                'status' => 'active',
+                'priority' => 'Mittel',
+                'flagged' => false,
+                'icon' => 'box',
+                'iconInherited' => true,
+                'createdAt' => substr(nowIso(), 0, 10),
+                'dueDate' => '',
+                'tagIds' => [],
+                'folderId' => null,
+            ], (string) $user['id']);
+            foreach ($children as $child) {
+                $this->projects->createItem((string) $project['id'], 'tasks', [
+                    'title' => $child['title'],
+                    'description' => '',
+                    'status' => 'Offen',
+                    'priority' => 'Normal',
+                    'dueDate' => '',
+                ], (string) $user['id']);
+            }
+            $project = $this->projects->get((string) $project['id']);
+
+            $this->db->beginTransaction();
+            $transactionActive = true;
+            if (!$user['admin'] && $user['projectAccessMode'] === 'include') {
+                $this->setUserProject((string) $user['id'], (string) $project['id'], true);
+            }
+            $this->todos->delete((string) $user['id'], $todoId);
+            $this->audit((string) $user['id'], 'todo.converted_to_project', $todoId . ' → ' . $project['id'], 'children=' . count($children));
+            $this->db->commit();
+            $transactionActive = false;
+
+            return ['project' => $project, 'convertedChildren' => count($children)];
+        } catch (\Throwable $error) {
+            if ($transactionActive && $this->db->inTransaction()) $this->db->rollBack();
+            if (is_array($project) && isset($project['id'])) $this->projects->removeByIds([(string) $project['id']]);
+            throw $error;
         }
     }
 

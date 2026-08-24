@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#f6f7f9">
   <title>Logbuch</title>
-  <link rel="icon" href="/favicon.svg?v=20260822-2" type="image/svg+xml">
-  <link rel="stylesheet" href="/styles.css?v=20260824-038">
+  <link rel="icon" href="/favicon.svg?v=20260824-1" type="image/svg+xml">
+  <link rel="stylesheet" href="/styles.css?v=20260824-044">
 </head>
 <body>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
@@ -36,7 +36,7 @@
         <a class="nav-item active" href="/#/" data-route="home"><span aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="8.5"></circle><path d="m8.2 12.2 2.5 2.5 5.4-5.6"></path></svg></span> Übersicht</a>
         <a class="nav-item" href="/#/todos" data-route="todos"><span aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M9 6h11M9 12h11M9 18h11"></path><path d="m3.5 6 1 1 2-2M3.5 12l1 1 2-2M3.5 18l1 1 2-2"></path></svg></span> Erinnerungen <i id="todo-nav-count" class="todo-nav-count" hidden>0</i></a>
         <div class="projects-menu">
-          <button id="projects-toggle" class="nav-item bare" type="button" data-route="projects" aria-expanded="false" aria-controls="projects-subnav"><span data-project-nav-icon aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M12 3 20 7.5v9L12 21l-8-4.5v-9L12 3Z"></path><path d="m4 7.5 8 4.5 8-4.5M12 12v9"></path></svg></span><b>Projekte</b></button>
+          <button id="projects-toggle" class="nav-item bare" type="button" data-route="projects" aria-expanded="false" aria-controls="projects-subnav"><span data-project-nav-icon aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M12 3 20 7.5v9L12 21l-8-4.5v-9L12 3Z"></path><path d="m4 7.5 8 4.5 8-4.5M12 12v9"></path></svg></span><b>Projekte</b><i id="project-nav-count" class="todo-nav-count" hidden>0</i></button>
           <div id="projects-subnav" class="settings-subnav projects-subnav" hidden>
             <a href="/#/projects" data-projects-route="all"><span>Alle</span><small class="project-nav-count" data-project-count="all">0</small></a>
             <a href="/#/projects?status=idea" data-projects-route="idea"><span>Idee</span><small class="project-nav-count" data-project-count="idea">0</small></a>
@@ -256,6 +256,6 @@
 
   <script src="/backup-format.js?v=20260823-142" defer></script>
   <script src="/update-monitor.js?v=20260822-001" defer></script>
-  <script src="/app.js?v=20260824-038" defer></script>
+  <script src="/app.js?v=20260824-044" defer></script>
 </body>
 </html>

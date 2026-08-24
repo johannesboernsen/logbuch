@@ -70,7 +70,10 @@ input:focus,textarea:focus,select:focus { border-color:var(--red); box-shadow:0 
 .nav-item span { width:18px; font-size:17px; text-align:center; }
 .nav-item span svg { width:18px; height:18px; display:block; stroke:currentColor; stroke-width:1.8; stroke-linecap:round; }
 .nav-item b { font:inherit; }
-.update-nav-badge { margin-left:auto; padding:3px 6px; border-radius:999px; color:#fff; background:var(--brand-red); font-size:10px; font-style:normal; font-weight:800; letter-spacing:.02em; }
+.settings-toggle { min-width:0; padding-right:8px; gap:10px; }
+.settings-toggle b { min-width:0; }
+.update-nav-badge { margin-left:auto; padding:3px 6px; border-radius:999px; flex:none; color:#fff; background:var(--brand-red); font-size:10px; font-style:normal; font-weight:800; letter-spacing:.02em; }
+.settings-subnav .update-nav-badge { margin-left:auto; }
 .todo-nav-count { min-width:23px; margin-left:auto; padding:2px 6px; border-radius:999px; color:#747b84; background:#eef0f2; font-size:12px; font-style:normal; font-weight:750; line-height:1.4; text-align:center; }
 .nav-item.active .todo-nav-count { color:var(--red); background:#fff; }
 .nav-item.active { color:var(--red); background:#f0f2f4; }
@@ -95,7 +98,7 @@ input:focus,textarea:focus,select:focus { border-color:var(--red); box-shadow:0 
 .settings-subnav a.active { color:var(--red); background:#f0f2f4; }
 .projects-subnav-divider { height:1px; margin:5px 9px; display:block; background:var(--line); }
 .projects-subnav a { justify-content:space-between; gap:8px; }
-.project-nav-count { min-width:23px; padding:2px 6px; border-radius:999px; color:#747b84; background:#eef0f2; font-size:12px; font-weight:750; line-height:1.4; text-align:center; }
+.project-nav-count { min-width:23px; padding:2px 6px; border-radius:999px; color:#747b84; background:#eef0f2; font-size:12px; font-weight:750; line-height:1; text-align:center; }
 .settings-subnav a.active .project-nav-count { color:var(--red); background:#fff; }
 .sidebar-bottom { margin-top:auto; padding-top:18px; border-top:1px solid var(--line); }
 .mobile-header { display:none; }

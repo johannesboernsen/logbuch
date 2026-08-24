@@ -383,6 +383,7 @@ function showApp(afterLogin = false) {
   $('#app').classList.remove('hidden');
   document.querySelectorAll('[data-admin-setting]').forEach(node => node.hidden = !state.user.admin);
   if (!state.user.mustChangePassword) loadTodos().catch(() => {});
+  if (!state.user.mustChangePassword) loadProjects().catch(() => {});
   if (state.user.admin && !state.user.mustChangePassword) loadUpdateStatus().catch(() => {});
   if (state.user.mustChangePassword) {
     history.replaceState(null, '', '/#/settings/profile');
@@ -470,6 +471,11 @@ function updateProjectMenuCounts() {
   }, { idea:0, active:0, paused:0, completed:0, archived:0, trashed:0 });
   counts.all = counts.idea + counts.active + counts.paused + counts.completed;
   document.querySelectorAll('[data-project-count]').forEach(node => { node.textContent = counts[node.dataset.projectCount] ?? 0; });
+  const badge = $('#project-nav-count');
+  const menuOpen = $('#projects-toggle').getAttribute('aria-expanded') === 'true';
+  badge.textContent = String(counts.all);
+  badge.hidden = menuOpen || counts.all === 0;
+  badge.setAttribute('aria-label', `${counts.all} ${counts.all === 1 ? 'Projekt' : 'Projekte'}`);
 }
 
 function rememberProject(project) {
@@ -1372,6 +1378,7 @@ const todoRepeatControls = todo => {
   const remove = active ? `<button class="edit-action todo-repeat-remove" type="button" data-remove-todo-repeat="${escapeHtml(todo.id)}" aria-label="Wiederholung entfernen" title="Wiederholung entfernen">${todoRepeatIcon()}<span aria-hidden="true">×</span></button>` : '';
   return repeat + remove;
 };
+const todoProjectControl = todo => mayEditProjects() ? `<button class="edit-action todo-project-action" type="button" data-convert-todo="${escapeHtml(todo.id)}" aria-label="Erinnerung in Projekt umwandeln" title="In Projekt umwandeln">${iconSvg(defaultProjectIconName())}</button>` : '';
 
 function todoRow(todo, completed = false, level = 'root', childState = null) {
   const editing = state.editingTodoId === todo.id;
@@ -1389,7 +1396,7 @@ function todoRow(todo, completed = false, level = 'root', childState = null) {
   return `<article class="todo-item${completed ? ' completed' : ''}" data-todo-id="${escapeHtml(todo.id)}" data-todo-level="${level}">
     <label class="todo-check"><input type="checkbox" data-toggle-todo="${escapeHtml(todo.id)}"${completed ? ' checked' : ''}><span aria-hidden="true"></span><span class="visually-hidden">${completed ? 'Erinnerung wieder öffnen' : 'Erinnerung erledigen'}</span></label>
     <div class="todo-copy">${editing ? editForm : `<span class="todo-title">${escapeHtml(todo.title)}</span>${todoMeta}`}</div>
-    <div class="todo-actions">${editing ? '' : childToggle}${completed || editing ? '' : todoReorderHandle(todo.id)}${editing ? '' : todoRepeatControls(todo)}${editing ? '' : `<button class="edit-action delete-action" type="button" data-delete-todo="${escapeHtml(todo.id)}" aria-label="Erinnerung löschen" title="Erinnerung löschen">${trashIcon()}</button>`}</div>
+    <div class="todo-actions">${editing ? '' : childToggle}${completed || editing ? '' : todoReorderHandle(todo.id)}${editing ? '' : todoRepeatControls(todo)}${editing ? '' : todoProjectControl(todo)}${editing ? '' : `<button class="edit-action delete-action" type="button" data-delete-todo="${escapeHtml(todo.id)}" aria-label="Erinnerung löschen" title="Erinnerung löschen">${trashIcon()}</button>`}</div>
   </article>`;
 }
 
@@ -1424,7 +1431,7 @@ function openTodoRepeatDialog(todo) {
 async function renderTodos() {
   if (state.todoRepeatTimer) clearTimeout(state.todoRepeatTimer);
   state.todoRepeatTimer = null;
-  await loadTodos();
+  await Promise.all([loadTodos(), loadIconLibrary().catch(() => null)]);
   const clearedRootIds = new Set(state.todos.filter(todo => !todo.parentId && todo.clearedAt).map(todo => todo.id));
   const isCleared = todo => clearedRootIds.has(todo.parentId || todo.id);
   const open = state.todos.filter(todo => !isCleared(todo));
@@ -1493,6 +1500,23 @@ async function renderTodos() {
       await api(`/todos/${encodeURIComponent(todo.id)}`, { method:'PATCH', body:JSON.stringify({ recurrence:null }) });
       toast('Wiederholung entfernt');
       await renderTodos();
+    } catch (error) { toast(error.message); button.disabled = false; }
+  });
+  document.querySelectorAll('[data-convert-todo]').forEach(button => button.onclick = async () => {
+    const todo = state.todos.find(item => item.id === button.dataset.convertTodo);
+    if (!todo) return;
+    const childCount = state.todos.filter(item => item.parentId === todo.id).length;
+    const childHint = childCount
+      ? ` ${childCount} untergeordnete Erinnerung${childCount === 1 ? ' wird' : 'en werden'} als anstehende Einträge übernommen.`
+      : '';
+    if (!confirm(`Erinnerung „${todo.title}“ in ein neues Projekt umwandeln? Die Erinnerung wird anschließend gelöscht.${childHint}`)) return;
+    button.disabled = true;
+    try {
+      const result = await api(`/todos/${encodeURIComponent(todo.id)}/convert-to-project`, { method:'POST', body:'{}' });
+      rememberProject(result.project);
+      delete state.collapsedTodoGroups[todo.id];
+      toast(childCount ? `Projekt mit ${childCount} anstehenden Einträgen angelegt` : 'Projekt angelegt');
+      location.href = `/#/projects/${encodeURIComponent(result.project.id)}`;
     } catch (error) { toast(error.message); button.disabled = false; }
   });
   document.querySelectorAll('[data-todo-id]').forEach(row => row.onclick = event => {
@@ -2499,6 +2523,9 @@ async function renderProject(id) {
 function setSettingsMenu(open) {
   const toggle = $('#settings-toggle');
   const subnav = $('#settings-subnav');
+  const badge = $('#update-badge');
+  const badgeTarget = open ? $('[data-settings-route="system"]') : toggle;
+  if (badge && badgeTarget && badge.parentElement !== badgeTarget) badgeTarget.append(badge);
   toggle.setAttribute('aria-expanded', String(open));
   subnav.hidden = !open;
 }
@@ -2506,10 +2533,12 @@ function setSettingsMenu(open) {
 function setProjectsMenu(open, activeStatus = '') {
   const toggle = $('#projects-toggle');
   const subnav = $('#projects-subnav');
+  const badge = $('#project-nav-count');
   toggle.setAttribute('aria-expanded', String(open));
-  toggle.setAttribute('aria-label', `Projektmenü ${open ? 'zuklappen' : 'aufklappen'}`);
-  toggle.title = `Projektmenü ${open ? 'zuklappen' : 'aufklappen'}`;
+  toggle.setAttribute('aria-label', open ? 'Projekte' : 'Projektmenü aufklappen');
+  toggle.title = open ? 'Projekte' : 'Projektmenü aufklappen';
   subnav.hidden = !open;
+  badge.hidden = open || Number(badge.textContent) === 0;
   document.querySelectorAll('[data-projects-route]').forEach(node => node.classList.toggle('active', open && node.dataset.projectsRoute === activeStatus));
 }
 
@@ -4331,29 +4360,25 @@ sidebarSearchClear.onclick = () => {
   sidebarSearchInput.focus();
 };
 $('#settings-toggle').onclick = () => {
-  const open = $('#settings-toggle').getAttribute('aria-expanded') !== 'true';
-  if (open) {
-    setProjectsMenu(false);
-    if (location.hash !== '#/settings/general') {
-      setSettingsMenu(true);
-      location.href = '/#/settings/general';
-      return;
-    }
+  if ($('#settings-toggle').getAttribute('aria-expanded') === 'true') return;
+  setProjectsMenu(false);
+  if (location.hash !== '#/settings/general') {
+    setSettingsMenu(true);
+    location.href = '/#/settings/general';
+    return;
   }
-  setSettingsMenu(open);
+  setSettingsMenu(true);
 };
 $('#projects-toggle').onclick = async () => {
-  const open = $('#projects-toggle').getAttribute('aria-expanded') !== 'true';
-  if (open) {
-    setSettingsMenu(false);
-    if (location.hash !== '#/projects') {
-      setProjectsMenu(true);
-      location.href = '/#/projects';
-      return;
-    }
-    try { await loadProjects(); } catch (error) { toast(error.message); }
+  if ($('#projects-toggle').getAttribute('aria-expanded') === 'true') return;
+  setSettingsMenu(false);
+  if (location.hash !== '#/projects') {
+    setProjectsMenu(true);
+    location.href = '/#/projects';
+    return;
   }
-  setProjectsMenu(open, currentProjectMenuStatus());
+  try { await loadProjects(); } catch (error) { toast(error.message); }
+  setProjectsMenu(true, currentProjectMenuStatus());
 };
 $('#menu-button').onclick = () => {
   const open = $('.sidebar').classList.toggle('open');

@@ -280,6 +280,11 @@ test('Persönliche Erinnerungen bleiben einfach, sortierbar und vom Projektlog g
   assert.equal((await request('/api/todos/completed', { method:'DELETE' })).data.removed, 1);
   assert.ok(!(await request('/api/todos')).data.todos.some(todo => todo.id === recurring.data.id));
 
+  const tooLongForProject = await request('/api/todos', { method:'POST', body:JSON.stringify({ title:'L'.repeat(121) }) });
+  assert.equal((await request(`/api/todos/${tooLongForProject.data.id}/convert-to-project`, { method:'POST', body:'{}' })).response.status, 422);
+  assert.ok((await request('/api/todos')).data.todos.some(todo => todo.id === tooLongForProject.data.id));
+  assert.equal((await request(`/api/todos/${tooLongForProject.data.id}`, { method:'DELETE' })).response.status, 204);
+
   const temporaryParent = await request('/api/todos', { method:'POST', body:JSON.stringify({ title:'Einkaufen' }) });
   const temporaryChild = await request('/api/todos', { method:'POST', body:JSON.stringify({ title:'Milch mitbringen' }) });
   const withTemporaryGroup = [
@@ -287,8 +292,18 @@ test('Persönliche Erinnerungen bleiben einfach, sortierbar und vom Projektlog g
     { id:temporaryParent.data.id, parentId:null }, { id:temporaryChild.data.id, parentId:temporaryParent.data.id },
   ];
   assert.equal((await request('/api/todos/reorder', { method:'POST', body:JSON.stringify({ items:withTemporaryGroup }) })).response.status, 200);
-  assert.equal((await request(`/api/todos/${temporaryParent.data.id}`, { method:'DELETE' })).response.status, 204);
-  assert.ok(!(await request('/api/todos')).data.todos.some(todo => todo.id === temporaryChild.data.id));
+  const converted = await request(`/api/todos/${temporaryParent.data.id}/convert-to-project`, { method:'POST', body:'{}' });
+  assert.equal(converted.response.status, 201);
+  assert.equal(converted.data.convertedChildren, 1);
+  assert.equal(converted.data.project.title, 'Einkaufen');
+  assert.equal(converted.data.project.status, 'active');
+  assert.equal(converted.data.project.icon, 'box');
+  assert.equal(converted.data.project.iconInherited, true);
+  assert.deepEqual(converted.data.project.tasks.map(task => [task.title, task.status]), [['Milch mitbringen', 'Offen']]);
+  const afterConversion = (await request('/api/todos')).data.todos;
+  assert.ok(!afterConversion.some(todo => [temporaryParent.data.id, temporaryChild.data.id].includes(todo.id)));
+  const convertedProject = await request(`/api/projects/${converted.data.project.id}`);
+  assert.equal(convertedProject.data.tasks[0].title, 'Milch mitbringen');
 
   assert.equal((await request(`/api/todos/${first.data.id}`, { method:'DELETE' })).response.status, 204);
   assert.equal((await request('/api/todos')).data.todos.length, 1);
@@ -688,6 +703,8 @@ test('Rollen und Positivlisten werden auch bei direktem API-Zugriff erzwungen', 
   const viewerTodo = await request('/api/todos', { method:'POST', body:JSON.stringify({ title:'Eigene Leser-Erinnerung' }) });
   assert.equal(viewerTodo.response.status, 201);
   assert.equal((await request('/api/todos')).data.openCount, 1);
+  assert.equal((await request(`/api/todos/${viewerTodo.data.id}/convert-to-project`, { method:'POST', body:'{}' })).response.status, 403);
+  assert.ok((await request('/api/todos')).data.todos.some(todo => todo.id === viewerTodo.data.id));
 
   cookie = adminCookie;
   csrf = adminCsrf;

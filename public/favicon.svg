@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title">
   <title id="title">Logbuch</title>
   <rect width="512" height="512" rx="104" fill="#e5322c"/>
-  <text x="256" y="346" fill="#ffffff" font-family="Arial, Helvetica, sans-serif" font-size="272" font-weight="700" letter-spacing="-24" text-anchor="middle">ML</text>
+  <path fill="#ffffff" d="M158 106h82v216h122v78H158z"/>
 </svg>

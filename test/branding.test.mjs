@@ -35,6 +35,48 @@ test('Logbuch ist in den UI-Texten grammatikalisch eingebunden', async () => {
   assert.doesNotMatch(ui, bareAfterPreposition);
 });
 
+test('Das Favicon zeigt ausschließlich ein einzelnes L', async () => {
+  const favicon = await readFile(join(root, 'public', 'favicon.svg'), 'utf8');
+  const app = await readFile(join(root, 'public', 'app.html'), 'utf8');
+  const installer = await readFile(join(root, 'public', 'install.html'), 'utf8');
+  assert.match(favicon, /<path fill="#ffffff"/);
+  assert.doesNotMatch(favicon, /<text|>ML</);
+  assert.match(app, /favicon\.svg\?v=20260824-1/);
+  assert.match(installer, /favicon\.svg\?v=20260824-1/);
+});
+
+test('Der Update-Hinweis folgt dem geöffneten Einstellungsmenü bis System', async () => {
+  const html = await readFile(join(root, 'public', 'app.html'), 'utf8');
+  const ui = await readFile(join(root, 'public', 'app.js'), 'utf8');
+  const css = await readFile(join(root, 'public', 'styles.css'), 'utf8');
+  assert.match(html, /id="settings-toggle"[\s\S]+id="update-badge"[\s\S]+data-settings-route="system"/);
+  assert.match(ui, /const badgeTarget = open \? \$\('\[data-settings-route="system"\]'\) : toggle/);
+  assert.match(ui, /badgeTarget\.append\(badge\)/);
+  assert.match(css, /\.settings-toggle \{[^}]+padding-right:8px;[^}]+gap:10px;/);
+  assert.match(css, /\.update-nav-badge \{[^}]+flex:none;/);
+  assert.match(css, /\.settings-subnav \.update-nav-badge/);
+});
+
+test('Der eingeklappte Projekt-Menüpunkt zeigt die Anzahl der Projekte', async () => {
+  const html = await readFile(join(root, 'public', 'app.html'), 'utf8');
+  const ui = await readFile(join(root, 'public', 'app.js'), 'utf8');
+  const css = await readFile(join(root, 'public', 'styles.css'), 'utf8');
+  assert.match(html, /id="projects-toggle"[\s\S]+id="project-nav-count"/);
+  assert.match(ui, /loadProjects\(\)\.catch\(\(\) => \{\}\)/);
+  assert.match(ui, /badge\.hidden = menuOpen \|\| counts\.all === 0/);
+  assert.match(ui, /badge\.hidden = open \|\| Number\(badge\.textContent\) === 0/);
+  assert.match(css, /\.project-nav-count \{[^}]+line-height:1;/);
+});
+
+test('Projekt- und Einstellungsmenü bleiben im aktiven Bereich geöffnet', async () => {
+  const ui = await readFile(join(root, 'public', 'app.js'), 'utf8');
+  assert.match(ui, /\$\('#settings-toggle'\)\.onclick = \(\) => \{\s+if \(\$\('#settings-toggle'\)\.getAttribute\('aria-expanded'\) === 'true'\) return;/);
+  assert.match(ui, /\$\('#projects-toggle'\)\.onclick = async \(\) => \{\s+if \(\$\('#projects-toggle'\)\.getAttribute\('aria-expanded'\) === 'true'\) return;/);
+  assert.match(ui, /const settingsActive = routeName === 'settings';[\s\S]+setSettingsMenu\(settingsActive\);[\s\S]+setProjectsMenu\(projectsActive, projectStatus\);/);
+  assert.match(ui, /toggle\.title = open \? 'Projekte' : 'Projektmenü aufklappen'/);
+  assert.doesNotMatch(ui, /Projektmenü zuklappen/);
+});
+
 test('Projektkarten kollidieren nicht mit Statusaktions-Selektoren', async () => {
   const ui = await readFile(join(root, 'public', 'app.js'), 'utf8');
   assert.match(ui, /data-project-card-status=/);
@@ -198,6 +240,12 @@ test('Persönliche Erinnerungen besitzen einen eigenständigen kompakten Bereich
   assert.match(html, /id="todo-repeat-dialog"/);
   assert.match(ui, /data-repeat-todo/);
   assert.match(ui, /data-remove-todo-repeat/);
+  assert.match(ui, /data-convert-todo/);
+  assert.match(ui, /todoProjectControl[^\n]+defaultProjectIconName\(\)/);
+  assert.match(ui, /Erinnerung in Projekt umwandeln/);
+  assert.match(ui, /\/convert-to-project/);
+  assert.match(ui, /confirm\(`Erinnerung „\$\{todo\.title\}“ in ein neues Projekt umwandeln\?/);
+  assert.match(ui, /untergeordnete Erinnerung[^\n]+als anstehende Einträge übernommen/);
   assert.doesNotMatch(ui, /Wartet \(\$\{waitingCount\}\)/);
   assert.match(ui, /repeatDueAt/);
   assert.match(ui, /state\.todoRepeatTimer = setTimeout/);
