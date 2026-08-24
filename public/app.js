@@ -1,5 +1,5 @@
 const $ = (selector, root = document) => root.querySelector(selector);
-const state = { user: null, users: [], sessions: [], audit: [], tags: [], folders: [], todos:[], todosCompletedOpen:false, editingTodoId:null, iconLibrary:null, currentFolderId:null, projectStatusFilter:'all', server: null, system: null, storage:null, update:null, projects: [], current: null, activeTab: 'entries', activeSettings:'general', fileViewerId:null, visibleProjectFiles:50, activityObserver:null, timelineObserver:null, overviewGridObservers:[], projectSort: { field:'status', direction:'asc' }, archiveSort: { field:'createdAt', direction:'desc' }, projectSearch: { active:'', archived:'' }, projectTagFilter:{ active:{ ids:[], mode:'all' }, archived:{ ids:[], mode:'all' } }, projectDialogTagIds:[], projectTagDraftOpen:false, projectTagSearchOpen:false, collapsedProjectFolders:false, collapsedProjectStatusGroups:{ idea:false, active:false, paused:false, completed:false }, collapsedLogSections:{ tasks:false, entries:false } };
+const state = { user: null, users: [], sessions: [], audit: [], tags: [], folders: [], todos:[], todosCompletedOpen:false, collapsedTodoGroups:{}, editingTodoId:null, todoRepeatTimer:null, iconLibrary:null, currentFolderId:null, projectStatusFilter:'all', server: null, system: null, storage:null, update:null, projects: [], current: null, activeTab: 'entries', activeSettings:'general', fileViewerId:null, visibleProjectFiles:50, activityObserver:null, timelineObserver:null, overviewGridObservers:[], projectSort: { field:'status', direction:'asc' }, archiveSort: { field:'createdAt', direction:'desc' }, projectSearch: { active:'', archived:'' }, projectTagFilter:{ active:{ ids:[], mode:'all' }, archived:{ ids:[], mode:'all' } }, projectDialogTagIds:[], projectTagDraftOpen:false, projectTagSearchOpen:false, collapsedProjectFolders:false, collapsedProjectStatusGroups:{ idea:false, active:false, paused:false, completed:false }, collapsedLogSections:{ tasks:false, entries:false } };
 let iconLibraryPromise = null;
 const api = async (path, options = {}) => {
   const method = (options.method || 'GET').toUpperCase();
@@ -404,7 +404,7 @@ function updateTodoMenuCount() {
   const badge = $('#todo-nav-count');
   badge.textContent = String(count);
   badge.hidden = count === 0;
-  badge.setAttribute('aria-label', `${count} offene To-dos`);
+  badge.setAttribute('aria-label', `${count} offene Erinnerungen`);
 }
 
 async function loadTodos() {
@@ -513,7 +513,7 @@ function projectCards(projects, archived = false, showFolder = false, separateSt
     const groupedProjects = projects.filter(project => project.status === status);
     const collapsed = state.collapsedProjectStatusGroups[status] === true;
     const label = statusGroupLabels[status] || 'Projekte';
-    const add = mayEditProjects() ? `<button class="button primary compact workstep-add-button project-divider-add" type="button" data-new-project-status="${escapeHtml(status)}" aria-label="${escapeHtml(label)} anlegen" title="${escapeHtml(label)} anlegen">+</button>` : '';
+    const add = mayEditProjects() ? `<button class="button primary compact project-divider-add" type="button" data-new-project-status="${escapeHtml(status)}" aria-label="${escapeHtml(label)} anlegen" title="${escapeHtml(label)} anlegen">+ Projekt</button>` : '';
     const divider = `<div class="project-status-divider project-list-divider"><button type="button" data-toggle-project-status-group="${escapeHtml(status)}" aria-expanded="${!collapsed}" aria-label="${escapeHtml(label)} ${collapsed ? 'ausklappen' : 'einklappen'}" title="${collapsed ? 'Ausklappen' : 'Einklappen'}"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="m6 8 4 4 4-4"></path></svg></button><h2>${escapeHtml(label)} <b data-project-status-count>(${groupedProjects.length})</b></h2></div>`;
     return `<div class="project-group-head" data-project-status-divider="${escapeHtml(status)}">${divider}${add}</div>${groupedProjects.map(project => projectCard(project, archived, showFolder)).join('')}`;
   }).join('');
@@ -1325,7 +1325,7 @@ async function renderHome(keepMenuOpen = false) {
     activity:showActivity ? activityView(activityEntries) : '',
     timeline:showTimeline ? projectTimelineView(detailProjects) : ''
   };
-  $('#main').innerHTML = `<header class="page-head overview-head"><div><h1>Übersicht</h1></div>${overviewMenuContent('desktop-overview-config')}</header>${currentOverviewOrder().map(section => sectionMarkup[section] || '').join('')}`;
+  $('#main').innerHTML = `<div class="project-page-head standalone-page-head overview-page-head"><section class="project-hero common-page-hero"><div class="project-heading-row"><span class="project-hero-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="8.5"></circle><path d="m8.2 12.2 2.5 2.5 5.4-5.6"></path></svg></span><div class="project-heading-content"><div class="project-title-line"><h1>Übersicht</h1></div></div><div class="common-page-hero-actions">${overviewMenuContent('desktop-overview-config')}</div></div></section></div><section class="project-page-content overview-page-content">${currentOverviewOrder().map(section => sectionMarkup[section] || '').join('')}</section>`;
   $('#mobile-header-actions').innerHTML = overviewMenuContent('mobile-overview-config');
   document.querySelectorAll('[data-overview-complete-task]').forEach(button => button.onclick = async event => {
     event.stopPropagation();
@@ -1356,26 +1356,96 @@ async function renderHome(keepMenuOpen = false) {
   if (keepMenuOpen) document.querySelectorAll('.overview-config-menu').forEach(menu => { menu.open = true; });
 }
 
-const todoReorderHandle = id => `<button class="drag-handle todo-drag-handle" type="button" data-reorder-handle data-reorder-id="${escapeHtml(id)}" aria-label="To-do verschieben" title="Ziehen, um die Reihenfolge zu ändern"><svg viewBox="0 0 16 20" aria-hidden="true"><circle cx="5" cy="4" r="1.25"></circle><circle cx="11" cy="4" r="1.25"></circle><circle cx="5" cy="10" r="1.25"></circle><circle cx="11" cy="10" r="1.25"></circle><circle cx="5" cy="16" r="1.25"></circle><circle cx="11" cy="16" r="1.25"></circle></svg></button>`;
+const todoReorderHandle = id => `<button class="drag-handle todo-drag-handle" type="button" data-todo-drag-handle data-reorder-id="${escapeHtml(id)}" aria-label="Erinnerung verschieben" title="Ziehen, um zu sortieren oder unter einer anderen Erinnerung abzulegen"><svg viewBox="0 0 16 20" aria-hidden="true"><circle cx="5" cy="4" r="1.25"></circle><circle cx="11" cy="4" r="1.25"></circle><circle cx="5" cy="10" r="1.25"></circle><circle cx="11" cy="10" r="1.25"></circle><circle cx="5" cy="16" r="1.25"></circle><circle cx="11" cy="16" r="1.25"></circle></svg></button>`;
 
-function todoRow(todo, completed = false) {
+const todoRepeatIcon = () => '<svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M15.7 7A6.2 6.2 0 0 0 5.2 5.1L3.5 7"></path><path d="M3.5 3.8V7h3.2"></path><path d="M4.3 13a6.2 6.2 0 0 0 10.5 1.9l1.7-1.9"></path><path d="M16.5 16.2V13h-3.2"></path></svg>';
+const todoRepeatLabel = todo => {
+  const interval = Number(todo.repeatInterval) || 0;
+  const singular = { day:'Jeden Tag', week:'Jede Woche', month:'Jeden Monat', year:'Jedes Jahr' }[todo.repeatUnit];
+  if (interval === 1) return singular || '';
+  const plural = { day:'Tage', week:'Wochen', month:'Monate', year:'Jahre' }[todo.repeatUnit] || '';
+  return `Alle ${interval} ${plural}`;
+};
+const todoRepeatControls = todo => {
+  const active = Number(todo.repeatInterval) > 0;
+  const repeat = `<button class="edit-action todo-repeat-action${active ? ' active' : ''}" type="button" data-repeat-todo="${escapeHtml(todo.id)}" aria-label="Wiederholung ${active ? 'bearbeiten' : 'einstellen'}" title="Wiederholung ${active ? 'bearbeiten' : 'einstellen'}">${todoRepeatIcon()}</button>`;
+  const remove = active ? `<button class="edit-action todo-repeat-remove" type="button" data-remove-todo-repeat="${escapeHtml(todo.id)}" aria-label="Wiederholung entfernen" title="Wiederholung entfernen">${todoRepeatIcon()}<span aria-hidden="true">×</span></button>` : '';
+  return repeat + remove;
+};
+
+function todoRow(todo, completed = false, level = 'root', childState = null) {
   const editing = state.editingTodoId === todo.id;
-  const editForm = `<form class="todo-edit-form" data-todo-edit-form="${escapeHtml(todo.id)}"><input name="title" maxlength="200" value="${escapeHtml(todo.title)}" aria-label="To-do bearbeiten" required></form>`;
-  return `<article class="todo-item${completed ? ' completed' : ''}" data-todo-id="${escapeHtml(todo.id)}"${completed ? '' : ` data-reorder-card data-reorder-id="${escapeHtml(todo.id)}"`}>
-    <label class="todo-check"><input type="checkbox" data-toggle-todo="${escapeHtml(todo.id)}"${completed ? ' checked' : ''}><span aria-hidden="true"></span><span class="visually-hidden">${completed ? 'To-do wieder öffnen' : 'To-do erledigen'}</span></label>
-    <div class="todo-copy">${editing ? editForm : `<span class="todo-title">${escapeHtml(todo.title)}</span>${completed ? `<small>Erledigt ${escapeHtml(formatDateTime(todo.completedAt))}</small>` : ''}`}</div>
-    <div class="todo-actions">${completed || editing ? '' : todoReorderHandle(todo.id)}${editing ? '' : `<button class="edit-action delete-action" type="button" data-delete-todo="${escapeHtml(todo.id)}" aria-label="To-do löschen" title="To-do löschen">${trashIcon()}</button>`}</div>
+  const editForm = `<form class="todo-edit-form" data-todo-edit-form="${escapeHtml(todo.id)}"><input name="title" maxlength="200" value="${escapeHtml(todo.title)}" aria-label="Erinnerung bearbeiten" required></form>`;
+  const parent = todo.parentId ? state.todos.find(candidate => candidate.id === todo.parentId) : null;
+  const recurring = Number(todo.repeatInterval) > 0;
+  const scheduled = completed && recurring && Boolean(todo.repeatDueAt);
+  const meta = [];
+  if (parent && completed) meta.push(`Untergeordnet zu ${escapeHtml(parent.title)}`);
+  if (scheduled) meta.push(`Wieder offen ${escapeHtml(formatDateTime(todo.repeatDueAt))}`);
+  else if (completed) meta.push(`Erledigt ${escapeHtml(formatDateTime(todo.completedAt))}`);
+  if (recurring) meta.push(todoRepeatLabel(todo));
+  const todoMeta = meta.length ? `<small class="${recurring ? 'todo-repeat-meta' : ''}">${meta.join(' · ')}</small>` : '';
+  const childToggle = childState ? `<button class="todo-children-toggle" type="button" data-toggle-todo-children="${escapeHtml(todo.id)}" aria-expanded="${!childState.collapsed}" aria-controls="todo-children-${escapeHtml(todo.id)}" aria-label="${childState.count} untergeordnete Erinnerung${childState.count === 1 ? '' : 'en'} ${childState.collapsed ? 'ausklappen' : 'einklappen'}" title="${childState.collapsed ? 'Untergeordnete Erinnerungen ausklappen' : 'Untergeordnete Erinnerungen einklappen'}"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="m6 8 4 4 4-4"></path></svg><span>${childState.count}</span></button>` : '';
+  return `<article class="todo-item${completed ? ' completed' : ''}" data-todo-id="${escapeHtml(todo.id)}" data-todo-level="${level}">
+    <label class="todo-check"><input type="checkbox" data-toggle-todo="${escapeHtml(todo.id)}"${completed ? ' checked' : ''}><span aria-hidden="true"></span><span class="visually-hidden">${completed ? 'Erinnerung wieder öffnen' : 'Erinnerung erledigen'}</span></label>
+    <div class="todo-copy">${editing ? editForm : `<span class="todo-title">${escapeHtml(todo.title)}</span>${todoMeta}`}</div>
+    <div class="todo-actions">${editing ? '' : childToggle}${completed || editing ? '' : todoReorderHandle(todo.id)}${editing ? '' : todoRepeatControls(todo)}${editing ? '' : `<button class="edit-action delete-action" type="button" data-delete-todo="${escapeHtml(todo.id)}" aria-label="Erinnerung löschen" title="Erinnerung löschen">${trashIcon()}</button>`}</div>
   </article>`;
 }
 
+function openTodoTree(todos) {
+  const ids = new Set(todos.map(todo => todo.id));
+  const roots = todos.filter(todo => !todo.parentId || !ids.has(todo.parentId));
+  const children = new Map();
+  todos.forEach(todo => {
+    if (!todo.parentId || !ids.has(todo.parentId)) return;
+    if (!children.has(todo.parentId)) children.set(todo.parentId, []);
+    children.get(todo.parentId).push(todo);
+  });
+  return roots.map(todo => {
+    const childTodos = children.get(todo.id) || [];
+    const childRows = childTodos.map(child => `<div class="todo-node todo-subitem" data-todo-node data-todo-node-id="${escapeHtml(child.id)}">${todoRow(child, Boolean(child.completedAt), 'child')}</div>`).join('');
+    const collapsed = childTodos.length > 0 && state.collapsedTodoGroups[todo.id] === true;
+    return `<div class="todo-node todo-group${childRows ? ' has-children' : ''}${collapsed ? ' children-collapsed' : ''}" data-todo-node data-todo-node-id="${escapeHtml(todo.id)}">${todoRow(todo, Boolean(todo.completedAt), 'root', childTodos.length ? { count:childTodos.length, collapsed } : null)}<div class="todo-children" id="todo-children-${escapeHtml(todo.id)}" data-todo-children="${escapeHtml(todo.id)}">${childRows}<div class="todo-child-dropzone" data-todo-child-dropzone="${escapeHtml(todo.id)}"><span>Hier als untergeordnete Erinnerung ablegen</span></div></div></div>`;
+  }).join('');
+}
+
+function openTodoRepeatDialog(todo) {
+  const form = $('#todo-repeat-form');
+  form.reset();
+  form.elements.todoId.value = todo.id;
+  form.elements.interval.value = Number(todo.repeatInterval) > 0 ? String(todo.repeatInterval) : '1';
+  form.elements.unit.value = todo.repeatUnit || 'day';
+  $('#todo-repeat-title').textContent = todo.title;
+  $('#todo-repeat-delete-zone').hidden = !(Number(todo.repeatInterval) > 0);
+  showFormDialog($('#todo-repeat-dialog'));
+}
+
 async function renderTodos() {
+  if (state.todoRepeatTimer) clearTimeout(state.todoRepeatTimer);
+  state.todoRepeatTimer = null;
   await loadTodos();
-  const open = state.todos.filter(todo => !todo.completedAt);
-  const completed = state.todos.filter(todo => todo.completedAt);
-  const completedSection = completed.length ? `<section class="todo-completed-section"><div class="section-head todo-section-head"><button class="todo-section-toggle" type="button" data-toggle-completed-todos aria-expanded="${state.todosCompletedOpen}"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="m6 8 4 4 4-4"></path></svg><span>Erledigt (${completed.length})</span></button><button class="text-link" type="button" data-delete-completed-todos>Erledigte löschen</button></div><div class="todo-list completed-todo-list"${state.todosCompletedOpen ? '' : ' hidden'}>${completed.map(todo => todoRow(todo, true)).join('')}</div></section>` : '';
-  $('#main').innerHTML = `<header class="page-head todo-page-head"><div><h1>To-dos</h1><p>Kurze persönliche Erinnerungen ohne Projektbezug.</p></div></header>
-    <form class="todo-add-form" id="todo-add-form"><input name="title" maxlength="200" placeholder="Was musst du erledigen?" aria-label="Neues To-do" autocomplete="off" required><button class="button primary" type="submit">Hinzufügen</button></form>
-    <section class="todo-open-section"><div class="section-head todo-section-head"><h2>Offen (${open.length})</h2></div>${open.length ? `<div class="todo-list" data-reorder-list="todos">${open.map(todo => todoRow(todo)).join('')}</div>` : '<div class="empty todo-empty"><strong>Alles erledigt.</strong>Neue kurze Erinnerungen kannst du oben eintragen.</div>'}</section>${completedSection}`;
+  const clearedRootIds = new Set(state.todos.filter(todo => !todo.parentId && todo.clearedAt).map(todo => todo.id));
+  const isCleared = todo => clearedRootIds.has(todo.parentId || todo.id);
+  const open = state.todos.filter(todo => !isCleared(todo));
+  const completed = state.todos.filter(isCleared);
+  const cleanupCount = open.filter(todo => !todo.parentId && todo.completedAt)
+    .filter(parent => open.filter(todo => todo.parentId === parent.id).every(child => Boolean(child.completedAt))).length;
+  const completedRootCount = completed.filter(todo => !todo.parentId || !clearedRootIds.has(todo.parentId)).length;
+  const completedRoots = completed.filter(todo => !todo.parentId || !clearedRootIds.has(todo.parentId));
+  const deletableCompletedCount = completedRoots.filter(root => !root.repeatInterval && !completed.some(todo => todo.parentId === root.id && todo.repeatInterval)).length;
+  const protectedCompletedCount = completedRootCount - deletableCompletedCount;
+  const deleteCompletedTitle = protectedCompletedCount ? `${protectedCompletedCount} wiederkehrende Erinnerung${protectedCompletedCount === 1 ? '' : 'en'} bleibt erhalten` : 'Erledigte Erinnerungen löschen';
+  const completedSection = completed.length ? `<section class="todo-completed-section"><div class="section-head todo-section-head"><div class="project-status-divider log-section-divider todo-section-divider"><h2><button class="todo-completed-toggle" type="button" data-toggle-completed-todos aria-expanded="${state.todosCompletedOpen}" aria-label="Erledigte Erinnerungen ${state.todosCompletedOpen ? 'einklappen' : 'ausklappen'}" title="${state.todosCompletedOpen ? 'Einklappen' : 'Ausklappen'}">Erledigt (${completedRootCount})</button></h2></div><div class="section-head-actions"><button class="button secondary compact todo-section-action" type="button" data-delete-completed-todos title="${deleteCompletedTitle}"${deletableCompletedCount ? '' : ' disabled'}>Erledigte löschen</button></div></div><div class="todo-list completed-todo-list"${state.todosCompletedOpen ? '' : ' hidden'}>${openTodoTree(completed)}</div></section>` : '';
+  $('#main').innerHTML = `<div class="project-page-head todo-page-head"><section class="project-hero todo-hero"><div class="project-heading-row"><span class="project-hero-icon todo-hero-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M9 6h11M9 12h11M9 18h11"></path><path d="m3.5 6 1 1 2-2M3.5 12l1 1 2-2M3.5 18l1 1 2-2"></path></svg></span><div class="project-heading-content"><div class="project-title-line"><h1>Erinnerungen</h1></div></div></div></section></div>
+    <section class="project-page-content todo-page-content"><form class="todo-add-form" id="todo-add-form"><input name="title" maxlength="200" placeholder="Notiere dir hier wichtige Dinge, die keinen Projektbezug haben." aria-label="Neue Erinnerung" autocomplete="off" required><button class="button primary" type="submit">Hinzufügen</button></form>
+    <section class="todo-open-section"><div class="section-head todo-section-head"><div class="project-status-divider log-section-divider todo-section-divider"><h2>Offen (${open.length})</h2></div><div class="section-head-actions"><button class="button secondary compact todo-section-action" type="button" data-cleanup-todos${cleanupCount ? '' : ' disabled'}>Aufräumen</button></div></div>${open.length ? `<div class="todo-list todo-tree" data-todo-tree>${openTodoTree(open)}</div>` : '<div class="empty todo-empty"><strong>Alles aufgeräumt.</strong>Neue kurze Erinnerungen kannst du oben eintragen.</div>'}</section>${completedSection}</section>`;
+
+  const nextRepeat = state.todos.map(todo => Date.parse(todo.repeatDueAt || '')).filter(value => Number.isFinite(value) && value > Date.now()).sort((a,b) => a - b)[0];
+  if (nextRepeat) state.todoRepeatTimer = setTimeout(() => {
+    state.todoRepeatTimer = null;
+    if (location.hash.startsWith('#/todos')) renderTodos();
+  }, Math.min(2147483000, Math.max(1000, nextRepeat - Date.now() + 250)));
 
   $('#todo-add-form').onsubmit = async event => {
     event.preventDefault();
@@ -1395,9 +1465,35 @@ async function renderTodos() {
     input.disabled = true;
     try {
       await api(`/todos/${encodeURIComponent(input.dataset.toggleTodo)}`, { method:'PATCH', body:JSON.stringify({ completed:input.checked }) });
-      toast(input.checked ? 'To-do erledigt' : 'To-do wieder geöffnet');
+      toast(input.checked ? 'Erinnerung erledigt' : 'Erinnerung wieder geöffnet');
       await renderTodos();
     } catch (error) { toast(error.message); input.checked = !input.checked; input.disabled = false; }
+  });
+  document.querySelectorAll('[data-toggle-todo-children]').forEach(button => button.onclick = event => {
+    event.stopPropagation();
+    const id = button.dataset.toggleTodoChildren;
+    const collapsed = state.collapsedTodoGroups[id] !== true;
+    state.collapsedTodoGroups[id] = collapsed;
+    const group = button.closest('[data-todo-node].todo-group');
+    group?.classList.toggle('children-collapsed', collapsed);
+    button.setAttribute('aria-expanded', String(!collapsed));
+    const count = group?.querySelectorAll(':scope > [data-todo-children] > [data-todo-node]').length || 0;
+    button.setAttribute('aria-label', `${count} untergeordnete Erinnerung${count === 1 ? '' : 'en'} ${collapsed ? 'ausklappen' : 'einklappen'}`);
+    button.title = collapsed ? 'Untergeordnete Erinnerungen ausklappen' : 'Untergeordnete Erinnerungen einklappen';
+  });
+  document.querySelectorAll('[data-repeat-todo]').forEach(button => button.onclick = () => {
+    const todo = state.todos.find(item => item.id === button.dataset.repeatTodo);
+    if (todo) openTodoRepeatDialog(todo);
+  });
+  document.querySelectorAll('[data-remove-todo-repeat]').forEach(button => button.onclick = async () => {
+    const todo = state.todos.find(item => item.id === button.dataset.removeTodoRepeat);
+    if (!todo) return;
+    button.disabled = true;
+    try {
+      await api(`/todos/${encodeURIComponent(todo.id)}`, { method:'PATCH', body:JSON.stringify({ recurrence:null }) });
+      toast('Wiederholung entfernt');
+      await renderTodos();
+    } catch (error) { toast(error.message); button.disabled = false; }
   });
   document.querySelectorAll('[data-todo-id]').forEach(row => row.onclick = event => {
     if (state.editingTodoId || event.target.closest('button,input,label,form')) return;
@@ -1421,7 +1517,7 @@ async function renderTodos() {
       const saved = await api(`/todos/${encodeURIComponent(id)}`, { method:'PATCH', body:JSON.stringify({ title }) });
       const index = state.todos.findIndex(todo => todo.id === id);
       if (index >= 0) state.todos[index] = saved;
-      toast('To-do aktualisiert');
+      toast('Erinnerung aktualisiert');
       if (!state.editingTodoId) await renderTodos();
     } catch (error) {
       toast(error.message);
@@ -1452,19 +1548,36 @@ async function renderTodos() {
   };
   document.querySelectorAll('[data-delete-todo]').forEach(button => button.onclick = async () => {
     const todo = state.todos.find(item => item.id === button.dataset.deleteTodo);
-    if (!todo || !confirm(`To-do „${todo.title}“ löschen?`)) return;
-    try { await api(`/todos/${encodeURIComponent(todo.id)}`, { method:'DELETE' }); toast('To-do gelöscht'); await renderTodos(); }
+    const childCount = state.todos.filter(item => item.parentId === todo?.id).length;
+    const question = childCount ? `Erinnerung „${todo.title}“ und ${childCount} untergeordnete Erinnerung${childCount === 1 ? '' : 'en'} löschen?` : `Erinnerung „${todo?.title || ''}“ löschen?`;
+    if (!todo || !confirm(question)) return;
+    try { await api(`/todos/${encodeURIComponent(todo.id)}`, { method:'DELETE' }); toast('Erinnerung gelöscht'); await renderTodos(); }
     catch (error) { toast(error.message); }
   });
   const completedToggle = $('[data-toggle-completed-todos]');
   if (completedToggle) completedToggle.onclick = () => { state.todosCompletedOpen = !state.todosCompletedOpen; renderTodos(); };
+  const cleanup = $('[data-cleanup-todos]');
+  if (cleanup) cleanup.onclick = async () => {
+    cleanup.disabled = true;
+    try {
+      const result = await api('/todos/cleanup', { method:'POST', body:'{}' });
+      toast(result.cleared ? `${result.cleared} Erinnerung${result.cleared === 1 ? '' : 'en'} aufgeräumt` : 'Nichts aufzuräumen');
+      await renderTodos();
+    } catch (error) { toast(error.message); cleanup.disabled = false; }
+  };
   const deleteCompleted = $('[data-delete-completed-todos]');
   if (deleteCompleted) deleteCompleted.onclick = async () => {
-    if (!confirm(`${completed.length} erledigte${completed.length === 1 ? 's To-do' : ' To-dos'} endgültig löschen?`)) return;
-    try { await api('/todos/completed', { method:'DELETE' }); state.todosCompletedOpen = false; toast('Erledigte To-dos gelöscht'); await renderTodos(); }
+    const protectionHint = protectedCompletedCount ? ` ${protectedCompletedCount} wiederkehrende Erinnerung${protectedCompletedCount === 1 ? '' : 'en'} bleibt erhalten.` : '';
+    if (!confirm(`${deletableCompletedCount} erledigte Erinnerung${deletableCompletedCount === 1 ? '' : 'en'} samt untergeordneten Erinnerungen endgültig löschen?${protectionHint}`)) return;
+    try {
+      const result = await api('/todos/completed', { method:'DELETE' });
+      state.todosCompletedOpen = false;
+      toast(result.removed ? `${result.removed} erledigte Erinnerung${result.removed === 1 ? '' : 'en'} gelöscht` : 'Keine löschbaren Erinnerungen');
+      await renderTodos();
+    }
     catch (error) { toast(error.message); }
   };
-  bindReordering();
+  bindTodoReordering();
 }
 
 function searchResultHref(result) {
@@ -1490,6 +1603,7 @@ async function renderGlobalSearch(routeQuery) {
   const status = ['all', ...Object.keys(projectStatusLabels)].includes(routeQuery.get('status')) ? routeQuery.get('status') : 'all';
   const sort = Object.hasOwn(searchSortLabels, routeQuery.get('sort')) ? routeQuery.get('sort') : 'relevance';
   $('#global-search-input').value = query;
+  syncSidebarSearchClear();
   let data = { total:0, results:[], truncated:false };
   let content = '<div class="empty"><strong>Was möchtest du finden?</strong>Durchsuche Projekte, Logbucheinträge, Arbeitsschritte und alle weiteren Projektinhalte.</div>';
   if (query.length === 1) {
@@ -1502,8 +1616,18 @@ async function renderGlobalSearch(routeQuery) {
       : `<div class="empty"><strong>Keine Treffer für „${escapeHtml(query)}“.</strong>Versuche einen allgemeineren Begriff oder ändere die Filter.</div>`;
   }
   const statusOptions = { all:'Alle Status', idea:'Idee', active:'Aktiv', paused:'Pausiert', completed:'Abgeschlossen', archived:'Archiviert', trashed:'Papierkorb' };
-  $('#main').innerHTML = `<header class="page-head global-search-head"><div><h1>Suche</h1><p>${query.length >= 2 ? `${data.total} ${data.total === 1 ? 'Treffer' : 'Treffer'} für „${escapeHtml(query)}“` : 'Alle Projekte und Inhalte an einem Ort'}</p></div></header><form id="search-page-form" class="global-search-controls" role="search"><div class="global-search-query"><span aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><circle cx="10.5" cy="10.5" r="6.5"></circle><path d="m15.5 15.5 5 5"></path></svg></span><input name="q" type="search" maxlength="200" value="${escapeHtml(query)}" placeholder="Suchbegriff eingeben" aria-label="Suchbegriff" autocomplete="off"><button class="button primary" type="submit">Suchen</button></div><div class="global-search-filters"><label>Bereich<select name="type">${Object.entries(searchTypeLabels).map(([value,label]) => `<option value="${value}"${value === type ? ' selected' : ''}>${label}</option>`).join('')}</select></label><label>Projektstatus<select name="status">${Object.entries(statusOptions).map(([value,label]) => `<option value="${value}"${value === status ? ' selected' : ''}>${label}</option>`).join('')}</select></label><label>Sortierung<select name="sort">${Object.entries(searchSortLabels).map(([value,label]) => `<option value="${value}"${value === sort ? ' selected' : ''}>${label}</option>`).join('')}</select></label></div></form><section class="global-search-content" aria-live="polite">${content}</section>`;
+  const searchDescription = query.length >= 2 ? `${data.total} ${data.total === 1 ? 'Treffer' : 'Treffer'} für „${escapeHtml(query)}“` : 'Alle Projekte und Inhalte an einem Ort';
+  $('#main').innerHTML = `<div class="project-page-head standalone-page-head search-page-head"><section class="project-hero common-page-hero"><div class="project-heading-row"><span class="project-hero-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><circle cx="10.5" cy="10.5" r="6.5"></circle><path d="m15.5 15.5 5 5"></path></svg></span><div class="project-heading-content"><div class="project-title-line"><h1>Suche</h1></div><p class="project-description">${searchDescription}</p></div></div></section></div><section class="project-page-content search-page-content"><form id="search-page-form" class="global-search-controls" role="search"><div class="global-search-query"><span aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><circle cx="10.5" cy="10.5" r="6.5"></circle><path d="m15.5 15.5 5 5"></path></svg></span><div class="global-search-input-wrap"><input name="q" type="search" maxlength="200" value="${escapeHtml(query)}" placeholder="Suchbegriff eingeben" aria-label="Suchbegriff" autocomplete="off"><button type="button" data-clear-global-search aria-label="Suchbegriff löschen" title="Suchbegriff löschen"${query ? '' : ' hidden'}>×</button></div><button class="button primary" type="submit">Suchen</button></div><div class="global-search-filters"><label>Bereich<select name="type">${Object.entries(searchTypeLabels).map(([value,label]) => `<option value="${value}"${value === type ? ' selected' : ''}>${label}</option>`).join('')}</select></label><label>Projektstatus<select name="status">${Object.entries(statusOptions).map(([value,label]) => `<option value="${value}"${value === status ? ' selected' : ''}>${label}</option>`).join('')}</select></label><label>Sortierung<select name="sort">${Object.entries(searchSortLabels).map(([value,label]) => `<option value="${value}"${value === sort ? ' selected' : ''}>${label}</option>`).join('')}</select></label></div></form><section class="global-search-content" aria-live="polite">${content}</section></section>`;
   const form = $('#search-page-form');
+  const searchInput = form.elements.q;
+  const clearSearch = form.querySelector('[data-clear-global-search]');
+  const syncClearSearch = () => { clearSearch.hidden = !searchInput.value; };
+  searchInput.addEventListener('input', syncClearSearch);
+  clearSearch.onclick = () => {
+    searchInput.value = '';
+    syncClearSearch();
+    searchInput.focus();
+  };
   const navigate = () => {
     const values = new FormData(form);
     const params = new URLSearchParams();
@@ -1535,11 +1659,11 @@ async function renderProjects() {
   const dedicatedStatusSection = regularProjectStatuses.includes(state.projectStatusFilter);
   const separateStatuses = dedicatedStatusSection || (state.projectStatusFilter === 'all' && state.projectSort.field === 'status');
   const collapsibleFolders = dedicatedStatusSection || state.projectStatusFilter === 'all';
-  const folderAdd = mayEditProjects() ? '<button class="button primary compact workstep-add-button project-divider-add" type="button" data-new-folder aria-label="Ordner anlegen" title="Ordner anlegen">+</button>' : '';
+  const folderAdd = mayEditProjects() ? '<button class="button primary compact project-divider-add" type="button" data-new-folder aria-label="Ordner anlegen" title="Ordner anlegen">+ Ordner</button>' : '';
   const folderGroup = collapsibleFolders && showFolders ? `<div class="project-group-head folder-group-head"><div class="project-status-divider project-list-divider folder-list-divider"><button type="button" data-toggle-project-folder-group aria-expanded="${!state.collapsedProjectFolders}" aria-label="Ordner ${state.collapsedProjectFolders ? 'ausklappen' : 'einklappen'}" title="${state.collapsedProjectFolders ? 'Ausklappen' : 'Einklappen'}"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="m6 8 4 4 4-4"></path></svg></button><h2>Ordner <b>(${folders.length})</b></h2></div>${folderAdd}</div><div class="folder-grid${state.collapsedProjectFolders ? ' hidden' : ''}" data-project-folder-group>${folders.map(folderCard).join('')}</div>` : folders.length ? `<div class="folder-grid" data-project-folder-group>${folders.map(folderCard).join('')}</div>` : '';
   const groupedProjects = projectCards(projects, false, !showFolders, separateStatuses);
-  $('#main').innerHTML = `${folderBreadcrumbs(state.currentFolderId)}<header class="page-head project-browser-head"><div><h1>${escapeHtml(title)}</h1>${currentFolder?.description ? `<p>${escapeHtml(currentFolder.description)}</p>` : ''}</div><div class="page-actions">${projectListControls(false, projects, !separateStatuses)}</div></header><div id="active-tag-filters">${selectedTagFiltersMarkup(false)}</div>
-    ${folderGroup || groupedProjects ? `<div class="project-grid project-list">${folderGroup}${groupedProjects}</div>${projects.length ? '<div id="project-no-results" class="empty hidden"><strong>Keine passenden Projekte gefunden.</strong>Versuche einen anderen Suchbegriff.</div>' : ''}` : `<div class="empty"><strong>${currentFolder ? 'Dieser Ordner enthält keine passenden Projekte.' : 'Noch keine Projekte vorhanden.'}</strong></div>`}`;
+  $('#main').innerHTML = `<div class="project-page-breadcrumbs project-browser-breadcrumbs">${folderBreadcrumbs(state.currentFolderId)}</div><div class="project-page-head project-browser-page-head"><section class="project-hero project-browser-hero"><div class="project-heading-row"><span class="project-hero-icon" aria-hidden="true">${iconSvg('box')}</span><div class="project-heading-content"><div class="project-title-line"><h1>${escapeHtml(title)}</h1></div>${currentFolder?.description ? `<p class="project-description">${escapeHtml(currentFolder.description)}</p>` : ''}</div><div class="project-browser-hero-actions">${projectListControls(false, projects, !separateStatuses)}</div></div></section></div><section class="project-page-content project-browser-page-content"><div id="active-tag-filters">${selectedTagFiltersMarkup(false)}</div>
+    ${folderGroup || groupedProjects ? `<div class="project-grid project-list">${folderGroup}${groupedProjects}</div>${projects.length ? '<div id="project-no-results" class="empty hidden"><strong>Keine passenden Projekte gefunden.</strong>Versuche einen anderen Suchbegriff.</div>' : ''}` : `<div class="empty"><strong>${currentFolder ? 'Dieser Ordner enthält keine passenden Projekte.' : 'Noch keine Projekte vorhanden.'}</strong></div>`}</section>`;
   bindMobileProjectControls();
   bindNewProject();
   bindFolderActions();
@@ -1820,7 +1944,7 @@ async function renderSettings() {
   if (active === 'system' && state.user?.admin) await loadSystemStatus();
   if (active === 'general') await loadIconLibrary();
   const headerAction = active === 'users' && state.user?.admin ? '<button class="button primary compact" data-new-user>+ Benutzer</button>' : active === 'tags' && state.user?.admin ? '<button class="button primary compact" data-new-tag>+ Tag</button>' : '';
-  $('#main').innerHTML = `<header class="page-head settings-head"><div><h1>${escapeHtml(title)}</h1><p>${escapeHtml(description)}</p></div>${headerAction}</header><section class="settings-panel settings-panel-wide">${settingsContent(active)}</section>`;
+  $('#main').innerHTML = `<div class="project-page-head standalone-page-head settings-page-head"><section class="project-hero common-page-hero"><div class="project-heading-row"><span class="project-hero-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.09a2 2 0 0 1 1 1.74v.5a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.38a2 2 0 0 0-.73-2.73l-.15-.09a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2Z"></path><circle cx="12" cy="12" r="3"></circle></svg></span><div class="project-heading-content"><div class="project-title-line"><h1>${escapeHtml(title)}</h1></div><p class="project-description">${escapeHtml(description)}</p></div><div class="common-page-hero-actions">${headerAction}</div></div></section></div><section class="project-page-content settings-page-content"><section class="settings-panel settings-panel-wide">${settingsContent(active)}</section></section>`;
   if (active === 'users' && state.user?.admin) bindUserActions();
   if (active === 'tags' && state.user?.admin) bindTagActions();
   if (active === 'data' && state.user?.admin) bindDataActions();
@@ -2057,7 +2181,7 @@ function attachmentStrip(collection, itemId) {
 function filesView(project) {
   const files = project.files || [];
   const visibleFiles = files.slice(0, state.visibleProjectFiles);
-  const addButton = mayEditProjects() ? '<button class="button primary compact" data-upload-file>Datei hochladen</button>' : '';
+  const addButton = mayEditProjects() ? '<button class="button primary compact project-section-add" data-upload-file>+ Datei</button>' : '';
   const cards = visibleFiles.map(file => {
     const association = file.association ? attachmentEntity(file.association.collection, file.association.itemId, project) : null;
     const image = String(file.mimeType || '').startsWith('image/');
@@ -2105,7 +2229,7 @@ function itemsView(project, collection) {
   const config = sections[collection];
   const items = orderedItems(project[collection] || []);
   const heading = itemCount(collection, items.length);
-  const addButton = mayEditProjects() ? `<button class="button primary compact" data-new-item="${collection}">${config.singular} hinzufügen</button>` : '';
+  const addButton = mayEditProjects() ? `<button class="button primary compact project-section-add" data-new-item="${collection}">+ ${config.singular}</button>` : '';
   const content = items.length ? `<div class="item-grid" data-reorder-list="${collection}">${items.map(item => itemCard(collection, item)).join('')}</div>` : tabEmpty(config);
   return `<section class="project-item-section"><div class="section-head"><h2>${heading}</h2>${addButton}</div>${content}</section>`;
 }
@@ -2125,8 +2249,8 @@ function diaryView(project) {
   const taskHeading = workStepCount(tasks.length);
   const entryHeading = workStepCount(entries.length, true);
   const sectionToggle = (section, label) => `<div class="project-status-divider log-section-divider"><button type="button" data-toggle-log-section="${section}" aria-expanded="${!state.collapsedLogSections[section]}" aria-label="${label} ${state.collapsedLogSections[section] ? 'ausklappen' : 'einklappen'}" title="${state.collapsedLogSections[section] ? 'Ausklappen' : 'Einklappen'}"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="m6 8 4 4 4-4"></path></svg></button><h2>${escapeHtml(label)}</h2></div>`;
-  const taskButton = mayEditProjects() ? '<button class="button primary compact workstep-add-button" data-new-item="tasks" aria-label="Arbeitsschritt hinzufügen" title="Arbeitsschritt hinzufügen">+</button>' : '';
-  const entryButton = mayEditProjects() ? '<button class="button primary compact workstep-add-button" data-new-entry aria-label="Abgeschlossenen Arbeitsschritt hinzufügen" title="Abgeschlossenen Arbeitsschritt hinzufügen">+</button>' : '';
+  const taskButton = mayEditProjects() ? '<button class="button primary compact project-section-add" data-new-item="tasks" aria-label="Anstehenden Eintrag hinzufügen" title="Anstehenden Eintrag hinzufügen">+ Eintrag</button>' : '';
+  const entryButton = mayEditProjects() ? '<button class="button primary compact project-section-add" data-new-entry aria-label="Abgeschlossenen Arbeitsschritt hinzufügen" title="Abgeschlossenen Arbeitsschritt hinzufügen">+ Eintrag</button>' : '';
   return `<section class="next-steps-section"><div class="section-head log-section-head">${sectionToggle('tasks', taskHeading)}<div class="section-head-actions">${taskButton}</div></div><div data-log-section-content="tasks"${state.collapsedLogSections.tasks ? ' hidden' : ''}>${tasks.length ? `<div class="next-steps-list" data-reorder-list="tasks">${tasks.map(taskCard).join('')}</div>` : '<div class="empty compact-empty">Füge einen Arbeitsschritt hinzu, wenn klar ist, wie es weitergeht.</div>'}</div></section><section class="diary-section"><div class="section-head log-section-head">${sectionToggle('entries', entryHeading)}<div class="section-head-actions">${entryButton}</div></div><div data-log-section-content="entries"${state.collapsedLogSections.entries ? ' hidden' : ''}>${entriesView(project)}</div></section>`;
 }
 
@@ -2402,6 +2526,10 @@ function currentProjectMenuStatus() {
 function setNav(routeName, projectStatus = '') {
   document.querySelectorAll('[data-route]').forEach(node => node.classList.toggle('active', node.dataset.route === routeName));
   $('#global-search-form').classList.toggle('active', routeName === 'search');
+  if (routeName !== 'search') {
+    $('#global-search-input').value = '';
+    syncSidebarSearchClear();
+  }
   const settingsActive = routeName === 'settings';
   const projectsActive = routeName === 'projects';
   setSettingsMenu(settingsActive);
@@ -3467,6 +3595,278 @@ async function persistReorder(list) {
   }
 }
 
+function todoStructure(list) {
+  const items = [];
+  list.querySelectorAll(':scope > [data-todo-node]').forEach(root => {
+    const id = root.dataset.todoNodeId;
+    items.push({ id, parentId:null });
+    root.querySelectorAll(':scope > [data-todo-children] > [data-todo-node]').forEach(child => items.push({ id:child.dataset.todoNodeId, parentId:id }));
+  });
+  return items;
+}
+
+async function persistTodoStructure(list) {
+  const items = todoStructure(list);
+  const focusedId = list.querySelector('[data-todo-drag-handle]:focus')?.dataset.reorderId || null;
+  try {
+    await api('/todos/reorder', { method:'POST', body:JSON.stringify({ items }) });
+    const orders = new Map();
+    items.forEach(item => {
+      const key = item.parentId || '';
+      const todo = state.todos.find(candidate => candidate.id === item.id);
+      if (todo) {
+        todo.parentId = item.parentId;
+        todo.sortOrder = orders.get(key) || 0;
+      }
+      orders.set(key, (orders.get(key) || 0) + 1);
+    });
+    toast('Erinnerungsstruktur gespeichert');
+    await renderTodos();
+    if (focusedId) document.querySelector(`[data-todo-drag-handle][data-reorder-id="${focusedId}"]`)?.focus({ preventScroll:true });
+  } catch (error) {
+    toast(error.message);
+    await renderTodos();
+  }
+}
+
+function bindTodoReordering() {
+  const list = $('[data-todo-tree]');
+  if (!list) return;
+  let dragged = null;
+  let placeholder = null;
+  let initialStructure = '';
+  let originalStyle = null;
+  let draggedSourceWidth = 0;
+  let draggedSourceHeight = 0;
+  let pointerOffsetX = 0;
+  let pointerOffsetY = 0;
+  let activePointerId = null;
+  let saving = false;
+  let draggedHasChildren = false;
+  let draggedParentId = null;
+  let hoverTarget = null;
+  let hoverTimer = null;
+  let expandedTarget = null;
+  let pendingChildTarget = null;
+  let pointerX = 0;
+  let pointerY = 0;
+  const hoverDelay = 250;
+  const signature = () => JSON.stringify(todoStructure(list));
+  const syncTodoGroupStates = () => list.querySelectorAll(':scope > [data-todo-node].todo-group').forEach(group => group.classList.toggle('has-children', Boolean(group.querySelector(':scope > [data-todo-children] > [data-todo-node]'))));
+  const setDraggedRootAppearance = root => {
+    if (!dragged) return;
+    dragged.classList.toggle('todo-drag-root', root);
+    if (!dragged.classList.contains('todo-subitem') || !dragged.classList.contains('dragging')) return;
+    if (!root) {
+      dragged.style.width = `${draggedSourceWidth}px`;
+      dragged.style.height = `${draggedSourceHeight}px`;
+      return;
+    }
+    dragged.style.width = `${list.getBoundingClientRect().width}px`;
+    dragged.style.height = 'auto';
+    dragged.style.height = `${Math.ceil(dragged.getBoundingClientRect().height)}px`;
+  };
+  const markPlaceholder = (parentId = null) => {
+    placeholder.classList.toggle('as-child', Boolean(parentId));
+    placeholder.dataset.dropLabel = parentId ? 'Als untergeordnete Erinnerung ablegen' : 'Auf Hauptebene ablegen';
+    setDraggedRootAppearance(!parentId);
+  };
+  const syncDraggedLevelFromPlaceholder = () => setDraggedRootAppearance(placeholder?.parentElement === list);
+  const place = (targetList, candidate, after, parentId = null) => {
+    markPlaceholder(parentId);
+    const reference = after ? candidate?.nextElementSibling || null : candidate;
+    if (placeholder.parentElement === targetList && placeholder.nextElementSibling === reference) return;
+    targetList.insertBefore(placeholder, reference);
+  };
+  const placeInChildDropzone = target => {
+    const dropzone = target?.querySelector(':scope > [data-todo-children] > [data-todo-child-dropzone]');
+    if (!dropzone || draggedHasChildren) return false;
+    pendingChildTarget = target;
+    setDraggedRootAppearance(false);
+    return true;
+  };
+  const cancelHover = () => {
+    if (hoverTimer !== null) window.clearTimeout(hoverTimer);
+    hoverTimer = null;
+    hoverTarget = null;
+  };
+  const collapseExpanded = (restore = true) => {
+    cancelHover();
+    if (restore) {
+      pendingChildTarget = null;
+      syncDraggedLevelFromPlaceholder();
+    }
+    expandedTarget?.classList.remove('todo-drop-parent');
+    expandedTarget = null;
+  };
+  const expandAfterPause = target => {
+    if (expandedTarget === target || hoverTarget === target) return;
+    cancelHover();
+    hoverTarget = target;
+    hoverTimer = window.setTimeout(() => {
+      if (!dragged || hoverTarget !== target) return;
+      expandedTarget?.classList.remove('todo-drop-parent');
+      expandedTarget = target;
+      hoverTarget = null;
+      hoverTimer = null;
+      target.classList.add('todo-drop-parent');
+      const currentHit = document.elementFromPoint(pointerX, pointerY);
+      const currentGroup = currentHit?.closest?.('[data-todo-node].todo-group');
+      if (currentGroup === target) placeInChildDropzone(target);
+    }, hoverDelay);
+  };
+  const removePointerListeners = () => {
+    document.removeEventListener('pointermove', move, true);
+    document.removeEventListener('pointerup', finish, true);
+    document.removeEventListener('pointercancel', finish, true);
+    window.removeEventListener('blur', finish);
+  };
+  const finish = async event => {
+    if (event?.pointerId !== undefined && event.pointerId !== activePointerId) return;
+    if (!dragged || !placeholder || saving) return;
+    saving = true;
+    removePointerListeners();
+    cancelHover();
+    const childTarget = pendingChildTarget;
+    pendingChildTarget = null;
+    expandedTarget?.classList.remove('todo-drop-parent');
+    expandedTarget = null;
+    const childDropzone = childTarget?.querySelector(':scope > [data-todo-children] > [data-todo-child-dropzone]');
+    if (childDropzone && !draggedHasChildren) {
+      childDropzone.parentElement.insertBefore(dragged, childDropzone);
+      placeholder.remove();
+    } else placeholder.replaceWith(dragged);
+    syncTodoGroupStates();
+    if (originalStyle === null) dragged.removeAttribute('style'); else dragged.setAttribute('style', originalStyle);
+    dragged.classList.remove('dragging');
+    dragged.classList.remove('todo-drag-root');
+    document.body.classList.remove('is-sorting');
+    const changed = signature() !== initialStructure;
+    dragged = null;
+    placeholder = null;
+    draggedParentId = null;
+    activePointerId = null;
+    if (changed) await persistTodoStructure(list);
+    saving = false;
+  };
+  const move = event => {
+    if (!dragged || !placeholder || event.pointerId !== activePointerId) return;
+    event.preventDefault();
+    dragged.style.left = `${event.clientX - pointerOffsetX}px`;
+    dragged.style.top = `${event.clientY - pointerOffsetY}px`;
+    pointerX = event.clientX;
+    pointerY = event.clientY;
+    const hit = document.elementFromPoint(event.clientX, event.clientY);
+    const hitChildren = hit?.closest?.('[data-todo-children]');
+    const hitGroup = hitChildren?.closest('[data-todo-node].todo-group') || hit?.closest?.('[data-todo-node].todo-group') || hit?.closest?.('[data-todo-level="root"]')?.closest('[data-todo-node].todo-group') || null;
+    const expandedRect = expandedTarget?.getBoundingClientRect();
+    const insideExpandedTarget = expandedRect && event.clientX >= expandedRect.left && event.clientX <= expandedRect.right && event.clientY >= expandedRect.top && event.clientY <= expandedRect.bottom;
+    if (expandedTarget && hitGroup !== expandedTarget && !insideExpandedTarget) collapseExpanded(true);
+    const groupCanReceiveChild = hitGroup && hitGroup.dataset.todoNodeId !== dragged.dataset.todoNodeId && hitGroup.dataset.todoNodeId !== draggedParentId && !draggedHasChildren;
+    if (groupCanReceiveChild) expandAfterPause(hitGroup);
+    const dropzone = hit?.closest?.('[data-todo-child-dropzone]');
+    const placeholderHit = hit?.closest?.('.todo-drag-placeholder');
+    if (pendingChildTarget && hitGroup !== expandedTarget && !placeholderHit) {
+      pendingChildTarget = null;
+      syncDraggedLevelFromPlaceholder();
+    }
+    if (dropzone && expandedTarget && hitGroup === expandedTarget && !draggedHasChildren) {
+      placeInChildDropzone(expandedTarget);
+      return;
+    }
+    if (expandedTarget && hitGroup === expandedTarget && !draggedHasChildren) {
+      placeInChildDropzone(expandedTarget);
+      return;
+    }
+    if (placeholderHit && hitGroup === expandedTarget) return;
+    const row = hit?.closest?.('[data-todo-id]');
+    const candidate = row?.closest?.('[data-todo-node]');
+    if (!row || !candidate || candidate.dataset.todoNodeId === dragged.dataset.todoNodeId) {
+      if (!hitGroup) cancelHover();
+      return;
+    }
+    const rect = row.getBoundingClientRect();
+    if (row.dataset.todoLevel === 'root') {
+      if (draggedHasChildren) cancelHover();
+      place(list, candidate, event.clientY >= rect.top + rect.height / 2);
+      return;
+    }
+    const childList = candidate.parentElement;
+    const parent = childList.closest('[data-todo-node]');
+    if (draggedHasChildren) {
+      const parentRow = parent.querySelector(':scope > [data-todo-id]');
+      place(list, parent, event.clientY >= parentRow.getBoundingClientRect().top + parentRow.getBoundingClientRect().height / 2);
+      return;
+    }
+    const pullToRoot = event.clientX < Math.min(rect.left - 8, list.getBoundingClientRect().left + 72);
+    if (pullToRoot) {
+      cancelHover();
+      const parentRow = parent.querySelector(':scope > [data-todo-id]');
+      place(list, parent, event.clientY >= parentRow.getBoundingClientRect().top + parentRow.getBoundingClientRect().height / 2);
+    } else if (placeholder.parentElement === childList) {
+      place(childList, candidate, event.clientY >= rect.top + rect.height / 2, parent.dataset.todoNodeId);
+    }
+  };
+  list.querySelectorAll('[data-todo-drag-handle]').forEach(handle => {
+    const node = handle.closest('[data-todo-node]');
+    handle.addEventListener('click', event => event.stopPropagation());
+    handle.addEventListener('keydown', async event => {
+      if (!['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(event.key)) return;
+      event.preventDefault();
+      const parentList = node.parentElement;
+      if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+        const siblings = [...parentList.children].filter(candidate => candidate.matches('[data-todo-node]'));
+        const index = siblings.indexOf(node);
+        const sibling = siblings[index + (event.key === 'ArrowUp' ? -1 : 1)];
+        if (!sibling) return;
+        if (event.key === 'ArrowUp') parentList.insertBefore(node, sibling); else parentList.insertBefore(sibling, node);
+      } else if (event.key === 'ArrowLeft' && parentList.matches('[data-todo-children]')) {
+        const parent = parentList.closest('[data-todo-node]');
+        list.insertBefore(node, parent.nextElementSibling);
+      } else if (event.key === 'ArrowRight' && parentList === list && !node.querySelector(':scope > [data-todo-children] > [data-todo-node]')) {
+        const previous = node.previousElementSibling;
+        if (!previous?.matches('[data-todo-node]')) return;
+        const childList = previous.querySelector(':scope > [data-todo-children]');
+        childList.insertBefore(node, childList.querySelector(':scope > [data-todo-child-dropzone]'));
+      } else return;
+      handle.focus();
+      await persistTodoStructure(list);
+    });
+    handle.addEventListener('pointerdown', event => {
+      if (dragged || event.button > 0) return;
+      event.preventDefault();
+      event.stopPropagation();
+      dragged = node;
+      draggedParentId = node.parentElement.matches('[data-todo-children]') ? node.parentElement.dataset.todoChildren : null;
+      draggedHasChildren = Boolean(node.querySelector(':scope > [data-todo-children] > [data-todo-node]'));
+      initialStructure = signature();
+      const rect = node.getBoundingClientRect();
+      draggedSourceWidth = rect.width;
+      draggedSourceHeight = rect.height;
+      pointerOffsetX = event.clientX - rect.left;
+      pointerOffsetY = event.clientY - rect.top;
+      activePointerId = event.pointerId;
+      handle.focus({ preventScroll:true });
+      placeholder = document.createElement('div');
+      placeholder.className = 'todo-drag-placeholder';
+      placeholder.style.height = `${rect.height}px`;
+      placeholder.setAttribute('aria-hidden', 'true');
+      node.parentElement.insertBefore(placeholder, node);
+      const sourceParentId = node.parentElement.matches('[data-todo-children]') ? node.parentElement.dataset.todoChildren : null;
+      originalStyle = node.getAttribute('style');
+      node.classList.add('dragging');
+      Object.assign(node.style, { position:'fixed', zIndex:'2000', left:`${rect.left}px`, top:`${rect.top}px`, width:`${rect.width}px`, height:`${rect.height}px`, margin:'0', boxSizing:'border-box', pointerEvents:'none' });
+      document.body.append(node);
+      markPlaceholder(sourceParentId);
+      document.body.classList.add('is-sorting');
+      document.addEventListener('pointermove', move, { capture:true, passive:false });
+      document.addEventListener('pointerup', finish, true);
+      document.addEventListener('pointercancel', finish, true);
+      window.addEventListener('blur', finish);
+    });
+  });
+}
+
 function placeDraggedCard(list, placeholder, dragged, movementX, movementY) {
   if (!movementX && !movementY) return;
   const draggedRect = dragged.getBoundingClientRect();
@@ -3600,6 +4000,41 @@ $('#login-form').addEventListener('submit', async event => {
   const error = $('#login-error'); error.textContent = '';
   try { state.user = await api('/login', { method:'POST', body:JSON.stringify(Object.fromEntries(form)) }); showApp(true); }
   catch (cause) { error.textContent = cause.message; }
+});
+$('#todo-repeat-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const id = form.elements.todoId.value;
+  const interval = Number(form.elements.interval.value);
+  const unit = form.elements.unit.value;
+  if (!Number.isInteger(interval) || interval < 1 || interval > 999) {
+    form.elements.interval.focus();
+    return;
+  }
+  const submit = form.querySelector('button[type="submit"]');
+  submit.disabled = true;
+  try {
+    await api(`/todos/${encodeURIComponent(id)}`, { method:'PATCH', body:JSON.stringify({ recurrence:{ interval, unit } }) });
+    $('#todo-repeat-dialog').close();
+    form.reset();
+    toast('Wiederholung gespeichert');
+    await renderTodos();
+  } catch (error) { toast(error.message); }
+  finally { submit.disabled = false; }
+});
+$('#todo-repeat-delete').addEventListener('click', async event => {
+  const button = event.currentTarget;
+  const form = $('#todo-repeat-form');
+  const id = form.elements.todoId.value;
+  button.disabled = true;
+  try {
+    await api(`/todos/${encodeURIComponent(id)}`, { method:'PATCH', body:JSON.stringify({ recurrence:null }) });
+    $('#todo-repeat-dialog').close();
+    form.reset();
+    toast('Wiederholung entfernt');
+    await renderTodos();
+  } catch (error) { toast(error.message); }
+  finally { button.disabled = false; }
 });
 $('#project-form').addEventListener('submit', async event => {
   event.preventDefault();
@@ -3883,6 +4318,17 @@ $('#global-search-form').onsubmit = event => {
   event.preventDefault();
   const query = $('#global-search-input').value.trim();
   location.href = `/#/search${query ? `?q=${encodeURIComponent(query)}` : ''}`;
+};
+const sidebarSearchInput = $('#global-search-input');
+const sidebarSearchClear = $('.sidebar-search-clear');
+function syncSidebarSearchClear() {
+  sidebarSearchClear.hidden = !sidebarSearchInput.value;
+}
+sidebarSearchInput.oninput = syncSidebarSearchClear;
+sidebarSearchClear.onclick = () => {
+  sidebarSearchInput.value = '';
+  syncSidebarSearchClear();
+  sidebarSearchInput.focus();
 };
 $('#settings-toggle').onclick = () => {
   const open = $('#settings-toggle').getAttribute('aria-expanded') !== 'true';

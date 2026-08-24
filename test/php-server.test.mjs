@@ -185,7 +185,7 @@ test('Übersichtsbereiche werden in Zeilen konfiguriert', async () => {
   assert.deepEqual(updated.data.overviewOrder, overviewOrder);
 });
 
-test('Persönliche To-dos bleiben einfach, sortierbar und vom Projektlog getrennt', async () => {
+test('Persönliche Erinnerungen bleiben einfach, sortierbar und vom Projektlog getrennt', async () => {
   assert.equal((await request('/api/todos')).data.openCount, 0);
   assert.equal((await request('/api/todos', { method:'POST', body:JSON.stringify({ title:'   ' }) })).response.status, 422);
   assert.equal((await request('/api/todos', { method:'POST', body:JSON.stringify({ title:'x'.repeat(201) }) })).response.status, 422);
@@ -203,16 +203,95 @@ test('Persönliche To-dos bleiben einfach, sortierbar und vom Projektlog getrenn
   assert.deepEqual((await request('/api/todos')).data.todos.filter(todo => !todo.completedAt).map(todo => todo.id), order);
   assert.equal((await request('/api/todos/reorder', { method:'POST', body:JSON.stringify({ ids:[first.data.id] }) })).response.status, 422);
 
+  const nestedUnderSecond = [{ id:third.data.id, parentId:null }, { id:second.data.id, parentId:null }, { id:first.data.id, parentId:second.data.id }];
+  assert.equal((await request('/api/todos/reorder', { method:'POST', body:JSON.stringify({ items:nestedUnderSecond }) })).response.status, 200);
+  let structured = (await request('/api/todos')).data.todos.filter(todo => !todo.completedAt);
+  assert.deepEqual(structured.map(todo => [todo.id, todo.parentId]), nestedUnderSecond.map(todo => [todo.id, todo.parentId]));
+
+  const nestedUnderThird = [{ id:third.data.id, parentId:null }, { id:first.data.id, parentId:third.data.id }, { id:second.data.id, parentId:null }];
+  assert.equal((await request('/api/todos/reorder', { method:'POST', body:JSON.stringify({ items:nestedUnderThird }) })).response.status, 200);
+  structured = (await request('/api/todos')).data.todos.filter(todo => !todo.completedAt);
+  assert.equal(structured.find(todo => todo.id === first.data.id).parentId, third.data.id);
+
+  const completedChild = await request(`/api/todos/${first.data.id}`, { method:'PATCH', body:JSON.stringify({ completed:true }) });
+  assert.match(completedChild.data.completedAt, /^\d{4}-\d{2}-\d{2}T/);
+  assert.equal(completedChild.data.parentId, third.data.id);
+  assert.equal(completedChild.data.clearedAt, '');
+  assert.equal((await request(`/api/todos/${third.data.id}`, { method:'PATCH', body:JSON.stringify({ completed:true }) })).response.status, 200);
+  let afterParentCompletion = (await request('/api/todos')).data.todos;
+  assert.equal(afterParentCompletion.find(todo => todo.id === first.data.id).parentId, third.data.id);
+  assert.equal(afterParentCompletion.find(todo => todo.id === first.data.id).clearedAt, '');
+  assert.equal(afterParentCompletion.find(todo => todo.id === third.data.id).clearedAt, '');
+  assert.equal((await request('/api/todos/cleanup', { method:'POST', body:'{}' })).data.cleared, 1);
+  let cleanedGroup = (await request('/api/todos')).data.todos;
+  assert.ok(cleanedGroup.find(todo => todo.id === third.data.id).clearedAt);
+  assert.equal(cleanedGroup.find(todo => todo.id === first.data.id).parentId, third.data.id);
+  const reopenedChild = await request(`/api/todos/${first.data.id}`, { method:'PATCH', body:JSON.stringify({ completed:false }) });
+  assert.equal(reopenedChild.data.parentId, third.data.id);
+  cleanedGroup = (await request('/api/todos')).data.todos;
+  assert.equal(cleanedGroup.find(todo => todo.id === third.data.id).clearedAt, '');
+  assert.equal((await request('/api/todos/cleanup', { method:'POST', body:'{}' })).data.cleared, 0);
+  assert.equal((await request(`/api/todos/${third.data.id}`, { method:'PATCH', body:JSON.stringify({ completed:false }) })).response.status, 200);
+
+  const pulledOut = [{ id:third.data.id, parentId:null }, { id:first.data.id, parentId:null }, { id:second.data.id, parentId:null }];
+  assert.equal((await request('/api/todos/reorder', { method:'POST', body:JSON.stringify({ items:pulledOut }) })).response.status, 200);
+  assert.equal((await request('/api/todos')).data.todos.find(todo => todo.id === first.data.id).parentId, null);
+  const invalidDepth = [{ id:second.data.id, parentId:null }, { id:third.data.id, parentId:second.data.id }, { id:first.data.id, parentId:third.data.id }];
+  assert.equal((await request('/api/todos/reorder', { method:'POST', body:JSON.stringify({ items:invalidDepth }) })).response.status, 422);
+
   const edited = await request(`/api/todos/${second.data.id}`, { method:'PATCH', body:JSON.stringify({ title:'Versicherung zurückrufen' }) });
   assert.equal(edited.data.title, 'Versicherung zurückrufen');
   const completed = await request(`/api/todos/${third.data.id}`, { method:'PATCH', body:JSON.stringify({ completed:true }) });
   assert.match(completed.data.completedAt, /^\d{4}-\d{2}-\d{2}T/);
+  assert.equal(completed.data.clearedAt, '');
+  assert.equal((await request('/api/todos/cleanup', { method:'POST', body:'{}' })).data.cleared, 1);
   const listed = await request('/api/todos');
   assert.equal(listed.data.openCount, 2);
   assert.equal(listed.data.todos.at(-1).id, third.data.id);
 
+  const recurring = await request('/api/todos', { method:'POST', body:JSON.stringify({ title:'Filter reinigen' }) });
+  assert.equal((await request(`/api/todos/${recurring.data.id}`, { method:'PATCH', body:JSON.stringify({ recurrence:{ interval:0, unit:'week' } }) })).response.status, 422);
+  const configured = await request(`/api/todos/${recurring.data.id}`, { method:'PATCH', body:JSON.stringify({ recurrence:{ interval:2, unit:'week' } }) });
+  assert.equal(configured.data.repeatInterval, 2);
+  assert.equal(configured.data.repeatUnit, 'week');
+  assert.equal(configured.data.repeatDueAt, '');
+  assert.equal(configured.data.repeatWaitingAt, '');
+  const waiting = await request(`/api/todos/${recurring.data.id}`, { method:'PATCH', body:JSON.stringify({ completed:true }) });
+  assert.match(waiting.data.repeatDueAt, /^\d{4}-\d{2}-\d{2}T/);
+  assert.ok(Date.parse(waiting.data.repeatDueAt) > Date.parse(waiting.data.completedAt));
+  assert.equal(waiting.data.repeatWaitingAt, '');
+  assert.equal((await request('/api/todos/cleanup', { method:'POST', body:'{}' })).data.cleared, 1);
+  const afterCleanup = (await request('/api/todos')).data.todos;
+  assert.match(afterCleanup.find(todo => todo.id === recurring.data.id).clearedAt, /^\d{4}-\d{2}-\d{2}T/);
+  assert.equal(afterCleanup.find(todo => todo.id === recurring.data.id).repeatWaitingAt, '');
+  assert.equal((await request('/api/todos/completed', { method:'DELETE' })).data.removed, 1);
+  assert.ok((await request('/api/todos')).data.todos.some(todo => todo.id === recurring.data.id));
+  const reorderableWhileCompleted = (await request('/api/todos')).data.todos.filter(todo => !todo.clearedAt).map(todo => ({ id:todo.id, parentId:todo.parentId }));
+  assert.equal((await request('/api/todos/reorder', { method:'POST', body:JSON.stringify({ items:reorderableWhileCompleted }) })).response.status, 200);
+  const manuallyReopened = await request(`/api/todos/${recurring.data.id}`, { method:'PATCH', body:JSON.stringify({ completed:false }) });
+  assert.equal(manuallyReopened.data.repeatDueAt, '');
+  assert.equal(manuallyReopened.data.repeatWaitingAt, '');
+  assert.equal(manuallyReopened.data.repeatInterval, 2);
+  const removedRepeat = await request(`/api/todos/${recurring.data.id}`, { method:'PATCH', body:JSON.stringify({ recurrence:null }) });
+  assert.equal(removedRepeat.data.repeatInterval, 0);
+  assert.equal(removedRepeat.data.repeatUnit, '');
+  assert.equal((await request(`/api/todos/${recurring.data.id}`, { method:'PATCH', body:JSON.stringify({ completed:true }) })).response.status, 200);
+  assert.equal((await request('/api/todos/cleanup', { method:'POST', body:'{}' })).data.cleared, 1);
+  assert.equal((await request('/api/todos/completed', { method:'DELETE' })).data.removed, 1);
+  assert.ok(!(await request('/api/todos')).data.todos.some(todo => todo.id === recurring.data.id));
+
+  const temporaryParent = await request('/api/todos', { method:'POST', body:JSON.stringify({ title:'Einkaufen' }) });
+  const temporaryChild = await request('/api/todos', { method:'POST', body:JSON.stringify({ title:'Milch mitbringen' }) });
+  const withTemporaryGroup = [
+    { id:first.data.id, parentId:null }, { id:second.data.id, parentId:null },
+    { id:temporaryParent.data.id, parentId:null }, { id:temporaryChild.data.id, parentId:temporaryParent.data.id },
+  ];
+  assert.equal((await request('/api/todos/reorder', { method:'POST', body:JSON.stringify({ items:withTemporaryGroup }) })).response.status, 200);
+  assert.equal((await request(`/api/todos/${temporaryParent.data.id}`, { method:'DELETE' })).response.status, 204);
+  assert.ok(!(await request('/api/todos')).data.todos.some(todo => todo.id === temporaryChild.data.id));
+
   assert.equal((await request(`/api/todos/${first.data.id}`, { method:'DELETE' })).response.status, 204);
-  assert.equal((await request('/api/todos')).data.todos.length, 2);
+  assert.equal((await request('/api/todos')).data.todos.length, 1);
 });
 
 test('Ein Projekt benötigt Titel und Startdatum', async () => {
@@ -606,7 +685,7 @@ test('Rollen und Positivlisten werden auch bei direktem API-Zugriff erzwungen', 
   assert.equal(adminArea.response.status, 403);
   const personalTodos = await request('/api/todos');
   assert.deepEqual(personalTodos.data.todos, []);
-  const viewerTodo = await request('/api/todos', { method:'POST', body:JSON.stringify({ title:'Eigenes Leser-To-do' }) });
+  const viewerTodo = await request('/api/todos', { method:'POST', body:JSON.stringify({ title:'Eigene Leser-Erinnerung' }) });
   assert.equal(viewerTodo.response.status, 201);
   assert.equal((await request('/api/todos')).data.openCount, 1);
 
@@ -652,7 +731,7 @@ test('Benutzerbackups erhalten validierte Präferenzen und bleiben ohne Präfere
   const admin = backup.data.accounts.find(account => account.id === 'admin');
   assert.equal(admin.preferences.defaultProjectIcon, 'rocket');
   assert.equal(admin.preferences.showProjectFolders, false);
-  assert.equal(admin.todos.length, 2);
+  assert.equal(admin.todos.length, 1);
   assert.ok(admin.todos.some(todo => todo.title === 'Versicherung zurückrufen'));
 
   const restored = await request('/api/import/users', { method:'POST', body:JSON.stringify({ accounts:[{ ...admin, preferences:{ startPage:'archive', showProjectFolders:true } }], replace:true }) });
@@ -672,5 +751,5 @@ test('Benutzerbackups erhalten validierte Präferenzen und bleiben ohne Präfere
   assert.equal(compatible.response.status, 200);
   const legacyAdmin = (await request('/api/users')).data.users.find(user => user.id === 'admin');
   assert.equal(legacyAdmin.startPage, 'home');
-  assert.equal((await request('/api/todos')).data.todos.length, 2);
+  assert.equal((await request('/api/todos')).data.todos.length, 1);
 });

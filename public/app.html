@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#f6f7f9">
   <title>Logbuch</title>
   <link rel="icon" href="/favicon.svg?v=20260822-2" type="image/svg+xml">
-  <link rel="stylesheet" href="/styles.css?v=20260823-253">
+  <link rel="stylesheet" href="/styles.css?v=20260824-038">
 </head>
 <body>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
@@ -34,7 +34,7 @@
       <a class="brand" href="/#/" aria-label="Logbuch"><img src="/logbuch-logo.svg?v=20260822-3" alt=""></a>
       <nav aria-label="Hauptnavigation">
         <a class="nav-item active" href="/#/" data-route="home"><span aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="8.5"></circle><path d="m8.2 12.2 2.5 2.5 5.4-5.6"></path></svg></span> Übersicht</a>
-        <a class="nav-item" href="/#/todos" data-route="todos"><span aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M9 6h11M9 12h11M9 18h11"></path><path d="m3.5 6 1 1 2-2M3.5 12l1 1 2-2M3.5 18l1 1 2-2"></path></svg></span> To-dos <i id="todo-nav-count" class="todo-nav-count" hidden>0</i></a>
+        <a class="nav-item" href="/#/todos" data-route="todos"><span aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M9 6h11M9 12h11M9 18h11"></path><path d="m3.5 6 1 1 2-2M3.5 12l1 1 2-2M3.5 18l1 1 2-2"></path></svg></span> Erinnerungen <i id="todo-nav-count" class="todo-nav-count" hidden>0</i></a>
         <div class="projects-menu">
           <button id="projects-toggle" class="nav-item bare" type="button" data-route="projects" aria-expanded="false" aria-controls="projects-subnav"><span data-project-nav-icon aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M12 3 20 7.5v9L12 21l-8-4.5v-9L12 3Z"></path><path d="m4 7.5 8 4.5 8-4.5M12 12v9"></path></svg></span><b>Projekte</b></button>
           <div id="projects-subnav" class="settings-subnav projects-subnav" hidden>
@@ -65,8 +65,9 @@
       </nav>
       <div class="sidebar-bottom">
         <form id="global-search-form" class="sidebar-search" role="search">
-          <button type="submit" aria-label="Suche starten" title="Suche starten"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"></circle><path d="m15.5 15.5 5 5"></path></svg></button>
+          <button class="sidebar-search-submit" type="submit" aria-label="Suche starten" title="Suche starten"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"></circle><path d="m15.5 15.5 5 5"></path></svg></button>
           <input id="global-search-input" name="q" type="search" maxlength="200" placeholder="Alles durchsuchen" aria-label="Logbuch durchsuchen" autocomplete="off">
+          <button class="sidebar-search-clear" type="button" aria-label="Suchbegriff löschen" title="Suchbegriff löschen" hidden>×</button>
         </form>
       </div>
     </aside>
@@ -96,6 +97,17 @@
       <div class="dialog-actions"><button class="button secondary" type="button" value="cancel">Abbrechen</button><button class="button primary" id="project-submit" type="submit">Speichern</button></div>
       <section id="project-link-zone" class="dialog-link-section" hidden><strong>Projektlink</strong><div class="dialog-link-row"><a id="project-dialog-link" href="#" target="_blank" rel="noopener"></a><button class="button secondary compact" id="project-dialog-copy" type="button">Kopieren</button></div></section>
       <section id="project-delete-zone" class="dialog-danger" hidden><div><strong>Projekt löschen</strong><p>Das Projekt wird mit allen Inhalten in den Papierkorb verschoben. Dort kann es wiederhergestellt werden.</p></div><button class="button danger-button" id="project-dialog-delete" type="button">Projekt löschen</button></section>
+    </form>
+  </dialog>
+
+  <dialog id="todo-repeat-dialog">
+    <form id="todo-repeat-form" method="dialog" novalidate>
+      <input type="hidden" name="todoId">
+      <div class="dialog-head"><div><h2>Erinnerung wiederholen</h2><p id="todo-repeat-title" class="dialog-copy"></p></div><button class="icon-button" type="button" value="cancel" aria-label="Schließen">×</button></div>
+      <p class="todo-repeat-explanation">Beim Erledigen startet der gewählte Zeitraum. Mit „Aufräumen“ wechselt die Erinnerung bis zur automatischen Wiederöffnung in „Erledigt“ und bleibt dort vor dem gemeinsamen Löschen geschützt.</p>
+      <div class="todo-repeat-fields"><label>Zeitraum<input name="interval" type="number" min="1" max="999" step="1" value="1" required></label><label>Einheit<select name="unit"><option value="day">Tage</option><option value="week">Wochen</option><option value="month">Monate</option><option value="year">Jahre</option></select></label></div>
+      <div class="dialog-actions"><button class="button secondary" type="button" value="cancel">Abbrechen</button><button class="button primary" type="submit">Wiederholung speichern</button></div>
+      <section id="todo-repeat-delete-zone" class="dialog-danger" hidden><div><strong>Wiederholung entfernen</strong><p>Die Erinnerung bleibt in ihrem aktuellen Zustand, wird aber nicht mehr automatisch geöffnet.</p></div><button class="button danger-button" id="todo-repeat-delete" type="button">Wiederholung entfernen</button></section>
     </form>
   </dialog>
 
@@ -244,6 +256,6 @@
 
   <script src="/backup-format.js?v=20260823-142" defer></script>
   <script src="/update-monitor.js?v=20260822-001" defer></script>
-  <script src="/app.js?v=20260823-189" defer></script>
+  <script src="/app.js?v=20260824-038" defer></script>
 </body>
 </html>

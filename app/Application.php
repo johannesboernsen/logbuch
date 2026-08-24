@@ -155,8 +155,13 @@ final class Application
                 $this->json(201, $todo);
             }
             if ($path === '/api/todos/reorder' && $method === 'POST') {
-                $this->todos->reorder($user['id'], $input['ids'] ?? null);
+                $this->todos->reorder($user['id'], $input['items'] ?? $input['ids'] ?? null);
                 $this->json(200, ['saved' => true]);
+            }
+            if ($path === '/api/todos/cleanup' && $method === 'POST') {
+                $cleared = $this->todos->cleanup($user['id']);
+                if ($cleared > 0) $this->audit($user['id'], 'todos.cleaned_up', (string) $cleared);
+                $this->json(200, ['cleared' => $cleared]);
             }
             if ($path === '/api/todos/completed' && $method === 'DELETE') {
                 $removed = $this->todos->deleteCompleted($user['id']);

@@ -204,6 +204,30 @@ final class Database
             if ($sql === '' || preg_match('/\b(?:ATTACH|DETACH|VACUUM|BEGIN|COMMIT|ROLLBACK)\b/i', $sql)) {
                 throw new \RuntimeException('Die Datenbankmigration ' . $version . ' ist ungültig.');
             }
+            // A container may temporarily run an older release against a newer
+            // volume. Keep additive migrations repeatable when the newer column
+            // is already present but the older release lowered schema_version.
+            $todoColumns = array_column($this->pdo->query('PRAGMA table_info(todos)')->fetchAll(), 'name');
+            if ($version === 8 && in_array('parent_id', $todoColumns, true)) {
+                $sql = 'CREATE INDEX IF NOT EXISTS todos_user_parent_state_order ON todos(user_id, parent_id, completed_at, sort_order)';
+            }
+            if ($version === 9 && in_array('cleared_at', $todoColumns, true)) {
+                $sql = 'CREATE INDEX IF NOT EXISTS todos_user_cleared_order ON todos(user_id, cleared_at, sort_order)';
+            }
+            if ($version === 10) {
+                $statements = [];
+                if (!in_array('repeat_interval', $todoColumns, true)) $statements[] = "ALTER TABLE todos ADD COLUMN repeat_interval INTEGER NOT NULL DEFAULT 0";
+                if (!in_array('repeat_unit', $todoColumns, true)) $statements[] = "ALTER TABLE todos ADD COLUMN repeat_unit TEXT NOT NULL DEFAULT ''";
+                if (!in_array('repeat_due_at', $todoColumns, true)) $statements[] = "ALTER TABLE todos ADD COLUMN repeat_due_at TEXT NOT NULL DEFAULT ''";
+                $statements[] = 'CREATE INDEX IF NOT EXISTS todos_user_repeat_due ON todos(user_id, repeat_due_at)';
+                $sql = implode(";\n", $statements);
+            }
+            if ($version === 11) {
+                $statements = [];
+                if (!in_array('repeat_waiting_at', $todoColumns, true)) $statements[] = "ALTER TABLE todos ADD COLUMN repeat_waiting_at TEXT NOT NULL DEFAULT ''";
+                $statements[] = 'CREATE INDEX IF NOT EXISTS todos_user_repeat_waiting ON todos(user_id, repeat_waiting_at)';
+                $sql = implode(";\n", $statements);
+            }
             $this->pdo->beginTransaction();
             try {
                 $this->pdo->exec($sql);

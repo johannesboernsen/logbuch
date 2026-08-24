@@ -1,8 +1,8 @@
 # Logbuch
 
-Das Logbuch hält Fortschritte, anstehende und erledigte Arbeitsschritte, Materialien, Kontakte, Links und Ideen zu DIY-Projekten fest. Ein eigener persönlicher To-do-Bereich nimmt kurze Erledigungsnotizen ohne Projektbezug auf. Die responsive Weboberfläche läuft mit einem gemeinsamen PHP-Kern sowohl auf normalem Webhosting als auch in einem Docker-Container.
+Das Logbuch hält Fortschritte, anstehende und erledigte Arbeitsschritte, Materialien, Kontakte, Links und Ideen zu DIY-Projekten fest. Ein eigener persönlicher Erinnerungsbereich nimmt kurze Notizen ohne Projektbezug auf; diese lassen sich per Drag-and-drop sortieren, eine Ebene tief gruppieren und in frei wählbaren Tages-, Wochen-, Monats- oder Jahresabständen wiederholen. Die responsive Weboberfläche läuft mit einem gemeinsamen PHP-Kern sowohl auf normalem Webhosting als auch in einem Docker-Container.
 
-Projekte bleiben als Markdown- und JSON-Dateien lesbar. SQLite speichert Benutzer, persönliche To-dos, Sitzungen, Rollen, Freigaben, Tags, Einstellungen und das Änderungsprotokoll.
+Projekte bleiben als Markdown- und JSON-Dateien lesbar. SQLite speichert Benutzer, persönliche Erinnerungen, Sitzungen, Rollen, Freigaben, Tags, Einstellungen und das Änderungsprotokoll.
 
 ## Voraussetzungen
 
@@ -101,7 +101,7 @@ Die Tests verwenden einen temporären Datenspeicher und prüfen Installer, Sitzu
 
 Der PHP-Kern, Installer, Webhosting-Einstieg, Docker-Paket sowie die zentralen Daten- und Sicherheitsabläufe sind enthalten. Projekt- und Benutzerbackups werden manuell im Browser heruntergeladen und wieder eingespielt. Automatischer E-Mail-Versand gehört nicht zum Funktionsumfang.
 
-Persönliche To-dos sind bewusst unabhängig von Projekten. Sie besitzen weder Projektzuordnung noch Tags, Prioritäten, Fälligkeiten oder Anhänge und erzeugen beim Abhaken keinen Logbucheintrag. Sie werden im Benutzerbackup, nicht im Projektbackup, gespeichert.
+Persönliche Erinnerungen sind bewusst unabhängig von Projekten. Sobald etwas Projektbezug hat, wird es stattdessen als anstehender oder erledigter Arbeitsschritt im jeweiligen Logbuch geführt. Erinnerungen besitzen weder Projektzuordnung noch Tags, Prioritäten, frei vergebene Fälligkeiten oder Anhänge und erzeugen beim Abhaken keinen Logbucheintrag. Für wiederkehrende Erinnerungen lässt sich ein Abstand in Tagen, Wochen, Monaten oder Jahren festlegen. Beim Abhaken startet der Zeitraum neu, die Erinnerung bleibt aber zunächst unter **Offen**. Erst **Aufräumen** verschiebt sie in **Erledigt**; nach Ablauf des Zeitraums wird sie automatisch wieder geöffnet. Ist der Zeitraum schon vor dem Aufräumen abgelaufen, öffnet sie sich direkt wieder. Wiederkehrende Erinnerungen sind vor **Erledigte löschen** geschützt und können nur einzeln oder nach dem Entfernen ihrer Wiederholung gelöscht werden. Über **Aufräumen** wechseln nur erledigte Erinnerungen auf der Hauptebene ohne offene Kinder samt ihrer verschachtelten Erinnerungen in den Erledigt-Bereich. Sie werden einschließlich ihrer Wiederholungsangaben im Benutzerbackup, nicht im Projektbackup, gespeichert.
 
 Der mitgelieferte Beispieldatensatz enthält vier aktive, zwei pausierte, drei abgeschlossene, ein archiviertes und ein gelöschtes Maker-Projekt sowie zwei thematische Projektordner. Administratoren können ihn unter **Einstellungen → System** jederzeit einspielen, zurücksetzen oder vollständig entfernen. Eigene Projekte und Ordner werden dabei nicht gelöscht. Ein Demo-Ordner bleibt erhalten, solange eigene Projekte oder Unterordner darin liegen; ein leerer Demo-Ordner wird entfernt. Inhalte, die nachträglich innerhalb eines Demo-Projekts angelegt wurden, gehören hingegen zu diesem Projekt und werden beim Entfernen der Beispieldaten mitgelöscht.
 
