@@ -51,6 +51,7 @@ storage/
         ├── project.json
         ├── entries/
         ├── tasks/
+        ├── shopping/
         ├── materials/
         ├── contacts/
         ├── links/

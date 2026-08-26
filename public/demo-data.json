@@ -65,6 +65,7 @@
       "learnings": [
         { "id": "demo-absaugung-learning-1", "title": "Große Querschnitte sind leiser", "description": "Nicht der Lüfter, sondern die scharfkantige kleine Düse war die dominante Geräuschquelle.", "futureUse": "Luftkanäle großzügig dimensionieren und Übergänge verrunden.", "author": "demo", "createdAt": "2026-08-12T18:30:00Z" }
       ],
+      "shopping": [],
       "notes": [
         { "id": "demo-absaugung-note-1", "title": "Gehäusemaße", "description": "Außen 180 × 165 × 70 mm; Filtereinschub auf der rechten Seite, vier M4-Gewindeeinsätze.", "author": "demo", "createdAt": "2026-08-12T18:32:00Z" },
         { "id": "demo-absaugung-note-egg", "title": "Akustischer Abnahmetest", "description": "Bestanden, wenn man neben der Absaugung noch hört, wie eine M3-Mutter auf den Boden fällt. Nicht bestanden, wenn anschließend niemand weiß, wohin sie gerollt ist.", "author": "demo", "createdAt": "2026-08-12T18:33:00Z" }
@@ -100,6 +101,7 @@
       "learnings": [
         { "id": "demo-pflanzenlicht-learning-1", "title": "PWM nicht direkt einspeisen", "description": "Die Leuchten reagieren auf ungefiltertes PWM mit sichtbarem Flimmern.", "futureUse": "Analoge Steuereingänge zuerst vermessen und mit Oszilloskop prüfen.", "author": "demo", "createdAt": "2026-08-09T14:20:00Z" }
       ],
+      "shopping": [],
       "notes": [
         { "id": "demo-pflanzenlicht-note-1", "title": "Sicherheitsgrenze", "description": "Ausgang softwareseitig auf 8,5 V begrenzen; das entspricht der gewünschten maximalen Helligkeit.", "author": "demo", "createdAt": "2026-08-09T14:25:00Z" }
       ]
@@ -134,6 +136,7 @@
       "learnings": [
         { "id": "demo-werkbank-learning-1", "title": "Bauteile paarweise bohren", "description": "Gemeinsam gespannte Seitenteile wurden deutlich symmetrischer als einzeln angezeichnete Teile.", "futureUse": "Spiegelgleiche Werkstücke immer im Paket bearbeiten.", "author": "demo", "createdAt": "2026-08-15T16:20:00Z" }
       ],
+      "shopping": [],
       "notes": [
         { "id": "demo-werkbank-note-1", "title": "Endmaße", "description": "Arbeitsfläche 1600 × 800 mm, Höhe mit Rollen 910 mm. Freiraum für die Kappsäge: 680 × 520 mm.", "author": "demo", "createdAt": "2026-05-10T10:30:00Z" }
       ]
@@ -168,6 +171,7 @@
       "learnings": [
         { "id": "demo-slider-learning-1", "title": "Riemenspannung beeinflusst Richtungswechsel", "description": "Zu loser Riemen erzeugt beim Umkehren mehrere Millimeter Spiel.", "futureUse": "Antriebskonzepte früh in beide Richtungen unter Last testen.", "author": "demo", "createdAt": "2026-08-17T19:20:00Z" }
       ],
+      "shopping": [],
       "notes": [
         { "id": "demo-slider-note-1", "title": "Zielwerte", "description": "Nutzweg 650 mm, Zuladung 2,5 kg, langsamste Fahrt 45 Minuten über den gesamten Weg.", "author": "demo", "createdAt": "2026-07-21T12:10:00Z" }
       ]
@@ -201,6 +205,7 @@
       "learnings": [
         { "id": "demo-trockner-learning-1", "title": "Regelung ersetzt keine Schutzabschaltung", "description": "Ein einzelner Sensor und Software sind für eine Heizquelle in einer Kunststoffbox nicht ausreichend.", "futureUse": "Thermische Projekte von Anfang an mit unabhängiger Hardwareabschaltung planen.", "author": "demo", "createdAt": "2026-06-04T17:20:00Z" }
       ],
+      "shopping": [],
       "notes": [
         { "id": "demo-trockner-note-1", "title": "Pausengrund", "description": "Keine weiteren Heiztests, bis Thermoschalter, Sicherung und Zugentlastung vollständig montiert sind.", "author": "demo", "createdAt": "2026-06-04T17:25:00Z" },
         { "id": "demo-trockner-note-egg", "title": "Wichtige Abgrenzung", "description": "Filament-Trockner, kein Dörrautomat. Der Gummibärchen-Versuch gilt offiziell als nicht genehmigte Grundlagenforschung.", "author": "demo", "createdAt": "2026-06-04T17:26:00Z" }
@@ -233,6 +238,7 @@
         { "id": "demo-staubsensor-learning-1", "title": "Messort gehört zum Messsystem", "description": "Ein präziser Sensor liefert am ungeeigneten Ort keine hilfreiche Aussage über die Raumluft.", "futureUse": "Vor dem Gehäusebau mehrere Positionen unter identischen Bedingungen vergleichen.", "author": "demo", "createdAt": "2026-05-22T18:20:00Z" },
         { "id": "demo-staubsensor-learning-egg", "title": "Rot ist keine Diagnose", "description": "Eine dramatisch rote Anzeige sagt nur, dass der Sensor aufgeregt ist. Für Menschen braucht es zusätzlich eine verständliche Handlungsempfehlung.", "futureUse": "Neben Messwerten immer auch ‚Absaugung prüfen‘ oder ‚Werkstatt lüften‘ anzeigen.", "author": "demo", "createdAt": "2026-05-22T18:21:00Z" }
       ],
+      "shopping": [],
       "notes": [
         { "id": "demo-staubsensor-note-1", "title": "Pausiert bis Werkstattumbau", "description": "Die CNC-Ecke wird im Herbst neu angeordnet. Erst danach sind Kabelführung und endgültiger Messort sinnvoll planbar.", "author": "demo", "createdAt": "2026-05-23T08:00:00Z" }
       ]
@@ -266,6 +272,7 @@
       "learnings": [
         { "id": "demo-solar-learning-1", "title": "Kabelwege vor dem Holzbau planen", "description": "Die nachträgliche Durchführung durch die schräge Rückwand war unnötig aufwendig.", "futureUse": "Elektrik als 1:1-Pappmodell auf die Gehäuseteile übertragen.", "author": "demo", "createdAt": "2026-04-26T16:45:00Z" }
       ],
+      "shopping": [],
       "notes": [
         { "id": "demo-solar-note-1", "title": "Sicherungen", "description": "15 A direkt am Akku, 5 A für USB-Wandler, 7,5 A für den Werkzeugakku-Ausgang.", "author": "demo", "createdAt": "2026-04-20T10:30:00Z" },
         { "id": "demo-solar-note-egg", "title": "Prioritäten bei Stromausfall", "description": "1. Arbeitslicht. 2. Telefon. 3. Kaffeewaage. Die Reihenfolge wurde nach einer kontroversen Werkstattabstimmung so protokolliert.", "author": "demo", "createdAt": "2026-04-20T10:31:00Z" }
@@ -300,6 +307,7 @@
       "learnings": [
         { "id": "demo-radio-learning-1", "title": "Reversible Einbauten lohnen sich", "description": "Die neue Elektronik ließ sich außerhalb des empfindlichen Gehäuses vollständig testen.", "futureUse": "Bei Upcycling-Projekten neue Technik auf einer eigenen Trägerplatte aufbauen.", "author": "demo", "createdAt": "2026-02-07T18:15:00Z" }
       ],
+      "shopping": [],
       "notes": [
         { "id": "demo-radio-note-1", "title": "Originalteile", "description": "Ausgebauter Lautsprecher und Netztrafo liegen beschriftet in einer Schachtel; nichts wurde entsorgt.", "author": "demo", "createdAt": "2026-02-07T18:20:00Z" },
         { "id": "demo-radio-note-egg", "title": "Werkstattfunk 88,3", "description": "Die kleine Markierung auf der Skala ist kein geheimer Sender. Dort steht lediglich der Bluetooth-Klang besonders überzeugend – sagt zumindest die Werkstattlegende.", "author": "demo", "createdAt": "2026-02-07T18:21:00Z" }
@@ -333,6 +341,7 @@
       "learnings": [
         { "id": "demo-bohrschablone-learning-1", "title": "Kunststoff ist nicht die Verschleißfläche", "description": "Direkt im PETG geführte Bohrer weiteten die ersten Prototypen sehr schnell auf.", "futureUse": "Gedruckte Bohrhilfen immer mit austauschbaren Metallbuchsen konstruieren.", "author": "demo", "createdAt": "2026-02-22T15:20:00Z" }
       ],
+      "shopping": [],
       "notes": [
         { "id": "demo-bohrschablone-note-1", "title": "Druckeinstellungen", "description": "0,2-mm-Schichten, 5 Top- und Bottom-Layer, Buchsensitze 0,15 mm Untermaß und warm eingepresst.", "author": "demo", "createdAt": "2026-02-15T12:00:00Z" }
       ]
@@ -366,6 +375,7 @@
       "learnings": [
         { "id": "demo-matrixuhr-learning-1", "title": "Diffusor braucht Abstand", "description": "Erst ab etwa 12 mm Abstand verschmelzen die einzelnen LED-Punkte zu ruhigen Zeichen.", "futureUse": "Optische Schichten früh mit einem verstellbaren Provisorium testen.", "author": "demo", "createdAt": "2025-03-16T18:20:00Z" }
       ],
+      "shopping": [],
       "notes": [
         { "id": "demo-matrixuhr-note-1", "title": "Archivort", "description": "Ersatzteile und Programmierschnittstelle liegen in Werkstattbox E-14.", "author": "demo", "createdAt": "2025-03-16T18:25:00Z" },
         { "id": "demo-matrixuhr-note-egg", "title": "Helligkeitswert 42", "description": "Sieht nachts zufällig am besten aus und beantwortet damit gleichzeitig mehr Fragen, als die Firmware eigentlich gestellt hat.", "author": "demo", "createdAt": "2025-03-16T18:26:00Z" }
@@ -399,6 +409,7 @@
         { "id": "demo-smartmirror-learning-1", "title": "Display zuerst unter realem Licht testen", "description": "Der Aufbau wirkte in der dunklen Werkstatt gut, scheiterte aber am vorgesehenen hellen Standort.", "futureUse": "Kritische Komponenten vor dem Gehäusebau am Einsatzort erproben.", "author": "demo", "createdAt": "2025-09-28T17:20:00Z" },
         { "id": "demo-smartmirror-learning-egg", "title": "Der Spiegel blieb erstaunlich ehrlich", "description": "Auch mit Software zeigte er morgens weiterhin zuverlässig zerzauste Haare. Dieses Problem lag außerhalb des Projektumfangs.", "futureUse": "Anforderungen früh gegen die physikalische Realität prüfen.", "author": "demo", "createdAt": "2025-09-28T17:21:00Z" }
       ],
+      "shopping": [],
       "notes": [
         { "id": "demo-smartmirror-note-1", "title": "Verwertbare Teile", "description": "Holzrahmen, Einplatinencomputer, Bewegungsmelder und Spiegelplatte können wiederverwendet werden.", "author": "demo", "createdAt": "2025-09-28T17:25:00Z" }
       ]

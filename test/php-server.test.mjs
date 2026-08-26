@@ -392,12 +392,20 @@ test('Projekt, Aufgabe und Log werden per API und als offene Dateien gespeichert
   assert.equal(note.response.status, 201);
   assert.match(note.data.id, /^note-/);
 
+  const purchase = await request(`/api/projects/${projectId}/shopping`, { method: 'POST', body: JSON.stringify({ name: 'Schrauben M8', properties: 'verzinkt, 80 mm', quantity: '16 Stück', retailer: 'Eisenwaren Beispiel', url: 'https://example.com/schrauben-m8', status: 'Bestellt', priority: 'Hoch', unitPrice: '12,90 €', notes: 'Lieferung gemeinsam mit Unterlegscheiben prüfen.' }) });
+  assert.equal(purchase.response.status, 201);
+  assert.match(purchase.data.id, /^purchase-/);
+  assert.equal(purchase.data.retailer, 'Eisenwaren Beispiel');
+  assert.equal(purchase.data.status, 'Bestellt');
+  assert.equal((await request(`/api/projects/${projectId}/shopping/${purchase.data.id}`, { method: 'PATCH', body: JSON.stringify({ status:'Unbekannt' }) })).response.status, 422);
+
   const detail = await request(`/api/projects/${projectId}`);
   assert.equal(detail.data.tasks.length, 1);
   assert.equal(detail.data.tasks[0].status, 'Erledigt');
   assert.equal(detail.data.entries.length, 1);
   assert.equal(detail.data.learnings.length, 1);
   assert.equal(detail.data.notes.length, 1);
+  assert.equal(detail.data.shopping.length, 1);
   assert.equal(detail.data.createdAt, '2026-08-18');
 
   const overview = await request('/api/overview');
@@ -432,6 +440,8 @@ test('Projekt, Aufgabe und Log werden per API und als offene Dateien gespeichert
   assert.match(learningMarkdown, /Vorbohren verhindert Ausrisse/);
   const noteMarkdown = await readFile(join(storage, 'projects', projectId, 'notes', `${note.data.id}.md`), 'utf8');
   assert.match(noteMarkdown, /Maße der Werkbank/);
+  const purchaseMarkdown = await readFile(join(storage, 'projects', projectId, 'shopping', `${purchase.data.id}.md`), 'utf8');
+  assert.match(purchaseMarkdown, /Schrauben M8/);
   const projectMarkdown = await readFile(join(storage, 'projects', projectId, 'README.md'), 'utf8');
   assert.match(projectMarkdown, /priority: "Hoch"/);
   assert.match(projectMarkdown, /flagged: true/);
@@ -452,6 +462,9 @@ test('Globale Suche findet Projektinhalte und unterstützt Filter sowie Sortieru
 
   const wrongStatus = await request('/api/search?q=Breite&type=notes&status=paused');
   assert.equal(wrongStatus.data.total, 0);
+  const shopping = await request('/api/search?q=Eisenwaren&type=shopping&status=active');
+  assert.equal(shopping.response.status, 200);
+  assert.equal(shopping.data.results[0].title, 'Schrauben M8');
   const sorted = await request('/api/search?q=Werkbank&sort=title');
   assert.deepEqual(sorted.data.results.map(result => result.title), [...sorted.data.results.map(result => result.title)].sort((left, right) => left.localeCompare(right, 'de', { sensitivity:'base' })));
   assert.equal((await request('/api/search?q=x')).response.status, 422);

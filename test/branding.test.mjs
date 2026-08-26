@@ -150,8 +150,8 @@ test('Projektseiten besitzen eine eigenständige kompakte Smartphone-Bedienung',
   assert.match(ui, /project-page-head standalone-page-head overview-page-head/);
   assert.match(ui, /project-page-head standalone-page-head settings-page-head/);
   assert.match(ui, /project-hero common-page-hero/);
-  assert.match(ui, /mobile-project-nav/);
-  assert.match(ui, /aria-label="Projektbereich wählen"/);
+  assert.match(ui, /project-add-button/);
+  assert.match(ui, /aria-label="Projektinhalt hinzufügen"/);
   assert.match(css, /@media \(max-width:780px\)[\s\S]+workstep-card-status\.mobile-collapsed \.workstep-status-content \{ display:none; \}/);
   assert.match(css, /project-hero-status\.mobile-collapsed \.project-hero-facts \{ display:none; \}/);
   assert.match(css, /project-card-collapsible-status\.mobile-collapsed \.project-card-status-content \{ display:none; \}/);
@@ -160,9 +160,8 @@ test('Projektseiten besitzen eine eigenständige kompakte Smartphone-Bedienung',
   assert.match(css, /\.project-page-head\.standalone-page-head \{ margin-top:-54px; padding-top:42px; \}/);
   assert.match(css, /mobile-project-status-controls \{[^}]+display:flex;/);
   assert.match(css, /mobile-project-status-controls > \.mobile-status-toggle \{[^}]+margin-left:auto; flex:none; justify-content:flex-start;/);
-  assert.match(css, /mobile-project-nav > summary \{[^}]+color:#fff;[^}]+background:var\(--brand-red\);/);
-  assert.match(css, /mobile-project-nav \.menu-item\.active/);
-  assert.match(css, /project-subnav \{ display:none; \}/);
+  assert.match(css, /\.project-add-button \{[^}]+width:44px;[^}]+height:44px;/);
+  assert.match(css, /\.project-add-button b \{ display:none; \}/);
 });
 
 test('Globale Suche ist im Hauptmenü erreichbar und filterbar', async () => {
@@ -267,7 +266,8 @@ test('Persönliche Erinnerungen besitzen einen eigenständigen kompakten Bereich
   assert.doesNotMatch(css, /\.todo-drag-placeholder\.in-dropzone/);
 });
 
-test('Projektabschnitte verwenden kurze Statusüberschriften und beschriftete Anlege-Schaltflächen', async () => {
+test('Projektinhalte stehen gemeinsam in befüllten Abschnitten mit zentraler Erfassung', async () => {
+  const html = await readFile(join(root, 'public', 'app.html'), 'utf8');
   const ui = await readFile(join(root, 'public', 'app.js'), 'utf8');
   const css = await readFile(join(root, 'public', 'styles.css'), 'utf8');
   assert.match(ui, /completed \? 'Abgeschlossen' : 'Anstehend'/);
@@ -278,15 +278,21 @@ test('Projektabschnitte verwenden kurze Statusüberschriften und beschriftete An
   assert.doesNotMatch(ui, /data-task-inline-status/);
   assert.doesNotMatch(ui, /\['Status', task\.status \|\| 'Offen'\]/);
   assert.match(ui, /<small>Erledigt am<\/small><span class="project-status-value">\$\{formatDate\(entry\.date\)\}<\/span>/);
-  assert.match(ui, /project-section-add[^>]+aria-label="Anstehenden Eintrag hinzufügen"[^>]*>\+ Eintrag<\/button>/);
-  assert.match(ui, /project-section-add[^>]+aria-label="Abgeschlossenen Arbeitsschritt hinzufügen"[^>]*>\+ Eintrag<\/button>/);
-  assert.match(ui, /project-section-add[^>]+data-new-item="\$\{collection\}"[^>]*>\+ \$\{config\.singular\}<\/button>/);
-  assert.match(ui, /project-section-add[^>]+data-upload-file>\+ Datei<\/button>/);
+  assert.match(html, /id="project-add-dialog"/);
+  for (const collection of ['tasks','entries','notes','shopping','materials','contacts','links','ideas','learnings','files']) {
+    assert.match(html, new RegExp(`data-project-add-choice="${collection}"`));
+  }
+  assert.match(ui, /function unifiedProjectView/);
+  assert.match(ui, /definitions\.filter\(\(\[, count\]\) => count > 0\)/);
+  assert.match(ui, /data-toggle-project-section/);
+  assert.match(ui, /data-open-project-add/);
+  assert.match(ui, /openProjectAddDialog/);
+  assert.doesNotMatch(ui, /data-tab=/);
   assert.match(css, /\.log-section-divider \{[^}]+flex:1;[^}]+color:var\(--muted\);/);
   assert.match(css, /\.log-section-divider h2[^}]+font-size:15px;[^}]+font-weight:750;/);
   assert.doesNotMatch(css, /\.log-section-divider::before \{ display:none; \}/);
-  assert.match(css, /\.project-section-add \{ min-height:36px;/);
-  assert.match(css, /\.project-section-add \{ min-height:44px;/);
+  assert.match(css, /\.project-unified-sections \{ display:grid;/);
+  assert.match(css, /\.project-add-grid \{ display:grid;/);
 });
 
 test('Projekte besitzen eine vollständige DIN-A4-Druckansicht', async () => {
@@ -297,7 +303,7 @@ test('Projekte besitzen eine vollständige DIN-A4-Druckansicht', async () => {
   for (const collection of ['tasks', 'entries']) {
     assert.match(ui, new RegExp(`project\\.${collection}`));
   }
-  for (const collection of ['notes', 'materials', 'contacts', 'links', 'ideas', 'learnings']) {
+  for (const collection of ['notes', 'shopping', 'materials', 'contacts', 'links', 'ideas', 'learnings']) {
     assert.match(ui, new RegExp(`\\['${collection}',`));
   }
   assert.match(ui, /project\[collection\]/);
@@ -340,7 +346,7 @@ test('Projektdateien sind zentral und an allen Inhaltsarten verfügbar', async (
   const dockerfile = await readFile(join(root, 'Dockerfile'), 'utf8');
   assert.match(html, /id="file-dialog"/);
   assert.match(html, /Maximal 50 MB/);
-  assert.match(ui, /\['files','Dateien'/);
+  assert.match(ui, /files:'Dateien'/);
   assert.match(ui, /function filesView/);
   assert.match(ui, /function attachmentStrip/);
   assert.match(ui, /data-file-jump/);

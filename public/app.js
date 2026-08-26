@@ -1,5 +1,5 @@
 const $ = (selector, root = document) => root.querySelector(selector);
-const state = { user: null, users: [], sessions: [], audit: [], tags: [], folders: [], todos:[], todosCompletedOpen:false, collapsedTodoGroups:{}, editingTodoId:null, todoRepeatTimer:null, iconLibrary:null, currentFolderId:null, projectStatusFilter:'all', server: null, system: null, storage:null, update:null, projects: [], current: null, activeTab: 'entries', activeSettings:'general', fileViewerId:null, visibleProjectFiles:50, activityObserver:null, timelineObserver:null, overviewGridObservers:[], projectSort: { field:'status', direction:'asc' }, archiveSort: { field:'createdAt', direction:'desc' }, projectSearch: { active:'', archived:'' }, projectTagFilter:{ active:{ ids:[], mode:'all' }, archived:{ ids:[], mode:'all' } }, projectDialogTagIds:[], projectTagDraftOpen:false, projectTagSearchOpen:false, collapsedProjectFolders:false, collapsedProjectStatusGroups:{ idea:false, active:false, paused:false, completed:false }, collapsedLogSections:{ tasks:false, entries:false } };
+const state = { user: null, users: [], sessions: [], audit: [], tags: [], folders: [], todos:[], todosCompletedOpen:false, collapsedTodoGroups:{}, editingTodoId:null, todoRepeatTimer:null, iconLibrary:null, currentFolderId:null, projectStatusFilter:'all', server: null, system: null, storage:null, update:null, projects: [], current: null, activeTab: 'entries', activeSettings:'general', fileViewerId:null, visibleProjectFiles:50, activityObserver:null, timelineObserver:null, overviewGridObservers:[], projectSort: { field:'status', direction:'asc' }, archiveSort: { field:'createdAt', direction:'desc' }, projectSearch: { active:'', archived:'' }, projectTagFilter:{ active:{ ids:[], mode:'all' }, archived:{ ids:[], mode:'all' } }, projectDialogTagIds:[], projectTagDraftOpen:false, projectTagSearchOpen:false, collapsedProjectFolders:false, collapsedProjectStatusGroups:{ idea:false, active:false, paused:false, completed:false }, collapsedLogSections:{ tasks:false, entries:false }, collapsedProjectSections:{} };
 let iconLibraryPromise = null;
 const api = async (path, options = {}) => {
   const method = (options.method || 'GET').toUpperCase();
@@ -294,7 +294,7 @@ const itemCount = (collection, count) => {
 };
 const regularProjectStatuses = ['idea','active','paused','completed'];
 const projectStatusLabels = { idea:'Idee', active:'Aktiv', paused:'Pausiert', completed:'Abgeschlossen', archived:'Archiviert', trashed:'Papierkorb' };
-const searchTypeLabels = { all:'Alle Bereiche', project:'Projekte', entries:'Logbuch', tasks:'Arbeitsschritte', materials:'Material', contacts:'Kontakte', links:'Links', ideas:'Ideen', learnings:'Erkenntnisse', notes:'Notizen', files:'Dateien' };
+const searchTypeLabels = { all:'Alle Bereiche', project:'Projekte', entries:'Logbuch', tasks:'Arbeitsschritte', shopping:'Einkaufsliste', materials:'Material', contacts:'Kontakte', links:'Links', ideas:'Ideen', learnings:'Erkenntnisse', notes:'Notizen', files:'Dateien' };
 const searchSortLabels = { relevance:'Relevanz', newest:'Neueste zuerst', oldest:'Älteste zuerst', project:'Projektname', title:'Titel' };
 const projectPriority = project => ['Hoch','Mittel','Gering'].includes(project?.priority) ? project.priority : 'Mittel';
 const projectPriorityMarkup = project => `<span class="project-priority ${projectPriority(project).toLocaleLowerCase('de')}">${escapeHtml(projectPriority(project))}</span>`;
@@ -335,6 +335,17 @@ const sections = {
     { name:'description', label:'Beschreibung', type:'textarea', placeholder:'Zusätzliche Informationen, Anforderungen oder offene Fragen …' },
     { name:'priority', label:'Priorität', type:'select', options:['Normal','Hoch','Niedrig'] },
     { name:'dueDate', label:'Fällig am', type:'date' }
+  ]},
+  shopping: { singular:'Gegenstand', plural:'Gegenstände', emptyText:'Sammle alles, was du für dieses Projekt noch besorgen möchtest.', fields:[
+    { name:'name', label:'Gegenstand', required:true, placeholder:'z. B. Edelstahlschrauben M4 × 20' },
+    { name:'properties', label:'Eigenschaft', placeholder:'z. B. Senkkopf, Innensechskant, A2' },
+    { name:'quantity', label:'Anzahl', placeholder:'z. B. 12 Stück' },
+    { name:'retailer', label:'Händler', placeholder:'z. B. Eisenwaren Müller' },
+    { name:'url', label:'Link', type:'url', placeholder:'https://…' },
+    { name:'status', label:'Status', type:'select', options:['Benötigt','Bestellt','Gekauft'] },
+    { name:'priority', label:'Priorität', type:'select', options:['Normal','Hoch','Niedrig'] },
+    { name:'unitPrice', label:'Preis', placeholder:'z. B. 8,90 €' },
+    { name:'notes', label:'Notizen', type:'textarea', placeholder:'Alternative, Lieferhinweise oder weitere Angaben …' }
   ]},
   materials: { singular:'Material', plural:'Materialien', emptyText:'Erfasse benötigte, mögliche oder bereits gekaufte Materialien.', fields:[
     { name:'name', label:'Bezeichnung', required:true, placeholder:'z. B. Aluminiumprofil 20 × 20 mm' },
@@ -1743,7 +1754,7 @@ const settingsSections = [
 const settingRow = (title, description, status = 'Geplant') => `<div class="setting-row"><div><strong>${title}</strong><p>${description}</p></div><span class="setting-status">${status}</span></div>`;
 const settingLink = (title, description, href) => `<a class="setting-row setting-link" href="${href}"><div><strong>${title}</strong><p>${description}</p></div><span aria-hidden="true">→</span></a>`;
 const userRoleLabel = role => ({ admin:'Administrator', editor:'Bearbeiter', viewer:'Leser' }[role] || role);
-const backupCollections = ['entries','tasks','materials','contacts','links','ideas','learnings','notes'];
+const backupCollections = ['entries','tasks','shopping','materials','contacts','links','ideas','learnings','notes'];
 
 function tagSettingsContent() {
   const tags = [...state.tags].sort((a,b) => a.name.localeCompare(b.name, 'de', { sensitivity:'base' }));
@@ -2007,7 +2018,7 @@ function validateProjectBackup(manifest) {
   for (const project of manifest.projects) {
     if (!project?.id || !project?.title || !Array.isArray(project.entries)) throw new Error('Das Backup enthält unvollständige Projektdaten');
     for (const collection of backupCollections) {
-      if (['tasks','learnings','notes'].includes(collection) && !Array.isArray(project[collection])) project[collection] = [];
+      if (['tasks','shopping','learnings','notes'].includes(collection) && !Array.isArray(project[collection])) project[collection] = [];
       if (!Array.isArray(project[collection])) throw new Error(`Der Bereich „${collection}“ fehlt im Backup`);
     }
     if (!Array.isArray(project.files)) project.files = [];
@@ -2164,8 +2175,8 @@ function mobileEntryControls(entry) {
   return `<div class="mobile-workstep-actions">${reorderHandle('entries', entry.id)}${mobileActionMenu('Arbeitsschrittaktionen', items)}</div>`;
 }
 
-const attachmentCollectionLabels = { entries:'Logbucheintrag', tasks:'Arbeitsschritt', materials:'Material', contacts:'Kontakt', links:'Link', ideas:'Idee', learnings:'Erkenntnis', notes:'Notiz' };
-const attachmentTabByCollection = { entries:'entries', tasks:'entries', materials:'materials', contacts:'contacts', links:'links', ideas:'ideas', learnings:'learnings', notes:'notes' };
+const attachmentCollectionLabels = { entries:'Logbucheintrag', tasks:'Arbeitsschritt', shopping:'Einkaufsgegenstand', materials:'Material', contacts:'Kontakt', links:'Link', ideas:'Idee', learnings:'Erkenntnis', notes:'Notiz' };
+const attachmentTabByCollection = { entries:'entries', tasks:'entries', shopping:'shopping', materials:'materials', contacts:'contacts', links:'links', ideas:'ideas', learnings:'learnings', notes:'notes' };
 
 function attachmentEntity(collection, itemId, project = state.current) {
   const item = project?.[collection]?.find(candidate => candidate.id === itemId);
@@ -2197,7 +2208,7 @@ function attachmentStrip(collection, itemId) {
       ? `<button class="attachment-row attachment-view" type="button" data-view-file="${escapeHtml(file.id)}" title="${escapeHtml(file.originalName)}">${content}</button>`
       : `<a class="attachment-row" href="${attachmentContentUrl(file, true)}" title="${escapeHtml(file.originalName)}">${content}</a>`;
   }).join('');
-  const add = mayEditProjects() ? `<button class="attachment-add" type="button" data-upload-file="${collection}:${escapeHtml(itemId)}"><span aria-hidden="true">+</span> Datei anhängen</button>` : '';
+  const add = mayEditProjects() ? `<button class="attachment-add" type="button" data-upload-file="${collection}:${escapeHtml(itemId)}">Datei anhängen</button>` : '';
   if (!files.length && !add) return '';
   return `<div class="entity-attachments" aria-label="Dateianhänge">${links}${add}</div>`;
 }
@@ -2205,7 +2216,6 @@ function attachmentStrip(collection, itemId) {
 function filesView(project) {
   const files = project.files || [];
   const visibleFiles = files.slice(0, state.visibleProjectFiles);
-  const addButton = mayEditProjects() ? '<button class="button primary compact project-section-add" data-upload-file>+ Datei</button>' : '';
   const cards = visibleFiles.map(file => {
     const association = file.association ? attachmentEntity(file.association.collection, file.association.itemId, project) : null;
     const image = String(file.mimeType || '').startsWith('image/');
@@ -2218,7 +2228,7 @@ function filesView(project) {
   }).join('');
   const remaining = files.length - visibleFiles.length;
   const more = remaining > 0 ? `<button class="button secondary files-load-more" type="button" data-load-more-files>Weitere ${Math.min(50, remaining)} anzeigen <small>(${remaining} übrig)</small></button>` : '';
-  return `<section class="project-item-section files-section"><div class="section-head"><div><h2>${files.length} ${files.length === 1 ? 'Datei' : 'Dateien'}</h2><p>Alle Projektdateien – mit und ohne Zuordnung zu einem Eintrag.</p></div>${addButton}</div>${files.length ? `<div class="file-grid">${cards}</div>${more}` : '<div class="empty"><strong>Noch keine Dateien vorhanden.</strong>Lade eine Datei hier oder direkt an einem Projektelement hoch.</div>'}</section>`;
+  return `<div class="file-grid">${cards}</div>${more}`;
 }
 
 function entriesView(project) {
@@ -2238,6 +2248,10 @@ function itemCard(collection, item) {
   const title = item.name || item.title || config.singular;
   let meta = '';
   let description = '';
+  if (collection === 'shopping') {
+    meta = [item.quantity, item.retailer, item.status, item.priority && item.priority !== 'Normal' ? `Priorität ${item.priority}` : '', item.unitPrice].filter(Boolean).map(escapeHtml).join(' · ');
+    description = item.notes ? escapeHtml(item.notes) : '';
+  }
   if (collection === 'materials') meta = [item.quantity, item.status, item.price].filter(Boolean).map(escapeHtml).join(' · ');
   if (collection === 'contacts') meta = [item.role, item.company, item.email, item.phone].filter(Boolean).map(escapeHtml).join(' · ');
   if (collection === 'links') description = item.notes ? escapeHtml(item.notes) : '';
@@ -2250,12 +2264,8 @@ function itemCard(collection, item) {
 }
 
 function itemsView(project, collection) {
-  const config = sections[collection];
   const items = orderedItems(project[collection] || []);
-  const heading = itemCount(collection, items.length);
-  const addButton = mayEditProjects() ? `<button class="button primary compact project-section-add" data-new-item="${collection}">+ ${config.singular}</button>` : '';
-  const content = items.length ? `<div class="item-grid" data-reorder-list="${collection}">${items.map(item => itemCard(collection, item)).join('')}</div>` : tabEmpty(config);
-  return `<section class="project-item-section"><div class="section-head"><h2>${heading}</h2>${addButton}</div>${content}</section>`;
+  return `<div class="item-grid" data-reorder-list="${collection}">${items.map(item => itemCard(collection, item)).join('')}</div>`;
 }
 
 function taskCard(task) {
@@ -2273,9 +2283,36 @@ function diaryView(project) {
   const taskHeading = workStepCount(tasks.length);
   const entryHeading = workStepCount(entries.length, true);
   const sectionToggle = (section, label) => `<div class="project-status-divider log-section-divider"><button type="button" data-toggle-log-section="${section}" aria-expanded="${!state.collapsedLogSections[section]}" aria-label="${label} ${state.collapsedLogSections[section] ? 'ausklappen' : 'einklappen'}" title="${state.collapsedLogSections[section] ? 'Ausklappen' : 'Einklappen'}"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="m6 8 4 4 4-4"></path></svg></button><h2>${escapeHtml(label)}</h2></div>`;
-  const taskButton = mayEditProjects() ? '<button class="button primary compact project-section-add" data-new-item="tasks" aria-label="Anstehenden Eintrag hinzufügen" title="Anstehenden Eintrag hinzufügen">+ Eintrag</button>' : '';
-  const entryButton = mayEditProjects() ? '<button class="button primary compact project-section-add" data-new-entry aria-label="Abgeschlossenen Arbeitsschritt hinzufügen" title="Abgeschlossenen Arbeitsschritt hinzufügen">+ Eintrag</button>' : '';
-  return `<section class="next-steps-section"><div class="section-head log-section-head">${sectionToggle('tasks', taskHeading)}<div class="section-head-actions">${taskButton}</div></div><div data-log-section-content="tasks"${state.collapsedLogSections.tasks ? ' hidden' : ''}>${tasks.length ? `<div class="next-steps-list" data-reorder-list="tasks">${tasks.map(taskCard).join('')}</div>` : '<div class="empty compact-empty">Füge einen Arbeitsschritt hinzu, wenn klar ist, wie es weitergeht.</div>'}</div></section><section class="diary-section"><div class="section-head log-section-head">${sectionToggle('entries', entryHeading)}<div class="section-head-actions">${entryButton}</div></div><div data-log-section-content="entries"${state.collapsedLogSections.entries ? ' hidden' : ''}>${entriesView(project)}</div></section>`;
+  const tasksSection = tasks.length ? `<section class="next-steps-section"><div class="section-head log-section-head">${sectionToggle('tasks', taskHeading)}</div><div data-log-section-content="tasks"${state.collapsedLogSections.tasks ? ' hidden' : ''}><div class="next-steps-list" data-reorder-list="tasks">${tasks.map(taskCard).join('')}</div></div></section>` : '';
+  const entriesSection = entries.length ? `<section class="diary-section"><div class="section-head log-section-head">${sectionToggle('entries', entryHeading)}</div><div data-log-section-content="entries"${state.collapsedLogSections.entries ? ' hidden' : ''}>${entriesView(project)}</div></section>` : '';
+  return `${tasksSection}${entriesSection}`;
+}
+
+const projectSectionLabels = { logbook:'Logbuch', notes:'Notizen', shopping:'Einkaufsliste', materials:'Material', contacts:'Kontakte', links:'Links', ideas:'Ideen', learnings:'Erkenntnisse', files:'Dateien' };
+
+function unifiedProjectSection(id, count, content) {
+  const collapsed = state.collapsedProjectSections[id] === true;
+  const label = projectSectionLabels[id] || id;
+  return `<section class="project-unified-section" data-project-section="${id}"><div class="unified-section-head"><button type="button" data-toggle-project-section="${id}" aria-expanded="${!collapsed}" aria-label="${escapeHtml(label)} ${collapsed ? 'ausklappen' : 'einklappen'}"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="m6 8 4 4 4-4"></path></svg><span><strong>${escapeHtml(label)}</strong><small>${count}</small></span></button></div><div class="project-unified-content" data-project-section-content="${id}"${collapsed ? ' hidden' : ''}>${content}</div></section>`;
+}
+
+function unifiedProjectView(project) {
+  const openTasks = (project.tasks || []).filter(task => task.status !== 'Erledigt');
+  const logCount = openTasks.length + (project.entries || []).length;
+  const definitions = [
+    ['logbook', logCount, () => diaryView(project)],
+    ['notes', (project.notes || []).length, () => itemsView(project, 'notes')],
+    ['shopping', (project.shopping || []).length, () => itemsView(project, 'shopping')],
+    ['materials', (project.materials || []).length, () => itemsView(project, 'materials')],
+    ['contacts', (project.contacts || []).length, () => itemsView(project, 'contacts')],
+    ['links', (project.links || []).length, () => itemsView(project, 'links')],
+    ['ideas', (project.ideas || []).length, () => itemsView(project, 'ideas')],
+    ['learnings', (project.learnings || []).length, () => itemsView(project, 'learnings')],
+    ['files', (project.files || []).length, () => filesView(project)],
+  ];
+  const visible = definitions.filter(([, count]) => count > 0).map(([id, count, render]) => unifiedProjectSection(id, count, render())).join('');
+  if (visible) return `<div class="project-unified-sections">${visible}</div>`;
+  return `<div class="empty project-content-empty"><strong>Noch keine Projektinhalte vorhanden.</strong>${mayEditProjects() ? 'Nutze den Plus-Button, um den ersten Eintrag anzulegen.' : 'Sobald Inhalte angelegt wurden, erscheinen sie hier.'}</div>`;
 }
 
 const printDate = value => value ? formatDate(String(value).slice(0, 10)) : 'ohne';
@@ -2313,6 +2350,14 @@ function printEntryRecord(entry, sourceTask = null) {
 
 function printItemRecord(collection, item) {
   if (collection === 'notes') return printRecord(item.title || 'Notiz', [], printText(item.description));
+  if (collection === 'shopping') return printRecord(item.name || 'Einkaufsgegenstand', [
+    ['Eigenschaft', item.properties || 'ohne'],
+    ['Anzahl', item.quantity || 'ohne'],
+    ['Händler', item.retailer || 'ohne'],
+    ['Status', item.status || 'Benötigt'],
+    ['Priorität', item.priority || 'Normal'],
+    ['Preis', item.unitPrice || 'ohne'],
+  ], `${printText(item.notes)}${printLink(item.url)}`);
   if (collection === 'materials') return printRecord(item.name || 'Material', [
     ['Menge', item.quantity || 'ohne'],
     ['Status', item.status || 'ohne'],
@@ -2375,6 +2420,7 @@ function projectPrintMarkup(project, includeFiles = false) {
   const logbook = logbookContents ? `<section class="project-print-section project-print-logbook"><div class="project-print-section-head"><h2>Logbuch</h2><span>${tasks.length + entries.length}</span></div>${logbookContents}</section>` : '';
   const itemSections = [
     ['notes', 'Notizen'],
+    ['shopping', 'Einkaufsliste'],
     ['materials', 'Material'],
     ['contacts', 'Kontakte'],
     ['links', 'Links'],
@@ -2447,29 +2493,21 @@ async function renderProject(id) {
   const p = state.current;
   if (p.status === 'trashed') { location.href = '/#/trash'; return; }
   setProjectsMenu(true, p.status);
-  if (state.activeTab === 'tasks') state.activeTab = 'entries';
-  const openTaskCount = (p.tasks || []).filter(task => task.status !== 'Erledigt').length;
-  const tabs = [
-    ['entries','Logbuch',`${openTaskCount}/${(p.entries || []).length}`],
-    ['notes','Notizen',(p.notes || []).length],
-    ['materials','Material',(p.materials || []).length],
-    ['contacts','Kontakte',(p.contacts || []).length],
-    ['links','Links',(p.links || []).length],
-    ['ideas','Ideen',(p.ideas || []).length],
-    ['learnings','Erkenntnisse',(p.learnings || []).length],
-    ['files','Dateien',(p.files || []).length]
-  ];
-  const content = state.activeTab === 'entries' ? diaryView(p) : state.activeTab === 'files' ? filesView(p) : itemsView(p, state.activeTab);
+  const content = unifiedProjectView(p);
   const breadcrumbs = p.status === 'archived' ? '<nav class="folder-breadcrumbs" aria-label="Projektpfad"><a href="/#/archive">Archiviert</a></nav>' : folderBreadcrumbs(p.folderId || null);
-  const tabButtons = tabs.map(([id,label,count]) => `<button class="tab ${state.activeTab===id?'active':''}" data-tab="${id}"><span>${label}</span><span class="tab-count">(${count})</span></button>`).join('');
-  const mobileTabMenu = `<details class="action-menu mobile-project-nav"><summary aria-label="Projektbereich wählen" title="Projektbereich wählen">☰</summary><div class="action-menu-panel">${tabs.map(([id,label,count]) => `<button class="menu-item${state.activeTab===id?' active':''}" type="button" data-tab="${id}"><span>${label}</span><small>(${count})</small></button>`).join('')}</div></details>`;
-  $('#main').innerHTML = `<div class="project-page-breadcrumbs">${breadcrumbs}</div><div class="project-page-head"><section class="project-hero"><div class="project-hero-layout"><div class="project-hero-main"><div class="project-heading-row"><span class="project-hero-icon" aria-hidden="true">${iconSvg(projectIconName(p))}</span><div class="project-heading-content"><div class="project-title-line"><h1>${escapeHtml(p.title)}</h1></div><p class="project-description">${escapeHtml(p.description || 'Noch keine Projektbeschreibung hinterlegt.')}</p></div></div></div><aside class="project-hero-status mobile-collapsed" data-mobile-status-panel aria-label="Projektstatus"><div class="project-hero-status-head"><span class="desktop-status-label">Projektdaten</span><div class="mobile-project-status-controls">${mobileTabMenu}${mobileStatusToggle('Statusdetails')}</div><div class="project-hero-actions">${projectExportButton(p)}${projectCardActions(p)}</div></div><div class="project-hero-facts" data-mobile-status-content><div class="project-hero-fact"><small>Status</small>${projectStatusControl(p)}</div><div class="project-hero-fact"><small>Priorität</small>${projectPriorityControl(p)}</div><div class="project-hero-fact"><small>Start</small><span class="project-status-value">${p.createdAt ? formatDate(p.createdAt) : 'ohne'}</span></div><div class="project-hero-fact"><small>Fällig</small><span class="project-status-value">${p.dueDate ? formatDate(p.dueDate) : 'ohne'}</span></div><div class="project-hero-fact project-hero-tags"><small>Tags</small>${tagChips(p.tagIds, { limit:20, archived:p.status === 'archived' }) || '<span class="project-status-empty">Keine</span>'}</div></div></aside></div><div class="project-subnav"><nav class="tabs" aria-label="Projektbereiche">${tabButtons}</nav></div></section></div><section class="project-page-content">${content}</section>`;
-  const newEntryButton = $('[data-new-entry]');
-  if (newEntryButton) newEntryButton.onclick = () => openEntryDialog(p.id);
-  const newItemButton = $('[data-new-item]');
-  if (newItemButton) newItemButton.onclick = () => openItemDialog(p.id, newItemButton.dataset.newItem);
+  const addButton = mayEditProjects() ? '<button class="button primary compact project-add-button" type="button" data-open-project-add aria-label="Projektinhalt hinzufügen"><span aria-hidden="true">+</span><b>Hinzufügen</b></button>' : '';
+  $('#main').innerHTML = `<div class="project-page-breadcrumbs">${breadcrumbs}</div><div class="project-page-head"><section class="project-hero"><div class="project-hero-layout"><div class="project-hero-main"><div class="project-heading-row"><span class="project-hero-icon" aria-hidden="true">${iconSvg(projectIconName(p))}</span><div class="project-heading-content"><div class="project-title-line"><h1>${escapeHtml(p.title)}</h1></div><p class="project-description">${escapeHtml(p.description || 'Noch keine Projektbeschreibung hinterlegt.')}</p></div></div></div><aside class="project-hero-status mobile-collapsed" data-mobile-status-panel aria-label="Projektstatus"><div class="project-hero-status-head"><span class="desktop-status-label">Projektdaten</span><div class="mobile-project-status-controls">${mobileStatusToggle('Statusdetails')}</div><div class="project-hero-actions">${projectExportButton(p)}${projectCardActions(p)}</div></div><div class="project-hero-facts" data-mobile-status-content><div class="project-hero-fact"><small>Status</small>${projectStatusControl(p)}</div><div class="project-hero-fact"><small>Priorität</small>${projectPriorityControl(p)}</div><div class="project-hero-fact"><small>Start</small><span class="project-status-value">${p.createdAt ? formatDate(p.createdAt) : 'ohne'}</span></div><div class="project-hero-fact"><small>Fällig</small><span class="project-status-value">${p.dueDate ? formatDate(p.dueDate) : 'ohne'}</span></div><div class="project-hero-fact project-hero-tags"><small>Tags</small>${tagChips(p.tagIds, { limit:20, archived:p.status === 'archived' }) || '<span class="project-status-empty">Keine</span>'}</div></div></aside></div></section></div><section class="project-page-content">${addButton ? `<div class="project-content-toolbar">${addButton}</div>` : ''}${content}</section>`;
+  document.querySelectorAll('[data-open-project-add]').forEach(button => button.onclick = () => openProjectAddDialog(p.id));
   bindMobileProjectControls();
-  document.querySelectorAll('[data-tab]').forEach(button => button.onclick = () => { state.activeTab = button.dataset.tab; renderProject(p.id); });
+  document.querySelectorAll('[data-toggle-project-section]').forEach(button => button.onclick = () => {
+    const section = button.dataset.toggleProjectSection;
+    state.collapsedProjectSections[section] = !state.collapsedProjectSections[section];
+    const expanded = !state.collapsedProjectSections[section];
+    button.setAttribute('aria-expanded', String(expanded));
+    button.setAttribute('aria-label', `${projectSectionLabels[section] || section} ${expanded ? 'einklappen' : 'ausklappen'}`);
+    const sectionContent = document.querySelector(`[data-project-section-content="${section}"]`);
+    if (sectionContent) sectionContent.hidden = !expanded;
+  });
   document.querySelectorAll('[data-toggle-log-section]').forEach(button => button.onclick = () => {
     const section = button.dataset.toggleLogSection;
     state.collapsedLogSections[section] = !state.collapsedLogSections[section];
@@ -2591,8 +2629,11 @@ async function route() {
     else if (parts[0] === 'projects' && parts[1]) {
       setNav('projects');
       const requestedTab = routeQuery.get('tab');
-      if (['entries','materials','contacts','links','ideas','learnings','notes','files'].includes(requestedTab)) state.activeTab = requestedTab;
-      if (directEntry) state.activeTab = 'entries';
+      if (['entries','tasks','shopping','materials','contacts','links','ideas','learnings','notes','files'].includes(requestedTab)) {
+        const requestedSection = ['entries','tasks'].includes(requestedTab) ? 'logbook' : requestedTab;
+        state.collapsedProjectSections[requestedSection] = false;
+      }
+      if (directEntry) state.collapsedProjectSections.logbook = false;
       await renderProject(parts[1]);
       if (directEntry) document.getElementById(pathParts[3])?.scrollIntoView({ block:'center' });
       const searchItem = routeQuery.get('item');
@@ -2796,6 +2837,13 @@ function showFormDialog(dialog) {
       .find(field => !field.closest('[hidden], .hidden') && field.getClientRects().length);
     firstField?.focus();
   });
+}
+
+function openProjectAddDialog(projectId) {
+  const dialog = $('#project-add-dialog');
+  dialog.querySelector('form').elements.projectId.value = projectId;
+  showFormDialog(dialog);
+  requestAnimationFrame(() => dialog.querySelector('[data-project-add-choice]')?.focus());
 }
 
 function openProjectDialog(project = null, { status = null } = {}) {
@@ -3571,7 +3619,8 @@ function bindFileActions() {
   });
   document.querySelectorAll('[data-file-jump]').forEach(button => button.onclick = async () => {
     const [collection, itemId] = button.dataset.fileJump.split(':');
-    state.activeTab = attachmentTabByCollection[collection] || collection;
+    const section = ['entries','tasks'].includes(collection) ? 'logbook' : attachmentTabByCollection[collection] || collection;
+    state.collapsedProjectSections[section] = false;
     await renderProject(state.current.id);
     requestAnimationFrame(() => {
       const target = document.getElementById(itemId);
@@ -4008,6 +4057,16 @@ function bindReordering() {
   });
 }
 enhanceDateInputs();
+
+document.querySelectorAll('[data-project-add-choice]').forEach(button => button.addEventListener('click', () => {
+  const dialog = $('#project-add-dialog');
+  const projectId = dialog.querySelector('form').elements.projectId.value;
+  const choice = button.dataset.projectAddChoice;
+  dialog.close();
+  if (choice === 'entries') openEntryDialog(projectId);
+  else if (choice === 'files') openFileDialog(projectId);
+  else openItemDialog(projectId, choice);
+}));
 
 document.querySelectorAll('dialog form').forEach(form => form.addEventListener('keydown', event => {
   if (event.key !== 'Enter' || event.repeat || event.isComposing) return;

@@ -6,7 +6,7 @@ namespace Logbuch;
 
 final class ProjectStore
 {
-    public const COLLECTIONS = ['entries', 'tasks', 'materials', 'contacts', 'links', 'ideas', 'learnings', 'notes'];
+    public const COLLECTIONS = ['entries', 'tasks', 'shopping', 'materials', 'contacts', 'links', 'ideas', 'learnings', 'notes'];
     public const STATUSES = ['idea', 'active', 'paused', 'completed', 'archived', 'trashed'];
     public const MAX_ATTACHMENT_BYTES = 50 * 1024 * 1024;
 
@@ -555,6 +555,7 @@ final class ProjectStore
         }
         $singular = [
             'tasks' => 'task',
+            'shopping' => 'purchase',
             'materials' => 'material',
             'contacts' => 'contact',
             'links' => 'link',
@@ -816,6 +817,7 @@ final class ProjectStore
         return [
             'entries' => 'Logbucheintrag',
             'tasks' => 'Arbeitsschritt',
+            'shopping' => 'Einkaufsgegenstand',
             'materials' => 'Material',
             'contacts' => 'Kontakt',
             'links' => 'Link',
@@ -830,6 +832,7 @@ final class ProjectStore
         $fields = [
             'entries' => ['body', 'nextStep'],
             'tasks' => ['description', 'status', 'priority'],
+            'shopping' => ['properties', 'quantity', 'retailer', 'status', 'priority', 'unitPrice', 'notes', 'url'],
             'materials' => ['quantity', 'status', 'price', 'url', 'properties'],
             'contacts' => ['role', 'company', 'email', 'phone', 'notes'],
             'links' => ['url', 'notes'],
@@ -913,6 +916,7 @@ final class ProjectStore
     {
         $definitions = [
             'tasks' => ['title' => 160, 'description' => 10000, 'status' => 20, 'priority' => 20, 'dueDate' => 10],
+            'shopping' => ['name' => 160, 'properties' => 10000, 'quantity' => 100, 'retailer' => 160, 'url' => 2048, 'status' => 20, 'priority' => 20, 'unitPrice' => 100, 'notes' => 10000],
             'materials' => ['name' => 160, 'quantity' => 100, 'status' => 40, 'price' => 100, 'url' => 2048, 'properties' => 10000],
             'contacts' => ['name' => 160, 'role' => 160, 'company' => 160, 'email' => 254, 'phone' => 100, 'notes' => 10000],
             'links' => ['title' => 160, 'url' => 2048, 'notes' => 10000],
@@ -935,7 +939,7 @@ final class ProjectStore
             $result[$field] = mb_substr(trim((string) ($input[$field] ?? '')), 0, $maxLength);
         }
 
-        $required = in_array($collection, ['materials', 'contacts'], true) ? 'name' : 'title';
+        $required = in_array($collection, ['shopping', 'materials', 'contacts'], true) ? 'name' : 'title';
         if ((!$partial || array_key_exists($required, $input)) && ($result[$required] ?? '') === '') {
             throw new HttpError(422, 'Eine Bezeichnung ist erforderlich.');
         }
@@ -958,6 +962,18 @@ final class ProjectStore
         }
         if ($collection === 'ideas' && isset($result['status']) && !in_array($result['status'], ['Offen', 'Prüfen', 'Umgesetzt', 'Verworfen'], true)) {
             throw new HttpError(422, 'Ungültiger Ideenstatus.');
+        }
+        if ($collection === 'shopping') {
+            if (!$partial) {
+                $result['status'] ??= 'Benötigt';
+                $result['priority'] ??= 'Normal';
+            }
+            if (isset($result['status']) && !in_array($result['status'], ['Benötigt', 'Bestellt', 'Gekauft'], true)) {
+                throw new HttpError(422, 'Ungültiger Einkaufsstatus.');
+            }
+            if (isset($result['priority']) && !in_array($result['priority'], ['Normal', 'Hoch', 'Niedrig'], true)) {
+                throw new HttpError(422, 'Ungültige Einkaufspriorität.');
+            }
         }
         if (isset($result['url']) && $result['url'] !== '') {
             $scheme = strtolower((string) parse_url($result['url'], PHP_URL_SCHEME));

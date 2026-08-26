@@ -361,7 +361,7 @@ final class Application
                 }
             }
 
-            if (preg_match('#^/api/projects/([^/]+)/(entries|tasks|materials|contacts|links|ideas|learnings|notes)/reorder$#', $path, $match) && $method === 'POST') {
+            if (preg_match('#^/api/projects/([^/]+)/(entries|tasks|shopping|materials|contacts|links|ideas|learnings|notes)/reorder$#', $path, $match) && $method === 'POST') {
                 $projectId = rawurldecode($match[1]);
                 $collection = $match[2];
                 $this->requireProjectEdit($user, $projectId);
@@ -389,7 +389,7 @@ final class Application
                 $this->audit($user['id'], 'log.reopened', $projectId . ' · ' . $entryId, 'taskId=' . $task['id']);
                 $this->json(200, $task);
             }
-            if (preg_match('#^/api/projects/([^/]+)/(entries|tasks|materials|contacts|links|ideas|learnings|notes)$#', $path, $match) && $method === 'POST') {
+            if (preg_match('#^/api/projects/([^/]+)/(entries|tasks|shopping|materials|contacts|links|ideas|learnings|notes)$#', $path, $match) && $method === 'POST') {
                 $projectId = rawurldecode($match[1]);
                 $collection = $match[2];
                 $this->requireProjectEdit($user, $projectId);
@@ -399,7 +399,7 @@ final class Application
                 }
                 $this->json(201, $item);
             }
-            if (preg_match('#^/api/projects/([^/]+)/(entries|tasks|materials|contacts|links|ideas|learnings|notes)/([^/]+)$#', $path, $match)) {
+            if (preg_match('#^/api/projects/([^/]+)/(entries|tasks|shopping|materials|contacts|links|ideas|learnings|notes)/([^/]+)$#', $path, $match)) {
                 $projectId = rawurldecode($match[1]);
                 $collection = $match[2];
                 $itemId = rawurldecode($match[3]);

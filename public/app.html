@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#f6f7f9">
   <title>Logbuch</title>
   <link rel="icon" href="/favicon.svg?v=20260824-1" type="image/svg+xml">
-  <link rel="stylesheet" href="/styles.css?v=20260824-044">
+  <link rel="stylesheet" href="/styles.css?v=20260826-006">
 </head>
 <body>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
@@ -139,6 +139,30 @@
     </form>
   </dialog>
 
+  <dialog id="project-add-dialog" class="project-add-dialog">
+    <form method="dialog">
+      <input type="hidden" name="projectId">
+      <div class="dialog-head"><div><h2>Zum Projekt hinzufügen</h2><p class="dialog-copy">Wähle aus, welchen Inhalt du anlegen möchtest.</p></div><button class="icon-button" type="button" value="cancel" aria-label="Schließen">×</button></div>
+      <div class="project-add-grid">
+        <section class="project-add-logbook" aria-labelledby="project-add-logbook-title">
+          <div class="project-add-logbook-head"><strong id="project-add-logbook-title">Logbuch</strong><small>Arbeit planen oder erledigten Fortschritt festhalten</small></div>
+          <div class="project-add-logbook-actions">
+            <button type="button" data-project-add-choice="tasks"><strong>Anstehend</strong><small>Einen Arbeitsschritt planen</small></button>
+            <button type="button" data-project-add-choice="entries"><strong>Erledigt</strong><small>Abgeschlossene Arbeit eintragen</small></button>
+          </div>
+        </section>
+        <button type="button" data-project-add-choice="notes"><strong>Notiz</strong><small>Informationen griffbereit halten</small></button>
+        <button type="button" data-project-add-choice="shopping"><strong>Einkaufsgegenstand</strong><small>Etwas auf die Einkaufsliste setzen</small></button>
+        <button type="button" data-project-add-choice="materials"><strong>Material</strong><small>Verwendetes Material dokumentieren</small></button>
+        <button type="button" data-project-add-choice="contacts"><strong>Kontakt</strong><small>Eine beteiligte Person erfassen</small></button>
+        <button type="button" data-project-add-choice="links"><strong>Link</strong><small>Eine hilfreiche Webseite speichern</small></button>
+        <button type="button" data-project-add-choice="ideas"><strong>Idee</strong><small>Einen Einfall oder eine Variante sammeln</small></button>
+        <button type="button" data-project-add-choice="learnings"><strong>Erkenntnis</strong><small>Gelerntes für später festhalten</small></button>
+        <button type="button" data-project-add-choice="files"><strong>Datei</strong><small>Ein Bild oder Dokument hochladen</small></button>
+      </div>
+    </form>
+  </dialog>
+
   <dialog id="item-dialog">
     <form id="item-form" method="dialog">
       <input type="hidden" name="projectId">
@@ -256,6 +280,6 @@
 
   <script src="/backup-format.js?v=20260823-142" defer></script>
   <script src="/update-monitor.js?v=20260822-001" defer></script>
-  <script src="/app.js?v=20260824-044" defer></script>
+  <script src="/app.js?v=20260826-005" defer></script>
 </body>
 </html>
