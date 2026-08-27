@@ -1928,9 +1928,12 @@ async function loadSystemStatus() {
 }
 
 function updateUpdateBadge() {
-  const badge = $('#update-badge');
-  if (!badge) return;
-  badge.hidden = !state.update?.available;
+  const settingsBadge = $('#update-badge');
+  const systemBadge = $('#system-update-badge');
+  const menuOpen = $('#settings-toggle')?.getAttribute('aria-expanded') === 'true';
+  const available = Boolean(state.update?.available);
+  if (settingsBadge) settingsBadge.hidden = !available || menuOpen;
+  if (systemBadge) systemBadge.hidden = !available || !menuOpen;
 }
 
 async function loadUpdateStatus(force = false) {
@@ -2561,11 +2564,9 @@ async function renderProject(id) {
 function setSettingsMenu(open) {
   const toggle = $('#settings-toggle');
   const subnav = $('#settings-subnav');
-  const badge = $('#update-badge');
-  const badgeTarget = open ? $('[data-settings-route="system"]') : toggle;
-  if (badge && badgeTarget && badge.parentElement !== badgeTarget) badgeTarget.append(badge);
   toggle.setAttribute('aria-expanded', String(open));
   subnav.hidden = !open;
+  updateUpdateBadge();
 }
 
 function setProjectsMenu(open, activeStatus = '') {

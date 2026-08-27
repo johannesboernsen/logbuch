@@ -49,9 +49,10 @@ test('Der Update-Hinweis folgt dem geöffneten Einstellungsmenü bis System', as
   const html = await readFile(join(root, 'public', 'app.html'), 'utf8');
   const ui = await readFile(join(root, 'public', 'app.js'), 'utf8');
   const css = await readFile(join(root, 'public', 'styles.css'), 'utf8');
-  assert.match(html, /id="settings-toggle"[\s\S]+id="update-badge"[\s\S]+data-settings-route="system"/);
-  assert.match(ui, /const badgeTarget = open \? \$\('\[data-settings-route="system"\]'\) : toggle/);
-  assert.match(ui, /badgeTarget\.append\(badge\)/);
+  assert.match(html, /id="settings-toggle"[\s\S]+id="update-badge"[\s\S]+data-settings-route="system"[\s\S]+id="system-update-badge"/);
+  assert.match(ui, /settingsBadge\.hidden = !available \|\| menuOpen/);
+  assert.match(ui, /systemBadge\.hidden = !available \|\| !menuOpen/);
+  assert.match(ui, /subnav\.hidden = !open;\s+updateUpdateBadge\(\)/);
   assert.match(css, /\.settings-toggle \{[^}]+padding-right:8px;[^}]+gap:10px;/);
   assert.match(css, /\.update-nav-badge \{[^}]+flex:none;/);
   assert.match(css, /\.settings-subnav \.update-nav-badge/);
