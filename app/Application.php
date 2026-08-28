@@ -15,6 +15,10 @@ final class Application
     private readonly ProjectStore $projects;
     private readonly FolderStore $folders;
     private readonly TodoStore $todos;
+    private readonly StorageLocationStore $storageLocations;
+    private readonly InventoryItemStore $inventoryItems;
+    private readonly InventoryStockStore $inventoryStock;
+    private readonly InventoryReservationStore $inventoryReservations;
     private readonly UpdateService $updates;
 
     public function __construct(private readonly string $storagePath)
@@ -25,6 +29,10 @@ final class Application
         $this->projects = new ProjectStore($storagePath . '/projects');
         $this->folders = new FolderStore($this->db);
         $this->todos = new TodoStore($this->db);
+        $this->storageLocations = new StorageLocationStore($this->db);
+        $this->inventoryItems = new InventoryItemStore($this->db);
+        $this->inventoryStock = new InventoryStockStore($this->db);
+        $this->inventoryReservations = new InventoryReservationStore($this->db, $this->projects);
         $this->updates = new UpdateService($storagePath, \logbuch_root_path(), $this->db, (string) (getenv('LOGBUCH_PLATFORM') ?: 'webhosting'));
     }
 
@@ -144,6 +152,157 @@ final class Application
             if ($path === '/api/projects' && $method === 'GET') {
                 $visible = array_values(array_filter($this->projects->list(), fn(array $project): bool => $this->canAccess($user, $project['id'])));
                 $this->json(200, ['projects' => $visible]);
+            }
+            if ($path === '/api/storage-locations' && $method === 'GET') {
+                $includeArchived = ($_GET['includeArchived'] ?? '') === '1';
+                $this->json(200, ['locations' => $this->storageLocations->list($includeArchived)]);
+            }
+            if ($path === '/api/storage-locations' && $method === 'POST') {
+                $this->requireEditor($user);
+                $location = $this->storageLocations->create($input);
+                $this->audit($user['id'], 'storage_location.created', $location['id']);
+                $this->json(201, $location);
+            }
+            if ($path === '/api/storage-locations/reorder' && $method === 'POST') {
+                $this->requireEditor($user);
+                $this->storageLocations->reorder($input['parentId'] ?? null, $input['ids'] ?? null);
+                $this->audit($user['id'], 'storage_locations.reordered', (string) ($input['parentId'] ?? 'root'));
+                $this->json(200, ['saved' => true]);
+            }
+            if (preg_match('#^/api/storage-locations/([^/]+)/(archive|restore)$#', $path, $match) && $method === 'POST') {
+                $this->requireEditor($user);
+                $locationId = rawurldecode($match[1]);
+                $changed = $match[2] === 'archive' ? $this->storageLocations->archive($locationId) : $this->storageLocations->restore($locationId);
+                $this->audit($user['id'], 'storage_location.' . ($match[2] === 'archive' ? 'archived' : 'restored'), $locationId, 'subtree=' . $changed);
+                $this->json(200, ['changed' => $changed]);
+            }
+            if (preg_match('#^/api/storage-locations/([^/]+)$#', $path, $match)) {
+                $locationId = rawurldecode($match[1]);
+                if ($method === 'GET') $this->json(200, $this->storageLocations->detail($locationId));
+                if ($method === 'PATCH') {
+                    $this->requireEditor($user);
+                    $location = $this->storageLocations->update($locationId, $input);
+                    $this->audit($user['id'], 'storage_location.updated', $locationId);
+                    $this->json(200, $location);
+                }
+            }
+            if ($path === '/api/inventory-items' && $method === 'GET') {
+                $includeArchived = ($_GET['includeArchived'] ?? '') === '1';
+                $this->json(200, ['items' => $this->inventoryItems->list($includeArchived, (string) ($_GET['q'] ?? ''))]);
+            }
+            if ($path === '/api/inventory-items' && $method === 'POST') {
+                $this->requireEditor($user);
+                $item = $this->inventoryItems->create($input);
+                $this->audit($user['id'], 'inventory_item.created', $item['id']);
+                $this->json(201, $item);
+            }
+            if (preg_match('#^/api/inventory-items/([^/]+)/(archive|restore)$#', $path, $match) && $method === 'POST') {
+                $this->requireEditor($user);
+                $itemId = rawurldecode($match[1]);
+                $changed = $match[2] === 'archive' ? $this->inventoryItems->archive($itemId) : $this->inventoryItems->restore($itemId);
+                $this->audit($user['id'], 'inventory_item.' . ($match[2] === 'archive' ? 'archived' : 'restored'), $itemId);
+                $this->json(200, ['changed' => $changed]);
+            }
+            if (preg_match('#^/api/inventory-items/([^/]+)$#', $path, $match)) {
+                $itemId = rawurldecode($match[1]);
+                if ($method === 'GET') $this->json(200, $this->inventoryItems->detail($itemId));
+                if ($method === 'PATCH') {
+                    $this->requireEditor($user);
+                    $item = $this->inventoryItems->update($itemId, $input);
+                    $this->audit($user['id'], 'inventory_item.updated', $itemId);
+                    $this->json(200, $item);
+                }
+            }
+            if ($path === '/api/stock-entries' && $method === 'GET') {
+                $itemId = trim((string) ($_GET['itemId'] ?? '')) ?: null;
+                $locationId = trim((string) ($_GET['storageLocationId'] ?? '')) ?: null;
+                $includeArchived = ($_GET['includeArchived'] ?? '') === '1';
+                $entries = $this->inventoryStock->list($itemId, $locationId, $includeArchived);
+                $result = ['entries' => $entries];
+                if ($itemId !== null) $result['summary'] = $this->inventoryStock->summary($itemId);
+                $this->json(200, $result);
+            }
+            if ($path === '/api/stock-entries' && $method === 'POST') {
+                $this->requireEditor($user);
+                $entry = $this->inventoryStock->create($input, $user['id']);
+                $this->audit($user['id'], 'stock_entry.created', $entry['id'], 'item=' . $entry['itemId'] . ';location=' . $entry['storageLocationId']);
+                $this->json(201, $entry);
+            }
+            if (preg_match('#^/api/stock-entries/([^/]+)$#', $path, $match) && $method === 'DELETE') {
+                $this->requireEditor($user);
+                $entryId = rawurldecode($match[1]);
+                $deleted = $this->inventoryStock->delete($entryId);
+                $this->audit($user['id'], 'stock_entry.deleted', $entryId);
+                $this->json(200, ['deleted' => $deleted]);
+            }
+            if (preg_match('#^/api/stock-entries/([^/]+)$#', $path, $match) && $method === 'PATCH') {
+                $this->requireEditor($user);
+                $entryId = rawurldecode($match[1]);
+                $entry = $this->inventoryStock->update($entryId, $input);
+                $this->audit($user['id'], 'stock_entry.updated', $entryId);
+                $this->json(200, $entry);
+            }
+            if ($path === '/api/stock-movements' && $method === 'POST') {
+                $this->requireEditor($user);
+                $result = $this->inventoryStock->record($input, $user['id']);
+                if ($result['transaction'] !== null) {
+                    $this->audit($user['id'], 'stock_transaction.recorded', $result['transaction']['id'], 'type=' . $result['transaction']['type'] . ';item=' . $result['transaction']['itemId']);
+                }
+                $this->json(201, $result);
+            }
+            if ($path === '/api/stock-transactions' && $method === 'GET') {
+                $itemId = trim((string) ($_GET['itemId'] ?? '')) ?: null;
+                $locationId = trim((string) ($_GET['storageLocationId'] ?? '')) ?: null;
+                $limit = (int) ($_GET['limit'] ?? 100);
+                $this->json(200, ['transactions' => $this->inventoryStock->transactions($itemId, $locationId, $limit)]);
+            }
+            if ($path === '/api/inventory-replenishment' && $method === 'GET') {
+                $this->json(200, $this->inventoryStock->replenishment(
+                    (string) ($_GET['q'] ?? ''),
+                    ($_GET['includeSatisfied'] ?? '') === '1',
+                    (string) ($_GET['sort'] ?? 'urgency'),
+                ));
+            }
+            if ($path === '/api/reservations' && $method === 'GET') {
+                $itemId = trim((string) ($_GET['itemId'] ?? '')) ?: null;
+                $projectId = trim((string) ($_GET['projectId'] ?? '')) ?: null;
+                $visibleProjectIds = null;
+                if ($projectId !== null) {
+                    $this->requireProjectAccess($user, $projectId);
+                } elseif ($itemId !== null) {
+                    $visible = array_values(array_filter($this->projects->list(), fn(array $project): bool => $this->canAccess($user, $project['id'])));
+                    $visibleProjectIds = array_column($visible, 'id');
+                }
+                $this->json(200, ['reservations' => $this->inventoryReservations->list($itemId, $projectId, $visibleProjectIds)]);
+            }
+            if ($path === '/api/reservations' && $method === 'POST') {
+                $projectId = trim((string) ($input['projectId'] ?? ''));
+                $this->requireProjectEdit($user, $projectId);
+                $reservation = $this->inventoryReservations->create($input, $user['id']);
+                $this->audit($user['id'], 'reservation.created', $reservation['id'], 'item=' . $reservation['itemId'] . ';project=' . $reservation['projectId']);
+                $this->json(201, $reservation);
+            }
+            if (preg_match('#^/api/reservations/([^/]+)/(release|cancel|fulfill)$#', $path, $match) && $method === 'POST') {
+                $reservationId = rawurldecode($match[1]);
+                $reservation = $this->inventoryReservations->detail($reservationId);
+                $this->requireProjectEdit($user, $reservation['projectId']);
+                if ($match[2] === 'fulfill') {
+                    $result = $this->inventoryReservations->fulfill($reservationId, $input, $user['id']);
+                    $this->audit($user['id'], 'reservation.fulfilled', $reservationId, 'quantity=' . ($input['quantity'] ?? '') . ';transaction=' . $result['transactionId']);
+                    $this->json(201, $result);
+                }
+                $status = $match[2] === 'release' ? 'RELEASED' : 'CANCELLED';
+                $closed = $this->inventoryReservations->close($reservationId, $status);
+                $this->audit($user['id'], 'reservation.' . strtolower($status), $reservationId);
+                $this->json(200, $closed);
+            }
+            if (preg_match('#^/api/reservations/([^/]+)$#', $path, $match) && $method === 'PATCH') {
+                $reservationId = rawurldecode($match[1]);
+                $reservation = $this->inventoryReservations->detail($reservationId);
+                $this->requireProjectEdit($user, $reservation['projectId']);
+                $updated = $this->inventoryReservations->update($reservationId, $input);
+                $this->audit($user['id'], 'reservation.updated', $reservationId);
+                $this->json(200, $updated);
             }
             if ($path === '/api/todos' && $method === 'GET') {
                 $todos = $this->todos->list($user['id']);
@@ -939,6 +1098,10 @@ final class Application
         $demoProjectCount = count(array_filter($projects, static fn(array $project): bool => in_array($project['id'], $demoIds, true)));
         $demoFolderIds = array_column($demoManifest['folders'], 'id');
         $demoFolderCount = count(array_filter($this->folders->list(), static fn(array $folder): bool => in_array($folder['id'], $demoFolderIds, true)));
+        $demoStorageLocationIds = array_column($demoManifest['storageLocations'], 'id');
+        $demoStorageLocationCount = count(array_filter($this->storageLocations->list(true), static fn(array $location): bool => in_array($location['id'], $demoStorageLocationIds, true)));
+        $demoInventoryItemIds = array_column($demoManifest['inventoryItems'], 'id');
+        $demoInventoryItemCount = count(array_filter($this->inventoryItems->list(true), static fn(array $item): bool => in_array($item['id'], $demoInventoryItemIds, true)));
         $totalBytes = $this->directorySize($this->storagePath);
         return [
             'hostname' => parse_url($this->detectedBaseUrl(), PHP_URL_HOST) ?: ($_SERVER['HTTP_HOST'] ?? 'localhost'),
@@ -949,6 +1112,8 @@ final class Application
             'projectCount' => count($projects),
             'demoProjectCount' => $demoProjectCount,
             'demoFolderCount' => $demoFolderCount,
+            'demoStorageLocationCount' => $demoStorageLocationCount,
+            'demoInventoryItemCount' => $demoInventoryItemCount,
             'storageBytes' => $totalBytes,
             'storageFreeBytes' => @disk_free_space($this->storagePath) ?: 0,
             'database' => 'SQLite ' . ($this->db->query('SELECT sqlite_version()')->fetchColumn() ?: ''),
@@ -1558,7 +1723,7 @@ final class Application
     {
         $path = dirname(__DIR__) . '/public/demo-data.json';
         $demo = readJsonFile($path);
-        if (($demo['format'] ?? '') !== 'logbuch-demo' || ($demo['version'] ?? null) !== 1 || !is_array($demo['tags'] ?? null) || !is_array($demo['folders'] ?? null) || !is_array($demo['projects'] ?? null)) {
+        if (($demo['format'] ?? '') !== 'logbuch-demo' || ($demo['version'] ?? null) !== 1 || !is_array($demo['tags'] ?? null) || !is_array($demo['folders'] ?? null) || !is_array($demo['projects'] ?? null) || !is_array($demo['storageLocations'] ?? null) || !is_array($demo['inventoryItems'] ?? null) || !is_array($demo['stockEntries'] ?? null) || !is_array($demo['reservations'] ?? null) || !is_array($demo['stockTransactions'] ?? null)) {
             throw new \RuntimeException('Der mitgelieferte Beispieldatensatz ist ungültig.');
         }
         $folderIds = [];
@@ -1595,6 +1760,52 @@ final class Application
         if (count($ids) !== 11 || $statusCounts !== ['idea' => 0, 'active' => 4, 'paused' => 2, 'completed' => 3, 'archived' => 1, 'trashed' => 1]) {
             throw new \RuntimeException('Der mitgelieferte Beispieldatensatz hat einen unerwarteten Umfang.');
         }
+        $locationIds = [];
+        foreach ($demo['storageLocations'] as $location) {
+            $id = is_array($location) ? (string) ($location['id'] ?? '') : '';
+            $parentId = is_array($location) ? ($location['parentId'] ?? null) : null;
+            if (!str_starts_with($id, 'demo-location-') || !validId($id) || isset($locationIds[$id]) || ($parentId !== null && !isset($locationIds[$parentId]))) {
+                throw new \RuntimeException('Der mitgelieferte Beispieldatensatz enthält ungültige Lagerorte.');
+            }
+            $locationIds[$id] = true;
+        }
+        $itemIds = [];
+        foreach ($demo['inventoryItems'] as $item) {
+            $id = is_array($item) ? (string) ($item['id'] ?? '') : '';
+            if (!str_starts_with($id, 'demo-item-') || !validId($id) || isset($itemIds[$id])) {
+                throw new \RuntimeException('Der mitgelieferte Beispieldatensatz enthält ungültige Artikel.');
+            }
+            $itemIds[$id] = true;
+        }
+        $stockIds = [];
+        foreach ($demo['stockEntries'] as $entry) {
+            $id = is_array($entry) ? (string) ($entry['id'] ?? '') : '';
+            if (!str_starts_with($id, 'demo-stock-') || !validId($id) || isset($stockIds[$id]) || !isset($itemIds[$entry['itemId'] ?? '']) || !isset($locationIds[$entry['storageLocationId'] ?? ''])) {
+                throw new \RuntimeException('Der mitgelieferte Beispieldatensatz enthält ungültige Bestände.');
+            }
+            $stockIds[$id] = true;
+        }
+        $reservationIds = [];
+        foreach ($demo['reservations'] as $reservation) {
+            $id = is_array($reservation) ? (string) ($reservation['id'] ?? '') : '';
+            if (!str_starts_with($id, 'demo-reservation-') || !validId($id) || isset($reservationIds[$id]) || !isset($itemIds[$reservation['itemId'] ?? '']) || !isset($ids[$reservation['projectId'] ?? ''])) {
+                throw new \RuntimeException('Der mitgelieferte Beispieldatensatz enthält ungültige Reservierungen.');
+            }
+            $reservationIds[$id] = true;
+        }
+        $transactionIds = [];
+        foreach ($demo['stockTransactions'] as $transaction) {
+            $id = is_array($transaction) ? (string) ($transaction['id'] ?? '') : '';
+            $source = is_array($transaction) ? ($transaction['sourceStorageLocationId'] ?? null) : null;
+            $destination = is_array($transaction) ? ($transaction['destinationStorageLocationId'] ?? null) : null;
+            if (!str_starts_with($id, 'demo-transaction-') || !validId($id) || isset($transactionIds[$id]) || !isset($itemIds[$transaction['itemId'] ?? '']) || ($source !== null && !isset($locationIds[$source])) || ($destination !== null && !isset($locationIds[$destination]))) {
+                throw new \RuntimeException('Der mitgelieferte Beispieldatensatz enthält ungültige Bestandsbewegungen.');
+            }
+            $transactionIds[$id] = true;
+        }
+        if (count($locationIds) !== 15 || count($itemIds) !== 13 || count($stockIds) !== 15 || count($reservationIds) !== 3 || count($transactionIds) !== 15) {
+            throw new \RuntimeException('Der mitgelieferte Lager-Beispieldatensatz hat einen unerwarteten Umfang.');
+        }
         return $demo;
     }
 
@@ -1616,9 +1827,10 @@ final class Application
             $project['tagIds'] = array_values(array_unique(array_map(static fn(string $id): string => $tagIds[$id] ?? $id, (array) ($project['tagIds'] ?? []))));
             $this->projects->saveImported($project, true);
         }
+        $inventory = $this->installDemoInventory($demo, $actorId);
         $count = count($demo['projects']);
         $this->audit($actorId, 'demo.installed', (string) $count);
-        return ['installed' => $count, 'folders' => count($demo['folders'])];
+        return ['installed' => $count, 'folders' => count($demo['folders']), ...$inventory];
     }
 
     private function removeDemoData(string $actorId): array
@@ -1632,6 +1844,7 @@ final class Application
             $this->db->prepare("DELETE FROM user_projects WHERE project_id IN ($placeholders)")->execute($projectIds);
         }
         $folderResult = $this->folders->removeEmptyByIds($folderIds, $this->projects->list());
+        $inventoryResult = $this->removeDemoInventory($demo);
 
         $usedTagIds = [];
         foreach ([...$this->projects->list(), ...$this->folders->list()] as $item) {
@@ -1647,7 +1860,93 @@ final class Application
             }
         }
         $this->audit($actorId, 'demo.removed', (string) $removed);
-        return ['removed' => $removed, 'foldersRemoved' => $folderResult['removed'], 'foldersRetained' => $folderResult['retained']];
+        return ['removed' => $removed, 'foldersRemoved' => $folderResult['removed'], 'foldersRetained' => $folderResult['retained'], ...$inventoryResult];
+    }
+
+    private function installDemoInventory(array $demo, string $actorId): array
+    {
+        $itemIds = array_column($demo['inventoryItems'], 'id');
+        if ($itemIds) {
+            $placeholders = implode(',', array_fill(0, count($itemIds), '?'));
+            $this->db->prepare("DELETE FROM stock_transactions WHERE item_id IN ($placeholders)")->execute($itemIds);
+            $this->db->prepare("DELETE FROM reservations WHERE item_id IN ($placeholders)")->execute($itemIds);
+            $this->db->prepare("DELETE FROM stock_entries WHERE item_id IN ($placeholders)")->execute($itemIds);
+            $this->db->prepare("DELETE FROM inventory_items WHERE id IN ($placeholders)")->execute($itemIds);
+        }
+        $saveLocation = $this->db->prepare(<<<'SQL'
+            INSERT INTO storage_locations (id, parent_id, name, icon, description, status, sort_order, created_at, updated_at)
+            VALUES (:id, :parent, :name, :icon, :description, :status, :sort, :created, '')
+            ON CONFLICT(id) DO UPDATE SET parent_id = excluded.parent_id, name = excluded.name, icon = excluded.icon,
+                description = excluded.description, status = excluded.status, sort_order = excluded.sort_order, updated_at = excluded.updated_at
+        SQL);
+        foreach ($demo['storageLocations'] as $location) {
+            $saveLocation->execute(['id' => $location['id'], 'parent' => $location['parentId'] ?? null, 'name' => $location['name'], 'icon' => $location['icon'] ?? 'archive', 'description' => $location['description'] ?? '', 'status' => $location['status'] ?? 'ACTIVE', 'sort' => $location['sortOrder'] ?? 0, 'created' => $location['createdAt'] ?? nowIso()]);
+        }
+        $saveItem = $this->db->prepare(<<<'SQL'
+            INSERT INTO inventory_items (id, name, description, stock_unit, manufacturer, article_number, barcode, merchant_url, default_minimum_quantity, status, created_at, updated_at)
+            VALUES (:id, :name, :description, :unit, :manufacturer, :article, :barcode, :merchant, :minimum, :status, :created, '')
+        SQL);
+        foreach ($demo['inventoryItems'] as $item) {
+            $saveItem->execute(['id' => $item['id'], 'name' => $item['name'], 'description' => $item['description'] ?? '', 'unit' => $item['stockUnit'], 'manufacturer' => $item['manufacturer'] ?? '', 'article' => $item['articleNumber'] ?? '', 'barcode' => $item['barcode'] ?? '', 'merchant' => $item['merchantUrl'] ?? '', 'minimum' => $item['defaultMinimumQuantity'] ?? null, 'status' => $item['status'] ?? 'ACTIVE', 'created' => $item['createdAt'] ?? nowIso()]);
+        }
+        $saveEntry = $this->db->prepare(<<<'SQL'
+            INSERT INTO stock_entries (id, item_id, storage_location_id, quantity, minimum_quantity, note, status, created_at, updated_at)
+            VALUES (:id, :item, :location, :quantity, :minimum, :note, :status, :created, '')
+        SQL);
+        foreach ($demo['stockEntries'] as $entry) {
+            $saveEntry->execute(['id' => $entry['id'], 'item' => $entry['itemId'], 'location' => $entry['storageLocationId'], 'quantity' => $entry['quantity'], 'minimum' => $entry['minimumQuantity'] ?? null, 'note' => $entry['note'] ?? '', 'status' => $entry['status'] ?? 'ACTIVE', 'created' => $entry['createdAt'] ?? nowIso()]);
+        }
+        $saveReservation = $this->db->prepare(<<<'SQL'
+            INSERT INTO reservations (id, item_id, project_id, requested_quantity, fulfilled_quantity, status, note, created_by, created_at, updated_at)
+            VALUES (:id, :item, :project, :requested, 0, 'ACTIVE', :note, :actor, :created, :created)
+        SQL);
+        foreach ($demo['reservations'] as $reservation) {
+            $saveReservation->execute(['id' => $reservation['id'], 'item' => $reservation['itemId'], 'project' => $reservation['projectId'], 'requested' => $reservation['requestedQuantity'], 'note' => $reservation['note'] ?? '', 'actor' => $actorId, 'created' => $reservation['createdAt'] ?? nowIso()]);
+        }
+        $saveTransaction = $this->db->prepare(<<<'SQL'
+            INSERT INTO stock_transactions (id, item_id, type, quantity, source_storage_location_id, destination_storage_location_id, reservation_id, reversal_of_transaction_id, note, recorded_by, occurred_at, created_at)
+            VALUES (:id, :item, :type, :quantity, :source, :destination, NULL, NULL, :note, :actor, :occurred, :created)
+        SQL);
+        foreach ($demo['stockTransactions'] as $transaction) {
+            $saveTransaction->execute(['id' => $transaction['id'], 'item' => $transaction['itemId'], 'type' => $transaction['type'], 'quantity' => $transaction['quantity'], 'source' => $transaction['sourceStorageLocationId'] ?? null, 'destination' => $transaction['destinationStorageLocationId'] ?? null, 'note' => $transaction['note'] ?? '', 'actor' => $actorId, 'occurred' => $transaction['occurredAt'], 'created' => $transaction['createdAt'] ?? $transaction['occurredAt']]);
+        }
+        return ['storageLocations' => count($demo['storageLocations']), 'inventoryItems' => count($demo['inventoryItems'])];
+    }
+
+    private function removeDemoInventory(array $demo): array
+    {
+        $itemIds = array_column($demo['inventoryItems'], 'id');
+        $removedItems = 0;
+        if ($itemIds) {
+            $placeholders = implode(',', array_fill(0, count($itemIds), '?'));
+            $this->db->prepare("DELETE FROM stock_transactions WHERE item_id IN ($placeholders)")->execute($itemIds);
+            $this->db->prepare("DELETE FROM reservations WHERE item_id IN ($placeholders)")->execute($itemIds);
+            $this->db->prepare("DELETE FROM stock_entries WHERE item_id IN ($placeholders)")->execute($itemIds);
+            $deleteItems = $this->db->prepare("DELETE FROM inventory_items WHERE id IN ($placeholders)");
+            $deleteItems->execute($itemIds);
+            $removedItems = $deleteItems->rowCount();
+        }
+        $locationIds = array_column($demo['storageLocations'], 'id');
+        $locationPlaceholders = implode(',', array_fill(0, count($locationIds), '?'));
+        $existingLocationCount = 0;
+        if ($locationIds) {
+            $countLocations = $this->db->prepare("SELECT COUNT(*) FROM storage_locations WHERE id IN ($locationPlaceholders)");
+            $countLocations->execute($locationIds);
+            $existingLocationCount = (int) $countLocations->fetchColumn();
+        }
+        $removedLocations = 0;
+        $deleteLocation = $this->db->prepare(<<<'SQL'
+            DELETE FROM storage_locations
+            WHERE id = :id
+              AND NOT EXISTS (SELECT 1 FROM storage_locations child WHERE child.parent_id = storage_locations.id)
+              AND NOT EXISTS (SELECT 1 FROM stock_entries entry WHERE entry.storage_location_id = storage_locations.id)
+              AND NOT EXISTS (SELECT 1 FROM stock_transactions movement WHERE movement.source_storage_location_id = storage_locations.id OR movement.destination_storage_location_id = storage_locations.id)
+        SQL);
+        foreach (array_reverse($locationIds) as $locationId) {
+            $deleteLocation->execute(['id' => $locationId]);
+            $removedLocations += $deleteLocation->rowCount();
+        }
+        return ['inventoryItemsRemoved' => $removedItems, 'storageLocationsRemoved' => $removedLocations, 'storageLocationsRetained' => $existingLocationCount - $removedLocations];
     }
 
     private function clearUsersExcept(string $id): int

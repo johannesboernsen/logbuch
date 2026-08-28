@@ -43,6 +43,17 @@ test('Installer kann den mitgelieferten Beispieldatensatz aktivieren', async () 
     assert.equal(projects.projects.filter(project => project.status === 'active').length, 4);
     const folders = await fetch(`${baseUrl}/api/folders`, { headers: { Cookie: cookie } }).then(response => response.json());
     assert.equal(folders.folders.filter(folder => folder.id.startsWith('demo-folder-')).length, 2);
+    const locations = await fetch(`${baseUrl}/api/storage-locations?includeArchived=1`, { headers: { Cookie: cookie } }).then(response => response.json());
+    assert.equal(locations.locations.filter(location => location.id.startsWith('demo-location-')).length, 15);
+    assert.equal(locations.locations.find(location => location.id === 'demo-location-garage-kiste-1').parentId, 'demo-location-garage-regal');
+    const items = await fetch(`${baseUrl}/api/inventory-items?includeArchived=1`, { headers: { Cookie: cookie } }).then(response => response.json());
+    assert.equal(items.items.filter(item => item.id.startsWith('demo-item-')).length, 13);
+    const screwStock = await fetch(`${baseUrl}/api/stock-entries?itemId=demo-item-schrauben-m4x30&includeArchived=1`, { headers: { Cookie: cookie } }).then(response => response.json());
+    assert.equal(screwStock.entries.length, 3);
+    assert.equal(screwStock.summary.physicalQuantity, 70);
+    const fanReservations = await fetch(`${baseUrl}/api/reservations?itemId=demo-item-luefter-120`, { headers: { Cookie: cookie } }).then(response => response.json());
+    assert.equal(fanReservations.reservations.length, 1);
+    assert.equal(fanReservations.reservations[0].projectId, 'demo-loetstation-absaugung');
     assert.ok(projects.projects.some(project => project.folderId === 'demo-folder-elektronik'));
     assert.ok(projects.projects.some(project => project.folderId === 'demo-folder-werkstatt'));
     const regularProjects = projects.projects.filter(project => ['idea', 'active', 'paused', 'completed'].includes(project.status));

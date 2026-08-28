@@ -1,6 +1,8 @@
 const $ = (selector, root = document) => root.querySelector(selector);
-const state = { user: null, users: [], sessions: [], audit: [], tags: [], folders: [], todos:[], todosCompletedOpen:false, collapsedTodoGroups:{}, editingTodoId:null, todoRepeatTimer:null, iconLibrary:null, currentFolderId:null, projectStatusFilter:'all', server: null, system: null, storage:null, update:null, projects: [], current: null, activeTab: 'entries', activeSettings:'general', fileViewerId:null, visibleProjectFiles:50, activityObserver:null, timelineObserver:null, overviewGridObservers:[], projectSort: { field:'status', direction:'asc' }, archiveSort: { field:'createdAt', direction:'desc' }, projectSearch: { active:'', archived:'' }, projectTagFilter:{ active:{ ids:[], mode:'all' }, archived:{ ids:[], mode:'all' } }, projectDialogTagIds:[], projectTagDraftOpen:false, projectTagSearchOpen:false, collapsedProjectFolders:false, collapsedProjectStatusGroups:{ idea:false, active:false, paused:false, completed:false }, collapsedLogSections:{ tasks:false, entries:false }, collapsedProjectSections:{} };
+const state = { user: null, users: [], sessions: [], audit: [], tags: [], folders: [], storageLocations:[], storageLocationsIncludeArchived:false, inventoryItems:[], inventoryItemsIncludeArchived:false, inventoryItemQuery:'', inventoryStockEntries:[], inventoryStockTransactions:[], inventoryStockItem:null, inventoryReservations:[], projectReservations:[], reservationProjects:[], todos:[], todosOpenOpen:true, todosCompletedOpen:false, collapsedTodoGroups:{}, editingTodoId:null, todoRepeatTimer:null, iconLibrary:null, currentFolderId:null, projectStatusFilter:'all', server: null, system: null, storage:null, update:null, projects: [], current: null, activeTab: 'entries', activeSettings:'general', fileViewerId:null, visibleProjectFiles:50, activityObserver:null, timelineObserver:null, overviewGridObservers:[], projectSort: { field:'status', direction:'asc' }, archiveSort: { field:'createdAt', direction:'desc' }, projectSearch: { active:'', archived:'' }, projectTagFilter:{ active:{ ids:[], mode:'all' }, archived:{ ids:[], mode:'all' } }, projectDialogTagIds:[], projectTagDraftOpen:false, projectTagSearchOpen:false, collapsedProjectFolders:false, collapsedProjectStatusGroups:{ idea:false, active:false, paused:false, completed:false }, collapsedLogSections:{ tasks:false, entries:false }, collapsedProjectSections:{} };
 let iconLibraryPromise = null;
+let storageDragEntry = null;
+let storageLocationDrag = null;
 const api = async (path, options = {}) => {
   const method = (options.method || 'GET').toUpperCase();
   const csrf = !['GET','HEAD'].includes(method) && state.user?.csrfToken ? { 'X-Logbuch-CSRF': state.user.csrfToken } : {};
@@ -475,6 +477,21 @@ function iconSvg(name) {
   return `<svg viewBox="0 0 ${Number(icon.width || library.width || 24)} ${Number(icon.height || library.height || 24)}" aria-hidden="true">${icon.body}</svg>`;
 }
 
+function standardPageHeader({ title, description = '', icon = 'circle', iconMarkup = '', actions = '', breadcrumbs = '', className = '' }) {
+  return `<div class="project-page-head standard-page-head standard-plain-page-head${className ? ` ${className}` : ''}"><div class="standard-page-breadcrumbs${breadcrumbs ? '' : ' empty'}">${breadcrumbs}</div><span class="project-hero-icon" aria-hidden="true">${iconMarkup || iconSvg(icon)}</span><div class="project-heading-content"><div class="project-title-line"><h1>${escapeHtml(title)}</h1></div><p class="project-description">${escapeHtml(description)}</p></div><div class="standard-page-head-actions">${actions}</div></div>`;
+}
+
+function normalizeCommonPageHeader(selector) {
+  const head = $(selector);
+  if (!head) return;
+  const iconMarkup = head.querySelector('.project-hero-icon')?.innerHTML || iconSvg('circle');
+  const headingMarkup = head.querySelector('.project-heading-content')?.innerHTML || '';
+  const actionsMarkup = head.querySelector('.common-page-hero-actions,.project-browser-hero-actions')?.innerHTML || '';
+  head.classList.remove('standalone-page-head');
+  head.classList.add('standard-page-head', 'standard-plain-page-head');
+  head.innerHTML = `<div class="standard-page-breadcrumbs empty"></div><span class="project-hero-icon" aria-hidden="true">${iconMarkup}</span><div class="project-heading-content">${headingMarkup}</div><div class="standard-page-head-actions">${actionsMarkup}</div>`;
+}
+
 function updateProjectMenuCounts() {
   const counts = state.projects.reduce((result, project) => {
     if (Object.hasOwn(result, project.status)) result[project.status] += 1;
@@ -530,9 +547,8 @@ function projectCards(projects, archived = false, showFolder = false, separateSt
     const groupedProjects = projects.filter(project => project.status === status);
     const collapsed = state.collapsedProjectStatusGroups[status] === true;
     const label = statusGroupLabels[status] || 'Projekte';
-    const add = mayEditProjects() ? `<button class="button primary compact project-divider-add" type="button" data-new-project-status="${escapeHtml(status)}" aria-label="${escapeHtml(label)} anlegen" title="${escapeHtml(label)} anlegen">+ Projekt</button>` : '';
-    const divider = `<div class="project-status-divider project-list-divider"><button type="button" data-toggle-project-status-group="${escapeHtml(status)}" aria-expanded="${!collapsed}" aria-label="${escapeHtml(label)} ${collapsed ? 'ausklappen' : 'einklappen'}" title="${collapsed ? 'Ausklappen' : 'Einklappen'}"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="m6 8 4 4 4-4"></path></svg></button><h2>${escapeHtml(label)} <b data-project-status-count>(${groupedProjects.length})</b></h2></div>`;
-    return `<div class="project-group-head" data-project-status-divider="${escapeHtml(status)}">${divider}${add}</div>${groupedProjects.map(project => projectCard(project, archived, showFolder)).join('')}`;
+    const divider = `<div class="project-status-divider project-list-divider"><button class="project-divider-toggle" type="button" data-toggle-project-status-group="${escapeHtml(status)}" aria-expanded="${!collapsed}" aria-label="${escapeHtml(label)} ${collapsed ? 'ausklappen' : 'einklappen'}" title="${collapsed ? 'Ausklappen' : 'Einklappen'}"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="m6 8 4 4 4-4"></path></svg><strong class="divider-label">${escapeHtml(label)} <b data-project-status-count>(${groupedProjects.length})</b></strong></button></div>`;
+    return `<div class="project-group-head" data-project-status-divider="${escapeHtml(status)}">${divider}</div>${groupedProjects.map(project => projectCard(project, archived, showFolder)).join('')}`;
   }).join('');
 }
 
@@ -672,14 +688,13 @@ function projectSortControls(sort = state.projectSort, includeStatus = true) {
   return `<div class="project-sort-panel" hidden><div class="tag-filter-head"><strong>Projekte sortieren</strong></div><div class="project-sort-options">${options.map(([value, label]) => `<label><input type="radio" name="project-sort" value="${value}"${value === selected ? ' checked' : ''}><span>${label}</span></label>`).join('')}</div></div>`;
 }
 
-function projectListControls(archived = false, projects = [], showCreateControl = true) {
+function projectListControls(archived = false, projects = []) {
   const search = state.projectSearch[archived ? 'archived' : 'active'];
   const searchOpen = Boolean(search.trim());
   const key = archived ? 'archived' : 'active';
   const filter = state.projectTagFilter[key];
   const availableIds = new Set(projects.flatMap(project => project.tagIds || []));
   const availableTags = state.tags.filter(tag => availableIds.has(tag.id)).map(tag => ({ ...tag, viewProjectCount:projects.filter(project => (project.tagIds || []).includes(tag.id)).length })).sort((a,b) => a.name.localeCompare(b.name, 'de', { sensitivity:'base' }));
-  const createControl = showCreateControl && !archived && mayEditProjects() ? `<details class="action-menu project-create-control"><summary class="project-tool-toggle project-create-toggle" aria-label="Projekt oder Ordner anlegen" title="Projekt oder Ordner anlegen">+</summary><div class="action-menu-panel project-create-panel"><button class="menu-item" type="button" data-new-project>Projekt anlegen</button><button class="menu-item" type="button" data-new-folder>Ordner anlegen</button></div></details>` : '';
   const foldersVisible = state.user.showProjectFolders !== false;
   const folderToggle = !archived ? `<button class="project-tool-toggle project-folder-toggle" type="button" data-toggle-folders aria-pressed="${!foldersVisible}" aria-label="${foldersVisible ? 'Ordner ausblenden' : 'Ordner einblenden'}" title="${foldersVisible ? 'Ordner ausblenden' : 'Ordner einblenden'}"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3.5 6.5h6l2 2h9v9.5a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2V6.5Z"></path><path d="M3.5 9h17"></path></svg></button>` : '';
   return `<div class="project-list-controls">
@@ -687,7 +702,6 @@ function projectListControls(archived = false, projects = [], showCreateControl 
     ${folderToggle}
     <div class="project-sort-control" data-sort-control><button class="project-tool-toggle" type="button" data-toggle-sort aria-label="Sortierung öffnen" aria-expanded="false"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M8 4v16M4.5 7.5 8 4l3.5 3.5M16 20V4m-3.5 12.5L16 20l3.5-3.5"></path></svg></button>${projectSortControls(archived ? state.archiveSort : state.projectSort, !archived)}</div>
     <div class="project-filter-control${filter.ids.length ? ' has-value' : ''}" data-filter-control><button class="project-tool-toggle" type="button" data-toggle-filter aria-label="Nach Tags filtern" aria-expanded="false"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 6h16l-6.2 7v5l-3.6 1.8V13L4 6Z"></path></svg>${filter.ids.length ? `<b>${filter.ids.length}</b>` : ''}</button><div class="tag-filter-panel" hidden><div class="tag-filter-head"><strong>Nach Tags filtern</strong>${filter.ids.length ? '<button type="button" data-clear-tag-filter>Zurücksetzen</button>' : ''}</div>${availableTags.length ? `<div class="tag-filter-options">${availableTags.map(tag => `<label><input type="checkbox" value="${escapeHtml(tag.id)}" ${filter.ids.includes(tag.id) ? 'checked' : ''}><span>${escapeHtml(tag.name)}</span><small>${tag.viewProjectCount}</small></label>`).join('')}</div><label class="tag-filter-mode">Verknüpfung<select data-tag-filter-mode><option value="all" ${filter.mode === 'all' ? 'selected' : ''}>Alle ausgewählten Tags</option><option value="any" ${filter.mode === 'any' ? 'selected' : ''}>Mindestens ein Tag</option></select></label>` : '<p class="tag-filter-empty">Für diese Projekte sind noch keine Tags vergeben.</p>'}</div></div>
-    ${createControl}
   </div>`;
 }
 
@@ -729,7 +743,7 @@ function bindProjectStatusGroups() {
     const status = button.dataset.toggleProjectStatusGroup;
     state.collapsedProjectStatusGroups[status] = !state.collapsedProjectStatusGroups[status];
     const expanded = !state.collapsedProjectStatusGroups[status];
-    const label = button.closest('[data-project-status-divider]')?.querySelector('h2')?.textContent.replace(/\s+\(\d+\)$/, '') || 'Projekte';
+    const label = button.querySelector('.divider-label')?.textContent.replace(/\s+\(\d+\)$/, '') || 'Projekte';
     button.setAttribute('aria-expanded', String(expanded));
     button.setAttribute('aria-label', `${label} ${expanded ? 'einklappen' : 'ausklappen'}`);
     button.title = expanded ? 'Einklappen' : 'Ausklappen';
@@ -1342,7 +1356,8 @@ async function renderHome(keepMenuOpen = false) {
     activity:showActivity ? activityView(activityEntries) : '',
     timeline:showTimeline ? projectTimelineView(detailProjects) : ''
   };
-  $('#main').innerHTML = `<div class="project-page-head standalone-page-head overview-page-head"><section class="project-hero common-page-hero"><div class="project-heading-row"><span class="project-hero-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="8.5"></circle><path d="m8.2 12.2 2.5 2.5 5.4-5.6"></path></svg></span><div class="project-heading-content"><div class="project-title-line"><h1>Übersicht</h1></div></div><div class="common-page-hero-actions">${overviewMenuContent('desktop-overview-config')}</div></div></section></div><section class="project-page-content overview-page-content">${currentOverviewOrder().map(section => sectionMarkup[section] || '').join('')}</section>`;
+  const overviewHead = standardPageHeader({ title:'Übersicht', description:'Aktuelle Projekte, Termine und Aktivitäten im Blick.', iconMarkup:'<svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="8.5"></circle><path d="m8.2 12.2 2.5 2.5 5.4-5.6"></path></svg>', actions:overviewMenuContent('desktop-overview-config'), className:'overview-page-head' });
+  $('#main').innerHTML = `${overviewHead}<section class="project-page-content overview-page-content">${currentOverviewOrder().map(section => sectionMarkup[section] || '').join('')}</section>`;
   $('#mobile-header-actions').innerHTML = overviewMenuContent('mobile-overview-config');
   document.querySelectorAll('[data-overview-complete-task]').forEach(button => button.onclick = async event => {
     event.stopPropagation();
@@ -1454,10 +1469,13 @@ async function renderTodos() {
   const deletableCompletedCount = completedRoots.filter(root => !root.repeatInterval && !completed.some(todo => todo.parentId === root.id && todo.repeatInterval)).length;
   const protectedCompletedCount = completedRootCount - deletableCompletedCount;
   const deleteCompletedTitle = protectedCompletedCount ? `${protectedCompletedCount} wiederkehrende Erinnerung${protectedCompletedCount === 1 ? '' : 'en'} bleibt erhalten` : 'Erledigte Erinnerungen löschen';
-  const completedSection = completed.length ? `<section class="todo-completed-section"><div class="section-head todo-section-head"><div class="project-status-divider log-section-divider todo-section-divider"><h2><button class="todo-completed-toggle" type="button" data-toggle-completed-todos aria-expanded="${state.todosCompletedOpen}" aria-label="Erledigte Erinnerungen ${state.todosCompletedOpen ? 'einklappen' : 'ausklappen'}" title="${state.todosCompletedOpen ? 'Einklappen' : 'Ausklappen'}">Erledigt (${completedRootCount})</button></h2></div><div class="section-head-actions"><button class="button secondary compact todo-section-action" type="button" data-delete-completed-todos title="${deleteCompletedTitle}"${deletableCompletedCount ? '' : ' disabled'}>Erledigte löschen</button></div></div><div class="todo-list completed-todo-list"${state.todosCompletedOpen ? '' : ' hidden'}>${openTodoTree(completed)}</div></section>` : '';
-  $('#main').innerHTML = `<div class="project-page-head todo-page-head"><section class="project-hero todo-hero"><div class="project-heading-row"><span class="project-hero-icon todo-hero-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M9 6h11M9 12h11M9 18h11"></path><path d="m3.5 6 1 1 2-2M3.5 12l1 1 2-2M3.5 18l1 1 2-2"></path></svg></span><div class="project-heading-content"><div class="project-title-line"><h1>Erinnerungen</h1></div></div></div></section></div>
+  const todoSectionToggle = (section, label, count, expanded) => `<button class="todo-section-toggle" type="button" data-toggle-todo-section="${section}" aria-expanded="${expanded}" aria-label="${label} Erinnerungen ${expanded ? 'einklappen' : 'ausklappen'}" title="${expanded ? 'Einklappen' : 'Ausklappen'}"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="m6 8 4 4 4-4"></path></svg><strong>${label} (${count})</strong></button>`;
+  const completedSection = completed.length ? `<section class="todo-completed-section"><div class="section-head todo-section-head"><div class="project-status-divider log-section-divider todo-section-divider">${todoSectionToggle('completed', 'Erledigt', completedRootCount, state.todosCompletedOpen)}</div><div class="section-head-actions"><button class="button secondary compact todo-section-action" type="button" data-delete-completed-todos title="${deleteCompletedTitle}"${deletableCompletedCount ? '' : ' disabled'}>Erledigte löschen</button></div></div><div class="todo-list completed-todo-list" data-todo-section-content="completed"${state.todosCompletedOpen ? '' : ' hidden'}>${openTodoTree(completed)}</div></section>` : '';
+  const openContent = open.length ? `<div class="todo-list todo-tree" data-todo-tree>${openTodoTree(open)}</div>` : '<div class="empty todo-empty"><strong>Alles aufgeräumt.</strong>Neue kurze Erinnerungen kannst du oben eintragen.</div>';
+  const todoHead = standardPageHeader({ title:'Erinnerungen', description:'Persönliche Hinweise ohne direkten Projektbezug.', iconMarkup:'<svg viewBox="0 0 24 24" fill="none"><path d="M9 6h11M9 12h11M9 18h11"></path><path d="m3.5 6 1 1 2-2M3.5 12l1 1 2-2M3.5 18l1 1 2-2"></path></svg>', className:'todo-page-head' });
+  $('#main').innerHTML = `${todoHead}
     <section class="project-page-content todo-page-content"><form class="todo-add-form" id="todo-add-form"><input name="title" maxlength="200" placeholder="Notiere dir hier wichtige Dinge, die keinen Projektbezug haben." aria-label="Neue Erinnerung" autocomplete="off" required><button class="button primary" type="submit">Hinzufügen</button></form>
-    <section class="todo-open-section"><div class="section-head todo-section-head"><div class="project-status-divider log-section-divider todo-section-divider"><h2>Offen (${open.length})</h2></div><div class="section-head-actions"><button class="button secondary compact todo-section-action" type="button" data-cleanup-todos${cleanupCount ? '' : ' disabled'}>Aufräumen</button></div></div>${open.length ? `<div class="todo-list todo-tree" data-todo-tree>${openTodoTree(open)}</div>` : '<div class="empty todo-empty"><strong>Alles aufgeräumt.</strong>Neue kurze Erinnerungen kannst du oben eintragen.</div>'}</section>${completedSection}</section>`;
+    <section class="todo-open-section"><div class="section-head todo-section-head"><div class="project-status-divider log-section-divider todo-section-divider">${todoSectionToggle('open', 'Offen', open.length, state.todosOpenOpen)}</div><div class="section-head-actions"><button class="button secondary compact todo-section-action" type="button" data-cleanup-todos${cleanupCount ? '' : ' disabled'}>Aufräumen</button></div></div><div data-todo-section-content="open"${state.todosOpenOpen ? '' : ' hidden'}>${openContent}</div></section>${completedSection}</section>`;
 
   const nextRepeat = state.todos.map(todo => Date.parse(todo.repeatDueAt || '')).filter(value => Number.isFinite(value) && value > Date.now()).sort((a,b) => a - b)[0];
   if (nextRepeat) state.todoRepeatTimer = setTimeout(() => {
@@ -1589,8 +1607,11 @@ async function renderTodos() {
     try { await api(`/todos/${encodeURIComponent(todo.id)}`, { method:'DELETE' }); toast('Erinnerung gelöscht'); await renderTodos(); }
     catch (error) { toast(error.message); }
   });
-  const completedToggle = $('[data-toggle-completed-todos]');
-  if (completedToggle) completedToggle.onclick = () => { state.todosCompletedOpen = !state.todosCompletedOpen; renderTodos(); };
+  document.querySelectorAll('[data-toggle-todo-section]').forEach(button => button.onclick = () => {
+    if (button.dataset.toggleTodoSection === 'open') state.todosOpenOpen = !state.todosOpenOpen;
+    else state.todosCompletedOpen = !state.todosCompletedOpen;
+    renderTodos();
+  });
   const cleanup = $('[data-cleanup-todos]');
   if (cleanup) cleanup.onclick = async () => {
     cleanup.disabled = true;
@@ -1632,6 +1653,971 @@ function globalSearchResult(result) {
   return `<article class="global-search-result"><a href="${escapeHtml(searchResultHref(result))}"><div class="global-search-result-head"><span class="global-search-result-type">${escapeHtml(searchTypeLabels[result.type] || result.type)}</span><span class="project-status ${escapeHtml(result.projectStatus)}">${escapeHtml(status)}</span></div><h2>${escapeHtml(result.title)}</h2>${result.excerpt ? `<p>${escapeHtml(result.excerpt)}</p>` : ''}<footer><strong>${escapeHtml(result.projectTitle)}</strong>${result.date ? `<span>${escapeHtml(searchResultDate(result.date))}</span>` : ''}</footer></a></article>`;
 }
 
+const storageLocationHref = (id = '', includeArchived = state.storageLocationsIncludeArchived) => `/#/inventory${id ? `/location/${encodeURIComponent(id)}` : ''}${includeArchived ? '?archived=1' : ''}`;
+const storageContextItemHref = (locationId, itemId, includeArchived = state.storageLocationsIncludeArchived) => `/#/inventory/location/${encodeURIComponent(locationId)}/item/${encodeURIComponent(itemId)}${includeArchived ? '?archived=1' : ''}`;
+const inventoryItemHref = (id = '', includeArchived = state.inventoryItemsIncludeArchived, query = state.inventoryItemQuery) => {
+  const params = new URLSearchParams();
+  if (includeArchived) params.set('archived', '1');
+  if (query) params.set('q', query);
+  return `/#/inventory/${id ? `item/${encodeURIComponent(id)}` : 'items'}${params.size ? `?${params}` : ''}`;
+};
+const inventoryReplenishmentHref = (query = '', includeSatisfied = false, sort = 'urgency') => {
+  const params = new URLSearchParams();
+  if (query) params.set('q', query);
+  if (includeSatisfied) params.set('all', '1');
+  if (sort !== 'urgency') params.set('sort', sort);
+  return `/#/inventory/replenishment${params.size ? `?${params}` : ''}`;
+};
+
+async function loadStorageLocations(includeArchived = false) {
+  const data = await api(`/storage-locations${includeArchived ? '?includeArchived=1' : ''}`);
+  state.storageLocations = data.locations || [];
+  state.storageLocationsIncludeArchived = includeArchived;
+  return state.storageLocations;
+}
+
+async function loadInventoryItems(includeArchived = false, query = '') {
+  const params = new URLSearchParams();
+  if (includeArchived) params.set('includeArchived', '1');
+  if (query) params.set('q', query);
+  const data = await api(`/inventory-items${params.size ? `?${params}` : ''}`);
+  state.inventoryItems = data.items || [];
+  state.inventoryItemsIncludeArchived = includeArchived;
+  state.inventoryItemQuery = query;
+  return state.inventoryItems;
+}
+
+function openInventoryItemDialog(itemId = '') {
+  const dialog = $('#inventory-item-dialog');
+  const form = $('#inventory-item-form');
+  const item = itemId ? state.inventoryItems.find(candidate => candidate.id === itemId) : null;
+  if (itemId && !item) return toast('Artikel nicht gefunden.');
+  form.reset();
+  form.elements.itemId.value = item?.id || '';
+  form.elements.name.value = item?.name || '';
+  form.elements.stockUnit.value = item?.stockUnit || 'Stück';
+  form.elements.description.value = item?.description || '';
+  form.elements.manufacturer.value = item?.manufacturer || '';
+  form.elements.articleNumber.value = item?.articleNumber || '';
+  form.elements.barcode.value = item?.barcode || '';
+  form.elements.defaultMinimumQuantity.value = item?.defaultMinimumQuantity ?? '';
+  form.elements.merchantUrl.value = item?.merchantUrl || '';
+  $('#inventory-item-dialog-title').textContent = item ? 'Artikel bearbeiten' : 'Artikel anlegen';
+  $('#inventory-item-error').textContent = '';
+  dialog.showModal();
+  requestAnimationFrame(() => form.elements.name.focus());
+}
+
+const formatInventoryQuantity = value => value === null || value === undefined ? 'Nicht festgelegt' : new Intl.NumberFormat('de-DE', { maximumFractionDigits:6 }).format(value);
+
+function inventoryItemRow(item, selectedId = '') {
+  const archived = item.status === 'ARCHIVED';
+  const actions = mayEditProjects() ? `<details class="action-menu inventory-item-menu"><summary aria-label="Aktionen für ${escapeHtml(item.name)}">⋯</summary><div class="action-menu-panel">${archived ? `<button class="menu-item" type="button" data-inventory-item-restore="${escapeHtml(item.id)}">Wiederherstellen</button>` : `<button class="menu-item" type="button" data-inventory-item-edit="${escapeHtml(item.id)}">Bearbeiten</button><button class="menu-item danger" type="button" data-inventory-item-archive="${escapeHtml(item.id)}" data-inventory-item-name="${escapeHtml(item.name)}">Archivieren</button>`}</div></details>` : '';
+  return `<article class="inventory-item-row${item.id === selectedId ? ' selected' : ''}${archived ? ' archived' : ''}"><a href="${inventoryItemHref(item.id)}"${item.id === selectedId ? ' aria-current="page"' : ''}><span class="inventory-item-row-icon" aria-hidden="true">${iconSvg('tag')}</span><span><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml([item.manufacturer, item.articleNumber].filter(Boolean).join(' · ') || item.stockUnit)}${archived ? ' · Archiviert' : ''}</small></span><i aria-hidden="true">›</i></a>${actions}</article>`;
+}
+
+const stockTransactionLabels = { RECEIPT:'Zugang', RETURN:'Rückgabe', CONSUMPTION:'Verbrauch', TRANSFER:'Umlagerung', CORRECTION:'Korrektur', DISPOSAL:'Entsorgung', LOSS:'Verlust' };
+
+function stockLocationPath(entry) {
+  return (entry.locationPath || []).map(part => part.name).join(' › ') || entry.locationName;
+}
+
+function inventoryStockEntryMarkup(entry, editable) {
+  const archived = entry.status === 'ARCHIVED';
+  const canDelete = editable && Number(entry.quantity) === 0;
+  const actions = !editable ? '' : archived
+    ? `${canDelete ? `<button class="button secondary compact danger" type="button" data-stock-entry-delete="${escapeHtml(entry.id)}">Lagerplatz entfernen</button>` : ''}`
+    : `<button class="button secondary compact" type="button" data-stock-entry-edit="${escapeHtml(entry.id)}">Lokaler Mindestbestand</button>${canDelete ? `<button class="button secondary compact danger" type="button" data-stock-entry-delete="${escapeHtml(entry.id)}">Lagerplatz entfernen</button>` : ''}`;
+  return `<article class="inventory-stock-entry${archived ? ' archived' : ''}"><div><a href="${storageLocationHref(entry.storageLocationId, archived)}">${escapeHtml(stockLocationPath(entry))}</a><strong>${escapeHtml(formatInventoryQuantity(entry.quantity))} ${escapeHtml(entry.stockUnit)}</strong></div><p>${entry.minimumQuantity === null ? 'Kein lokaler Mindestbestand' : `Lokales Minimum: ${escapeHtml(formatInventoryQuantity(entry.minimumQuantity))} ${escapeHtml(entry.stockUnit)}`}${entry.note ? ` · ${escapeHtml(entry.note)}` : ''}${archived ? ' · Archiviert' : ''}</p>${actions ? `<footer>${actions}</footer>` : ''}</article>`;
+}
+
+function stockTransactionMarkup(transaction, reservations = []) {
+  const outbound = ['CONSUMPTION','DISPOSAL','LOSS'].includes(transaction.type) || (transaction.type === 'CORRECTION' && transaction.sourceStorageLocationId);
+  const sign = transaction.type === 'TRANSFER' ? '' : outbound ? '−' : '+';
+  const route = transaction.type === 'TRANSFER' ? `${transaction.sourceName} → ${transaction.destinationName}` : transaction.sourceName || transaction.destinationName;
+  const reservation = transaction.reservationId ? reservations.find(candidate => candidate.id === transaction.reservationId) : null;
+  const label = reservation ? 'Für Projekt entnommen' : stockTransactionLabels[transaction.type] || transaction.type;
+  const context = reservation ? [reservationTargetLabel(reservation), route].filter(Boolean).join(' · ') : route;
+  return `<article class="inventory-stock-transaction"><span class="${outbound ? 'outbound' : 'inbound'}">${escapeHtml(sign)}${escapeHtml(formatInventoryQuantity(transaction.quantity))} ${escapeHtml(transaction.stockUnit)}</span><div><strong>${escapeHtml(label)}</strong><small>${escapeHtml(context)}${transaction.note ? ` · ${escapeHtml(transaction.note)}` : ''}</small></div><time>${escapeHtml(formatDateTime(transaction.occurredAt))}</time></article>`;
+}
+
+const reservationStatusLabels = { ACTIVE:'Aktiv', FULFILLED:'Erfüllt', RELEASED:'Aufgehoben', CANCELLED:'Aufgehoben' };
+
+function reservationTargetLabel(reservation, context = 'item') {
+  if (!reservation.targetResolved) return 'Historischer, nicht mehr auflösbarer Projektbezug';
+  if (context === 'project') return reservation.projectEntryTitle || 'Gesamtes Projekt';
+  return `${reservation.projectTitle}${reservation.projectEntryTitle ? ` · ${reservation.projectEntryTitle}` : ''}`;
+}
+
+function reservationMarkup(reservation, context = 'item') {
+  const active = reservation.status === 'ACTIVE';
+  const targetHref = context === 'project' ? inventoryItemHref(reservation.itemId, reservation.itemStatus === 'ARCHIVED', '') : `/#/projects/${encodeURIComponent(reservation.projectId)}`;
+  const targetTitle = context === 'project' ? reservation.itemName : reservationTargetLabel(reservation, context);
+  const progress = reservation.fulfilledQuantity > 0
+    ? `${formatInventoryQuantity(reservation.fulfilledQuantity)} von ${formatInventoryQuantity(reservation.requestedQuantity)} ${reservation.stockUnit} erfüllt`
+    : `${formatInventoryQuantity(reservation.requestedQuantity)} ${reservation.stockUnit} benötigt`;
+  const actions = mayEditProjects() && active
+    ? `<footer><button class="button primary compact" type="button" data-reservation-fulfill="${escapeHtml(reservation.id)}">Entnehmen</button><button class="button secondary compact" type="button" data-reservation-edit="${escapeHtml(reservation.id)}">Bearbeiten</button><button class="button secondary compact danger" type="button" data-reservation-release="${escapeHtml(reservation.id)}">Reservierung aufheben</button></footer>`
+    : '';
+  return `<article class="inventory-reservation${active ? ' active' : ' closed'}"><div><a href="${escapeHtml(targetHref)}">${escapeHtml(targetTitle)}</a><span class="reservation-status ${escapeHtml(reservation.status.toLowerCase())}">${escapeHtml(reservationStatusLabels[reservation.status] || reservation.status)}</span></div><strong>${escapeHtml(progress)}</strong>${active ? `<p>Noch offen: ${escapeHtml(formatInventoryQuantity(reservation.remainingQuantity))} ${escapeHtml(reservation.stockUnit)}</p>` : ''}${reservation.note ? `<p>${escapeHtml(reservation.note)}</p>` : ''}${actions}</article>`;
+}
+
+function reservationHistoryMarkup(reservation, type) {
+  const lifted = type === 'RELEASED';
+  const quantity = lifted ? reservation.remainingQuantity : reservation.requestedQuantity;
+  const label = lifted ? 'Reservierung aufgehoben' : 'Für Projekt reserviert';
+  const occurredAt = lifted ? reservation.closedAt || reservation.updatedAt : reservation.createdAt;
+  const context = reservationTargetLabel(reservation);
+  return `<article class="inventory-stock-transaction reservation-event"><span>${escapeHtml(formatInventoryQuantity(quantity))} ${escapeHtml(reservation.stockUnit)}</span><div><strong>${escapeHtml(label)}</strong><small>${escapeHtml(context)}${reservation.note ? ` · ${escapeHtml(reservation.note)}` : ''}</small></div><time>${escapeHtml(formatDateTime(occurredAt))}</time></article>`;
+}
+
+function inventoryHistoryMarkup(transactions, reservations) {
+  const events = transactions.map(transaction => ({ occurredAt:transaction.occurredAt, markup:stockTransactionMarkup(transaction, reservations) }));
+  reservations.forEach(reservation => {
+    events.push({ occurredAt:reservation.createdAt, markup:reservationHistoryMarkup(reservation, 'CREATED') });
+    if (['RELEASED','CANCELLED'].includes(reservation.status)) events.push({ occurredAt:reservation.closedAt || reservation.updatedAt, markup:reservationHistoryMarkup(reservation, 'RELEASED') });
+  });
+  return events.sort((left, right) => String(right.occurredAt).localeCompare(String(left.occurredAt))).map(event => event.markup).join('');
+}
+
+function inventoryItemOverview(item, summary = {}, contextualContent = '', actions = '', expandedHeading = false) {
+  const unit = item.stockUnit;
+  const physical = summary.physicalQuantity || 0;
+  const reserved = summary.reservedQuantity || 0;
+  const available = summary.availableQuantity ?? physical;
+  const metadata = [item.manufacturer, item.articleNumber].filter(Boolean).join(' · ');
+  const globalMinimum = item.defaultMinimumQuantity === null ? '–' : `${formatInventoryQuantity(item.defaultMinimumQuantity)} ${unit}`;
+  const heading = expandedHeading ? `<div class="inventory-item-overview-heading"><h2>${escapeHtml(item.name)}</h2><p>${escapeHtml(item.description || 'Noch keine Beschreibung hinterlegt.')}</p></div>` : '';
+  const description = expandedHeading ? '' : `<p>${escapeHtml(item.description || 'Noch keine Beschreibung hinterlegt.')}</p>`;
+  return `<div class="inventory-item-overview"><span class="storage-item-preview" aria-hidden="true">${iconSvg('tag')}</span>${heading}${metadata ? `<p class="storage-item-metadata">${escapeHtml(metadata)}</p>` : ''}${description}${contextualContent}<div class="inventory-item-stock-overview"><dl><div><dt>Gesamtbestand</dt><dd>${escapeHtml(formatInventoryQuantity(physical))} ${escapeHtml(unit)}</dd></div><div><dt>Reserviert</dt><dd>${escapeHtml(formatInventoryQuantity(reserved))} ${escapeHtml(unit)}</dd></div><div><dt>Verfügbar</dt><dd class="${available < 0 ? 'low' : ''}">${escapeHtml(formatInventoryQuantity(available))} ${escapeHtml(unit)}</dd></div><div><dt>Globales Minimum</dt><dd>${escapeHtml(globalMinimum)}</dd></div></dl>${actions ? `<div class="inventory-item-overview-actions">${actions}</div>` : ''}</div></div>`;
+}
+
+function inventoryDetailSummary(title, subtitle) {
+  return `<summary class="inventory-stock-section-head"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="m6 8 4 4 4-4"></path></svg><div><h3>${escapeHtml(title)}</h3><span>${escapeHtml(subtitle)}</span></div></summary>`;
+}
+
+function inventoryItemDetail(item, includeArchived, stockData = { entries:[], summary:null }, transactions = [], reservations = []) {
+  if (!item) return `<aside class="inventory-item-detail inventory-item-welcome"><span class="storage-finder-detail-icon" aria-hidden="true">${iconSvg('tag')}</span><h2>Artikel auswählen</h2><p>Artikel werden unabhängig von Lagerort und Bestand geführt.</p></aside>`;
+  const archived = item.status === 'ARCHIVED';
+  const actions = mayEditProjects() && !archived ? `<button class="menu-item" type="button" data-inventory-item-edit="${escapeHtml(item.id)}">Artikel bearbeiten</button><button class="menu-item danger" type="button" data-inventory-item-archive="${escapeHtml(item.id)}" data-inventory-item-name="${escapeHtml(item.name)}">Archivieren</button>` : mayEditProjects() ? `<button class="menu-item" type="button" data-inventory-item-restore="${escapeHtml(item.id)}">Wiederherstellen</button>` : '';
+  const merchant = item.merchantUrl ? `<a class="menu-item storage-item-menu-link" href="${escapeHtml(item.merchantUrl)}" target="_blank" rel="noopener noreferrer">Händler öffnen</a>` : '';
+  const menu = `<details class="action-menu storage-finder-column-menu storage-item-column-menu"><summary aria-label="Menü für ${escapeHtml(item.name)}" title="Menü für ${escapeHtml(item.name)}">${iconSvg('menu')}</summary><div class="action-menu-panel">${actions}${merchant}<button class="menu-item" type="button" data-inventory-item-copy-link="${escapeHtml(item.id)}">Link kopieren</button></div></details>`;
+  const entries = stockData.entries || [];
+  const activeEntries = entries.filter(entry => entry.status === 'ACTIVE');
+  const physical = stockData.summary?.physicalQuantity || 0;
+  const reserved = stockData.summary?.reservedQuantity || 0;
+  const available = stockData.summary?.availableQuantity ?? physical;
+  const reorder = stockData.summary?.reorderQuantity || 0;
+  const low = reorder > 0;
+  const stockBookingAction = mayEditProjects() && !archived ? '<button class="button secondary compact" type="button" data-stock-movement="RECEIPT">Bestand buchen</button>' : '';
+  const stockLocationAction = mayEditProjects() && !archived ? `<div class="inventory-section-create"><button class="button secondary compact" type="button" data-stock-entry-create="${escapeHtml(item.id)}">Weiteren Lagerort hinzufügen</button></div>` : '';
+  const entryContent = entries.length ? `<div class="inventory-stock-entry-list">${entries.map(entry => inventoryStockEntryMarkup(entry, mayEditProjects() && !archived)).join('')}${stockLocationAction}</div>` : `<div class="inventory-stock-empty">Noch keinem Lagerort zugeordnet.${stockLocationAction}</div>`;
+  const entrySection = `<details class="inventory-stock-section inventory-detail-section inventory-location-section" open>${inventoryDetailSummary('Lagerorte', `${activeEntries.length} ${activeEntries.length === 1 ? 'Lagerplatz' : 'Lagerplätze'}`)}<div class="inventory-detail-section-body">${entryContent}</div></details>`;
+  const reservationActions = mayEditProjects() && !archived ? `<div class="inventory-section-create"><button class="button secondary compact" type="button" data-reservation-create data-reservation-item="${escapeHtml(item.id)}">Für Projekt reservieren</button></div>` : '';
+  const activeReservations = reservations.filter(reservation => reservation.status === 'ACTIVE');
+  const reservationContent = activeReservations.length ? `<div class="inventory-reservation-list">${activeReservations.map(reservation => reservationMarkup(reservation, 'item')).join('')}${reservationActions}</div>` : `<div class="inventory-stock-empty inventory-reservation-empty">Keine aktive Projektreservierung.${reservationActions}</div>`;
+  const reservationSection = `<details class="inventory-stock-section inventory-detail-section inventory-reservation-section" open>${inventoryDetailSummary('Projektreservierungen', `${formatInventoryQuantity(reserved)} ${item.stockUnit} reserviert`)}<div class="inventory-detail-section-body">${reservationContent}${activeReservations.length && available < 0 ? `<p class="inventory-stock-warning">Der Projektbedarf übersteigt den physischen Bestand um ${escapeHtml(formatInventoryQuantity(Math.abs(available)))} ${escapeHtml(item.stockUnit)}.</p>` : ''}</div></details>`;
+  const historyEntries = inventoryHistoryMarkup(transactions, reservations);
+  const history = `<details class="inventory-stock-section inventory-detail-section inventory-history-section">${inventoryDetailSummary('Historie', 'Unveränderlich protokolliert')}<div class="inventory-detail-section-body">${historyEntries ? `<div class="inventory-stock-history">${historyEntries}</div>` : '<div class="inventory-stock-empty">Noch keine Bestands- oder Reservierungsvorgänge.</div>'}</div></details>`;
+  const masterData = `<details class="inventory-stock-section inventory-detail-section inventory-item-master-data">${inventoryDetailSummary('Weitere Stammdaten', 'Zusätzliche Artikelangaben')}<div class="inventory-detail-section-body"><dl><div><dt>Hersteller</dt><dd>${escapeHtml(item.manufacturer || '–')}</dd></div><div><dt>Artikelnummer</dt><dd>${escapeHtml(item.articleNumber || '–')}</dd></div><div><dt>Barcode / EAN</dt><dd>${escapeHtml(item.barcode || '–')}</dd></div><div><dt>Interne Kennung</dt><dd>${escapeHtml(item.id)}</dd></div></dl></div></details>`;
+  return `<aside class="inventory-item-detail storage-item-detail${archived ? ' archived' : ''}"><header class="storage-finder-detail-header inventory-item-detail-menu-header"><div class="storage-finder-column-actions">${menu}</div></header><div class="inventory-item-detail-body"><a class="inventory-item-mobile-back" href="${inventoryItemHref('', includeArchived)}"><span aria-hidden="true">‹</span>Alle Artikel</a>${inventoryItemOverview(item, stockData.summary || {}, '', stockBookingAction, true)}${low ? `<p class="inventory-stock-warning">Unter Berücksichtigung der Reservierungen sollten ${escapeHtml(formatInventoryQuantity(reorder))} ${escapeHtml(item.stockUnit)} nachbestellt werden.</p>` : ''}${archived ? '<div class="storage-archive-notice"><strong>Archiviert</strong><span>Bestände, Reservierungen und Historie bleiben lesbar; neue Vorgänge sind gesperrt.</span></div>' : ''}${reservationSection}${entrySection}${masterData}${history}</div></aside>`;
+}
+
+async function ensureActiveStorageLocations() {
+  const data = await api('/storage-locations');
+  state.storageLocations = data.locations || [];
+  return state.storageLocations;
+}
+
+const storageLocationOptionLabel = location => storageLocationPath(location).map(part => part.name).join(' › ');
+
+async function openStockEntryDialog(itemId, entryId = '') {
+  const item = state.inventoryItems.find(candidate => candidate.id === itemId) || state.inventoryStockItem;
+  if (!item) return toast('Artikel nicht gefunden.');
+  const locations = await ensureActiveStorageLocations();
+  const entry = entryId ? state.inventoryStockEntries.find(candidate => candidate.id === entryId) : null;
+  const form = $('#stock-entry-form');
+  form.reset();
+  form.classList.toggle('stock-entry-editing', Boolean(entry));
+  form.elements.entryId.value = entry?.id || '';
+  form.elements.itemId.value = item.id;
+  form.elements.minimumQuantity.value = entry?.minimumQuantity ?? '';
+  const wholeUnits = item.stockUnit.toLocaleLowerCase('de-DE') === 'stück';
+  form.elements.initialQuantity.step = wholeUnits ? '1' : 'any';
+  form.elements.initialQuantity.classList.toggle('whole-units', wholeUnits);
+  form.elements.minimumQuantity.step = wholeUnits ? '1' : 'any';
+  form.elements.minimumQuantity.classList.toggle('whole-units', wholeUnits);
+  form.elements.note.value = entry?.note || '';
+  const used = new Set(state.inventoryStockEntries.filter(candidate => candidate.status === 'ACTIVE').map(candidate => candidate.storageLocationId));
+  const available = entry ? locations.filter(location => location.id === entry.storageLocationId) : locations.filter(location => !used.has(location.id));
+  if (!entry && !available.length) return toast('Alle aktiven Lagerorte sind bereits zugeordnet.');
+  form.elements.storageLocationId.innerHTML = available.map(location => `<option value="${escapeHtml(location.id)}">${escapeHtml(storageLocationOptionLabel(location))}</option>`).join('');
+  $('[data-stock-entry-location-field]').hidden = Boolean(entry);
+  $('[data-stock-entry-initial-field]').hidden = Boolean(entry);
+  form.elements.storageLocationId.required = !entry;
+  form.elements.initialQuantity.required = !entry;
+  $('#stock-entry-dialog-title').textContent = entry ? 'Lokaler Mindestbestand' : 'Weiteren Lagerort hinzufügen';
+  $('#stock-entry-dialog-copy').textContent = entry ? `${item.name} · ${stockLocationPath(entry)}` : `${item.name} · ${item.stockUnit}`;
+  $('#stock-entry-error').textContent = '';
+  $('#stock-entry-dialog').showModal();
+}
+
+function syncStockMovementFields() {
+  const form = $('#stock-movement-form');
+  const type = form.elements.type.value;
+  const outbound = ['CONSUMPTION','DISPOSAL','LOSS'].includes(type);
+  const fixedConsumption = form.dataset.fixedType === 'CONSUMPTION';
+  $('[data-stock-type-field]').hidden = fixedConsumption;
+  $('[data-stock-source-field]').hidden = fixedConsumption || !(outbound || type === 'TRANSFER');
+  $('[data-stock-destination-field]').hidden = !(['RECEIPT','RETURN','TRANSFER'].includes(type));
+  $('[data-stock-correction-location-field]').hidden = type !== 'CORRECTION';
+  $('[data-stock-quantity-field]').hidden = type === 'CORRECTION';
+  $('[data-stock-counted-field]').hidden = type !== 'CORRECTION';
+  form.elements.sourceStorageLocationId.required = outbound || type === 'TRANSFER';
+  form.elements.destinationStorageLocationId.required = ['RECEIPT','RETURN','TRANSFER'].includes(type);
+  form.elements.storageLocationId.required = type === 'CORRECTION';
+  form.elements.quantity.required = type !== 'CORRECTION';
+  form.elements.countedQuantity.required = type === 'CORRECTION';
+  const source = form.elements.sourceStorageLocationId.value;
+  [...form.elements.destinationStorageLocationId.options].forEach(option => { option.disabled = type === 'TRANSFER' && option.value === source; });
+  if (form.elements.destinationStorageLocationId.selectedOptions[0]?.disabled) form.elements.destinationStorageLocationId.value = [...form.elements.destinationStorageLocationId.options].find(option => !option.disabled)?.value || '';
+}
+
+async function openStockMovementDialog(itemId, type = 'RECEIPT', sourceId = '') {
+  let item = state.inventoryItems.find(candidate => candidate.id === itemId) || (state.inventoryStockItem?.id === itemId ? state.inventoryStockItem : null);
+  if (!item && itemId) item = await api(`/inventory-items/${encodeURIComponent(itemId)}`);
+  if (!item) return toast('Artikel nicht gefunden.');
+  const locations = await ensureActiveStorageLocations();
+  const stockData = state.inventoryStockItem?.id === item.id
+    ? { entries:state.inventoryStockEntries }
+    : await api(`/stock-entries?itemId=${encodeURIComponent(item.id)}`);
+  const entries = (stockData.entries || []).filter(entry => entry.status === 'ACTIVE');
+  const sourceEntries = entries.filter(entry => entry.quantity > 0);
+  const form = $('#stock-movement-form');
+  form.reset();
+  form.elements.itemId.value = item.id;
+  form.elements.type.value = type;
+  const locationOptions = locations.map(location => `<option value="${escapeHtml(location.id)}">${escapeHtml(storageLocationOptionLabel(location))}</option>`).join('');
+  const sourceOptions = sourceEntries.map(entry => `<option value="${escapeHtml(entry.storageLocationId)}">${escapeHtml(stockLocationPath(entry))} · ${escapeHtml(formatInventoryQuantity(entry.quantity))} ${escapeHtml(entry.stockUnit)}</option>`).join('');
+  const correctionOptions = entries.map(entry => `<option value="${escapeHtml(entry.storageLocationId)}">${escapeHtml(stockLocationPath(entry))} · ${escapeHtml(formatInventoryQuantity(entry.quantity))} ${escapeHtml(entry.stockUnit)}</option>`).join('');
+  form.elements.sourceStorageLocationId.innerHTML = sourceOptions;
+  form.elements.destinationStorageLocationId.innerHTML = locationOptions;
+  form.elements.storageLocationId.innerHTML = correctionOptions;
+  if (sourceId) form.elements.sourceStorageLocationId.value = sourceId;
+  const sourceEntry = sourceEntries.find(entry => entry.storageLocationId === sourceId);
+  const fixedConsumption = type === 'CONSUMPTION' && Boolean(sourceEntry);
+  const wholeUnits = item.stockUnit.toLocaleLowerCase('de-DE') === 'stück';
+  form.dataset.fixedType = fixedConsumption ? 'CONSUMPTION' : '';
+  form.elements.quantity.max = fixedConsumption ? sourceEntry.quantity : 1000000000000;
+  form.elements.quantity.min = wholeUnits ? '1' : '0.000001';
+  form.elements.quantity.step = wholeUnits ? '1' : 'any';
+  form.elements.quantity.value = wholeUnits ? '1' : '';
+  form.elements.quantity.classList.toggle('whole-units', wholeUnits);
+  form.elements.countedQuantity.step = wholeUnits ? '1' : 'any';
+  form.elements.countedQuantity.classList.toggle('whole-units', wholeUnits);
+  form.querySelectorAll('[data-stock-quantity-step],[data-stock-counted-step]').forEach(button => { button.hidden = false; });
+  $('#stock-movement-dialog-title').textContent = fixedConsumption ? 'Artikel entnehmen' : 'Bestand buchen';
+  $('#stock-movement-dialog-copy').textContent = fixedConsumption
+    ? `${item.name} · ${stockLocationPath(sourceEntry)} · ${formatInventoryQuantity(sourceEntry.quantity)} ${item.stockUnit} verfügbar`
+    : `${item.name} · Bestandseinheit ${item.stockUnit}`;
+  $('#stock-movement-quantity-hint').hidden = !fixedConsumption;
+  $('#stock-movement-quantity-hint').textContent = fixedConsumption ? `Maximal ${formatInventoryQuantity(sourceEntry.quantity)} ${item.stockUnit}` : '';
+  $('#stock-movement-submit').textContent = fixedConsumption ? 'Entnehmen' : 'Verbindlich buchen';
+  $('#stock-movement-error').textContent = '';
+  syncStockMovementFields();
+  $('#stock-movement-dialog').showModal();
+}
+
+function syncStockTransferQuantityMode() {
+  const form = $('#stock-transfer-form');
+  const custom = form.elements.quantityMode.value === 'custom';
+  $('#stock-transfer-quantity-field').hidden = !custom;
+  form.elements.quantity.disabled = !custom;
+  form.elements.quantity.required = custom;
+  form.querySelectorAll('[data-stock-transfer-quantity-step]').forEach(button => { button.hidden = !custom; });
+  if (custom) requestAnimationFrame(() => form.elements.quantity.select());
+}
+
+function openStockTransferDialog(entry, destinationId) {
+  const maximum = Number(entry?.quantity) || 0;
+  if (!entry || maximum <= 0) return;
+  const activeLocations = state.storageLocations.filter(location => location.status === 'ACTIVE');
+  const destinations = activeLocations.filter(location => location.id !== entry.sourceStorageLocationId);
+  const destination = destinationId ? destinations.find(location => location.id === destinationId) : null;
+  if (destinationId && !destination) return;
+  if (!destinations.length) return toast('Es gibt keinen anderen aktiven Lagerort als Ziel.');
+  const orderedLocations = storageLocationTree(activeLocations);
+  const form = $('#stock-transfer-form');
+  form.reset();
+  form.elements.itemId.value = entry.itemId;
+  form.elements.sourceStorageLocationId.value = entry.sourceStorageLocationId;
+  form.elements.destinationStorageLocationId.innerHTML = orderedLocations.map(({ location, depth }) => {
+    const source = location.id === entry.sourceStorageLocationId;
+    const selected = destination ? location.id === destination.id : source;
+    return `<option value="${source ? '' : escapeHtml(location.id)}"${source ? ' disabled' : ''}${selected ? ' selected' : ''}>${'  '.repeat(depth)}${depth ? '↳ ' : ''}${escapeHtml(location.name)}${source ? ' (aktueller Lagerort)' : ''}</option>`;
+  }).join('');
+  form.elements.destinationStorageLocationId.value = destinationId || '';
+  $('[data-stock-transfer-destination-field]').hidden = Boolean(destination);
+  form.elements.maximumQuantity.value = maximum;
+  form.elements.stockUnit.value = entry.stockUnit;
+  const wholeUnits = entry.stockUnit.toLocaleLowerCase('de-DE') === 'stück';
+  form.dataset.wholeUnits = wholeUnits ? '1' : '';
+  form.elements.quantity.max = maximum;
+  form.elements.quantity.min = wholeUnits ? 1 : 0.000001;
+  form.elements.quantity.step = wholeUnits ? '1' : 'any';
+  form.elements.quantity.value = wholeUnits ? '1' : '';
+  form.elements.quantity.classList.toggle('whole-units', wholeUnits);
+  form.elements.quantityMode.value = 'all';
+  $('#stock-transfer-copy').textContent = destination
+    ? `${entry.itemName} von ${entry.sourceName} nach ${destination.name}`
+    : `${entry.itemName} aus ${entry.sourceName}`;
+  $('#stock-transfer-all-copy').textContent = `${formatInventoryQuantity(maximum)} ${entry.stockUnit} – gesamter Bestand an diesem Lagerort`;
+  $('#stock-transfer-limit').textContent = `Maximal ${formatInventoryQuantity(maximum)} ${entry.stockUnit}`;
+  $('#stock-transfer-error').textContent = '';
+  syncStockTransferQuantityMode();
+  $('#stock-transfer-dialog').showModal();
+}
+
+function clearStorageDragState() {
+  document.querySelectorAll('.storage-finder-row.dragging,.storage-finder-row.drop-ready,.storage-finder-row.drop-over,.storage-finder-column.drop-ready-column,.storage-finder-column.drop-over-column').forEach(element => element.classList.remove('dragging', 'drop-ready', 'drop-over', 'drop-ready-column', 'drop-over-column'));
+  storageDragEntry = null;
+}
+
+function bindStorageTransferDragDrop() {
+  document.querySelectorAll('[data-stock-drag-entry]').forEach(row => {
+    row.ondragstart = event => {
+      storageDragEntry = {
+        id:row.dataset.stockDragEntry,
+        itemId:row.dataset.stockDragItem,
+        itemName:row.dataset.stockDragName,
+        sourceStorageLocationId:row.dataset.stockDragSource,
+        sourceName:row.dataset.stockDragSourceName,
+        quantity:Number(row.dataset.stockDragQuantity),
+        stockUnit:row.dataset.stockDragUnit,
+      };
+      event.dataTransfer.effectAllowed = 'move';
+      event.dataTransfer.setData('text/plain', storageDragEntry.itemName);
+      row.classList.add('dragging');
+      document.querySelectorAll('[data-storage-drop-target]').forEach(target => {
+        if (target.dataset.storageDropTarget !== storageDragEntry.sourceStorageLocationId) target.classList.add('drop-ready');
+      });
+      document.querySelectorAll('[data-storage-column-drop-target]').forEach(column => {
+        if (column.dataset.storageColumnDropTarget !== storageDragEntry.sourceStorageLocationId) column.classList.add('drop-ready-column');
+      });
+    };
+    row.ondragend = clearStorageDragState;
+  });
+  document.querySelectorAll('[data-storage-drop-target]').forEach(target => {
+    const valid = () => storageDragEntry && target.dataset.storageDropTarget !== storageDragEntry.sourceStorageLocationId;
+    target.ondragover = event => {
+      if (!valid()) return;
+      event.preventDefault();
+      event.dataTransfer.dropEffect = 'move';
+    };
+    target.ondragenter = event => {
+      if (!valid()) return;
+      event.preventDefault();
+      target.classList.add('drop-over');
+    };
+    target.ondragleave = event => {
+      if (!target.contains(event.relatedTarget)) target.classList.remove('drop-over');
+    };
+    target.ondrop = event => {
+      if (!valid()) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const entry = storageDragEntry;
+      const destinationId = target.dataset.storageDropTarget;
+      clearStorageDragState();
+      openStockTransferDialog(entry, destinationId);
+    };
+  });
+  document.querySelectorAll('[data-storage-column-drop-target]').forEach(column => {
+    const valid = event => storageDragEntry
+      && column.dataset.storageColumnDropTarget !== storageDragEntry.sourceStorageLocationId
+      && !event.target.closest('[data-storage-drop-target]');
+    column.ondragover = event => {
+      if (!valid(event)) return;
+      event.preventDefault();
+      event.dataTransfer.dropEffect = 'move';
+    };
+    column.ondragenter = event => {
+      if (!valid(event)) return;
+      event.preventDefault();
+      column.classList.add('drop-over-column');
+    };
+    column.ondragleave = event => {
+      if (!column.contains(event.relatedTarget) || event.relatedTarget?.closest('[data-storage-drop-target]')) column.classList.remove('drop-over-column');
+    };
+    column.ondrop = event => {
+      if (!valid(event)) return;
+      event.preventDefault();
+      const entry = storageDragEntry;
+      const destinationId = column.dataset.storageColumnDropTarget;
+      clearStorageDragState();
+      openStockTransferDialog(entry, destinationId);
+    };
+  });
+}
+
+function clearStorageLocationDragState() {
+  document.querySelectorAll('.storage-finder-row.location-dragging,.storage-finder-row.location-move-ready,.storage-finder-row.location-move-over,.storage-finder-column.location-column-move-ready,.storage-finder-column.location-column-move-over').forEach(element => element.classList.remove('location-dragging', 'location-move-ready', 'location-move-over', 'location-column-move-ready', 'location-column-move-over'));
+  storageLocationDrag = null;
+}
+
+function bindStorageLocationMoveDragDrop() {
+  const rows = [...document.querySelectorAll('[data-storage-move-location]')];
+  const columns = [...document.querySelectorAll('[data-storage-location-column-target]')];
+  const isDescendant = (candidateId, ancestorId) => {
+    let candidate = state.storageLocations.find(location => location.id === candidateId);
+    while (candidate?.parentId) {
+      if (candidate.parentId === ancestorId) return true;
+      candidate = state.storageLocations.find(location => location.id === candidate.parentId);
+    }
+    return false;
+  };
+  const validDestination = destinationId => storageLocationDrag
+    && destinationId !== storageLocationDrag.id
+    && destinationId !== storageLocationDrag.parentId
+    && !isDescendant(destinationId, storageLocationDrag.id);
+  const move = async destinationId => {
+    if (!validDestination(destinationId)) return;
+    const dragged = storageLocationDrag;
+    clearStorageLocationDragState();
+    try {
+      await api(`/storage-locations/${encodeURIComponent(dragged.id)}`, { method:'PATCH', body:JSON.stringify({ parentId:destinationId || null }) });
+      toast(`${dragged.name} wurde umplatziert.`);
+      await route();
+    } catch (error) { toast(error.message); }
+  };
+  rows.forEach(row => {
+    row.addEventListener('dragstart', event => {
+      storageLocationDrag = {
+        id:row.dataset.storageMoveLocation,
+        parentId:row.dataset.storageMoveParent,
+        name:row.dataset.storageMoveName,
+      };
+      event.dataTransfer.effectAllowed = 'move';
+      event.dataTransfer.setData('text/plain', storageLocationDrag.name);
+      row.classList.add('location-dragging');
+      rows.filter(candidate => validDestination(candidate.dataset.storageMoveLocation)).forEach(candidate => candidate.classList.add('location-move-ready'));
+      columns.filter(column => validDestination(column.dataset.storageLocationColumnTarget)).forEach(column => column.classList.add('location-column-move-ready'));
+    });
+    row.addEventListener('dragend', clearStorageLocationDragState);
+    row.addEventListener('dragover', event => {
+      if (!validDestination(row.dataset.storageMoveLocation)) return;
+      event.preventDefault();
+      event.dataTransfer.dropEffect = 'move';
+      row.classList.add('location-move-over');
+    });
+    row.addEventListener('dragleave', event => {
+      if (!row.contains(event.relatedTarget)) row.classList.remove('location-move-over');
+    });
+    row.addEventListener('drop', event => {
+      if (!validDestination(row.dataset.storageMoveLocation)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      move(row.dataset.storageMoveLocation);
+    });
+  });
+  columns.forEach(column => {
+    const destinationId = () => column.dataset.storageLocationColumnTarget;
+    const valid = event => validDestination(destinationId()) && !event.target.closest('[data-storage-drop-target]');
+    column.addEventListener('dragover', event => {
+      if (!valid(event)) return;
+      event.preventDefault();
+      event.dataTransfer.dropEffect = 'move';
+    });
+    column.addEventListener('dragenter', event => {
+      if (!valid(event)) return;
+      event.preventDefault();
+      column.classList.add('location-column-move-over');
+    });
+    column.addEventListener('dragleave', event => {
+      if (!column.contains(event.relatedTarget) || event.relatedTarget?.closest('[data-storage-drop-target]')) column.classList.remove('location-column-move-over');
+    });
+    column.addEventListener('drop', event => {
+      if (!valid(event)) return;
+      event.preventDefault();
+      move(destinationId());
+    });
+  });
+}
+
+function findReservation(id) {
+  return [...state.inventoryReservations, ...state.projectReservations].find(reservation => reservation.id === id);
+}
+
+async function reservationProject(projectId) {
+  if (state.current?.id === projectId) return state.current;
+  const view = await api(`/project-view/${encodeURIComponent(projectId)}`);
+  return view.project;
+}
+
+function setReservationTaskOptions(project, selectedId = '') {
+  const form = $('#reservation-form');
+  const tasks = (project?.tasks || []).filter(task => task.status !== 'Erledigt' || task.id === selectedId);
+  form.elements.projectEntryId.innerHTML = `<option value="">Gesamtes Projekt</option>${tasks.map(task => `<option value="${escapeHtml(task.id)}">${escapeHtml(task.title || 'Arbeitsschritt')}</option>`).join('')}`;
+  form.elements.projectEntryId.value = selectedId || '';
+}
+
+async function updateReservationAvailability() {
+  const form = $('#reservation-form');
+  const itemId = form.elements.itemId.value;
+  const hint = $('#reservation-availability-hint');
+  if (!itemId) { hint.textContent = ''; return; }
+  try {
+    const data = await api(`/stock-entries?itemId=${encodeURIComponent(itemId)}`);
+    const summary = data.summary || {};
+    hint.textContent = `Aktuell verfügbar: ${formatInventoryQuantity(summary.availableQuantity ?? summary.physicalQuantity ?? 0)} ${summary.stockUnit || ''}. Überbedarf ist zulässig.`;
+  } catch { hint.textContent = ''; }
+}
+
+function syncReservationQuantityUnit() {
+  const form = $('#reservation-form');
+  const item = state.inventoryItems.find(candidate => candidate.id === form.elements.itemId.value);
+  const wholeUnits = item?.stockUnit.toLocaleLowerCase('de-DE') === 'stück';
+  const input = form.elements.requestedQuantity;
+  input.min = wholeUnits ? '1' : '0.000001';
+  input.step = wholeUnits ? '1' : 'any';
+  input.classList.toggle('whole-units', wholeUnits);
+  form.querySelectorAll('[data-reservation-quantity-step]').forEach(button => { button.hidden = !wholeUnits; });
+  if (wholeUnits && input.value === '') input.value = '1';
+}
+
+async function openReservationDialog({ itemId = '', projectId = '', reservationId = '' } = {}) {
+  const reservation = reservationId ? findReservation(reservationId) : null;
+  if (reservationId && !reservation) return toast('Reservierung nicht gefunden.');
+  const form = $('#reservation-form');
+  form.reset();
+  const fixedItemId = reservation?.itemId || itemId;
+  const fixedProjectId = reservation?.projectId || projectId;
+  if (!state.inventoryItems.length || projectId) await loadInventoryItems(false, '');
+  const items = state.inventoryItems.filter(item => item.status === 'ACTIVE' || item.id === fixedItemId);
+  form.elements.itemId.innerHTML = items.map(item => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.name)} · ${escapeHtml(item.stockUnit)}</option>`).join('');
+  if (fixedItemId) form.elements.itemId.value = fixedItemId;
+
+  const projectData = await api('/projects');
+  state.reservationProjects = (projectData.projects || []).filter(project => !['completed','archived','trashed'].includes(project.status) || project.id === fixedProjectId);
+  form.elements.projectId.innerHTML = `<option value="" disabled>Projekt auswählen</option>${state.reservationProjects.map(project => `<option value="${escapeHtml(project.id)}">${escapeHtml(project.title)}</option>`).join('')}`;
+  if (fixedProjectId) form.elements.projectId.value = fixedProjectId;
+  else form.elements.projectId.value = '';
+  if (!form.elements.itemId.value) return toast('Für eine Reservierung wird ein aktiver Artikel benötigt.');
+  if (!state.reservationProjects.length) return toast('Für eine Reservierung wird ein aktives Projekt benötigt.');
+
+  if (form.elements.projectId.value) setReservationTaskOptions(await reservationProject(form.elements.projectId.value), reservation?.projectEntryId || '');
+  else setReservationTaskOptions(null);
+  form.elements.projectEntryId.disabled = !form.elements.projectId.value;
+  form.elements.reservationId.value = reservation?.id || '';
+  form.elements.requestedQuantity.value = reservation?.requestedQuantity ?? '';
+  syncReservationQuantityUnit();
+  form.elements.note.value = reservation?.note || '';
+  $('[data-reservation-item-field]').hidden = Boolean(fixedItemId);
+  $('[data-reservation-project-field]').hidden = Boolean(fixedProjectId);
+  form.elements.itemId.disabled = Boolean(reservation);
+  form.elements.projectId.disabled = Boolean(reservation);
+  $('#reservation-dialog-title').textContent = reservation ? 'Reservierung bearbeiten' : 'Für Projekt reservieren';
+  $('#reservation-error').textContent = '';
+  await updateReservationAvailability();
+  $('#reservation-dialog').showModal();
+}
+
+async function openReservationFulfillDialog(reservationId) {
+  const reservation = findReservation(reservationId);
+  if (!reservation) return toast('Reservierung nicht gefunden.');
+  const data = await api(`/stock-entries?itemId=${encodeURIComponent(reservation.itemId)}`);
+  const entries = (data.entries || []).filter(entry => entry.status === 'ACTIVE' && entry.quantity > 0);
+  if (!entries.length) return toast('Für diesen Artikel ist kein physischer Bestand verfügbar.');
+  const form = $('#reservation-fulfill-form');
+  form.reset();
+  form.elements.reservationId.value = reservation.id;
+  form.dataset.remainingQuantity = reservation.remainingQuantity;
+  form.elements.sourceStorageLocationId.innerHTML = entries.map(entry => `<option value="${escapeHtml(entry.storageLocationId)}" data-quantity="${escapeHtml(entry.quantity)}">${escapeHtml(stockLocationPath(entry))} · ${escapeHtml(formatInventoryQuantity(entry.quantity))} ${escapeHtml(entry.stockUnit)}</option>`).join('');
+  syncReservationFulfillLimit();
+  $('#reservation-fulfill-copy').textContent = `${reservation.itemName} · noch ${formatInventoryQuantity(reservation.remainingQuantity)} ${reservation.stockUnit} offen`;
+  $('#reservation-fulfill-error').textContent = '';
+  $('#reservation-fulfill-dialog').showModal();
+}
+
+function syncReservationFulfillLimit() {
+  const form = $('#reservation-fulfill-form');
+  const remaining = Number(form.dataset.remainingQuantity) || 0;
+  const available = Number(form.elements.sourceStorageLocationId.selectedOptions[0]?.dataset.quantity) || 0;
+  const maximum = Math.min(remaining, available);
+  form.elements.quantity.max = maximum;
+  if (!Number(form.elements.quantity.value) || Number(form.elements.quantity.value) > maximum) form.elements.quantity.value = maximum;
+}
+
+function bindReservationActions() {
+  document.querySelectorAll('[data-reservation-create]').forEach(button => button.onclick = () => openReservationDialog({ itemId:button.dataset.reservationItem || '', projectId:button.dataset.reservationProject || '' }));
+  document.querySelectorAll('[data-reservation-edit]').forEach(button => button.onclick = () => openReservationDialog({ reservationId:button.dataset.reservationEdit }));
+  document.querySelectorAll('[data-reservation-fulfill]').forEach(button => button.onclick = () => openReservationFulfillDialog(button.dataset.reservationFulfill));
+  document.querySelectorAll('[data-reservation-release]').forEach(button => button.onclick = async () => {
+    if (!confirm('Diese Reservierung aufheben? Der offene Bedarf wird wieder verfügbar.')) return;
+    try { await api(`/reservations/${encodeURIComponent(button.dataset.reservationRelease)}/release`, { method:'POST', body:'{}' }); toast('Reservierung aufgehoben.'); await route(); }
+    catch (error) { toast(error.message); }
+  });
+}
+
+function bindInventoryItemActions() {
+  document.querySelectorAll('[data-inventory-item-create]').forEach(button => button.onclick = () => openInventoryItemDialog());
+  document.querySelectorAll('[data-inventory-item-edit]').forEach(button => button.onclick = () => openInventoryItemDialog(button.dataset.inventoryItemEdit));
+  document.querySelectorAll('[data-inventory-item-archive]').forEach(button => button.onclick = async () => {
+    const name = button.dataset.inventoryItemName || 'Diesen Artikel';
+    if (!confirm(`„${name}“ archivieren? Historische Verweise bleiben erhalten.`)) return;
+    try {
+      await api(`/inventory-items/${encodeURIComponent(button.dataset.inventoryItemArchive)}/archive`, { method:'POST', body:'{}' });
+      toast('Artikel archiviert.');
+      location.href = inventoryItemHref('');
+    } catch (error) { toast(error.message); }
+  });
+  document.querySelectorAll('[data-inventory-item-restore]').forEach(button => button.onclick = async () => {
+    try {
+      await api(`/inventory-items/${encodeURIComponent(button.dataset.inventoryItemRestore)}/restore`, { method:'POST', body:'{}' });
+      toast('Artikel wiederhergestellt.');
+      await route();
+    } catch (error) { toast(error.message); }
+  });
+  document.querySelectorAll('[data-inventory-item-copy-link]').forEach(button => button.onclick = async () => {
+    const url = new URL(inventoryItemHref(button.dataset.inventoryItemCopyLink, false, ''), location.origin).href;
+    try { await navigator.clipboard.writeText(url); toast('Artikel-Link kopiert.'); }
+    catch { toast('Der Link konnte nicht kopiert werden.'); }
+  });
+  document.querySelectorAll('[data-stock-entry-create]').forEach(button => button.onclick = () => openStockEntryDialog(button.dataset.stockEntryCreate));
+  document.querySelectorAll('[data-stock-entry-edit]').forEach(button => button.onclick = () => openStockEntryDialog(state.inventoryStockItem?.id || '', button.dataset.stockEntryEdit));
+  document.querySelectorAll('[data-stock-entry-delete]').forEach(button => button.onclick = async () => {
+    if (!confirm('Diesen leeren Lagerplatz entfernen? Die Buchungshistorie bleibt erhalten. Lokaler Mindestbestand und Notiz werden gelöscht.')) return;
+    try { await api(`/stock-entries/${encodeURIComponent(button.dataset.stockEntryDelete)}`, { method:'DELETE' }); toast('Lagerplatz entfernt.'); await route(); }
+    catch (error) { toast(error.message); }
+  });
+  document.querySelectorAll('[data-stock-transfer-menu]').forEach(button => button.onclick = () => openStockTransferDialog({
+    itemId:button.dataset.stockItem,
+    itemName:button.dataset.stockName,
+    sourceStorageLocationId:button.dataset.stockSource,
+    sourceName:button.dataset.stockSourceName,
+    quantity:Number(button.dataset.stockQuantity),
+    stockUnit:button.dataset.stockUnit,
+  }, ''));
+  document.querySelectorAll('[data-stock-movement]').forEach(button => button.onclick = () => openStockMovementDialog(button.dataset.stockItem || state.inventoryStockItem?.id || '', button.dataset.stockMovement, button.dataset.stockSource || ''));
+  bindReservationActions();
+  const search = $('#inventory-item-search');
+  if (search) search.onsubmit = event => {
+    event.preventDefault();
+    location.href = inventoryItemHref('', state.inventoryItemsIncludeArchived, search.elements.q.value.trim());
+  };
+  const clear = $('[data-clear-inventory-search]');
+  if (clear) clear.onclick = () => { location.href = inventoryItemHref('', state.inventoryItemsIncludeArchived, ''); };
+}
+
+function fitInventoryWorkspaces() {
+  const compact = window.matchMedia('(max-width:780px)').matches;
+  const main = $('#main');
+  const bottomGap = main ? Number.parseFloat(getComputedStyle(main).paddingBottom) || 0 : 0;
+  ['.storage-finder-frame', '.inventory-item-shell'].forEach(selector => {
+    const workspace = $(selector);
+    if (!workspace) return;
+    if (compact) {
+      workspace.style.removeProperty('height');
+      return;
+    }
+    const available = window.innerHeight - workspace.getBoundingClientRect().top - bottomGap;
+    workspace.style.height = `${Math.max(260, available)}px`;
+  });
+}
+
+async function renderInventoryItems(itemId = '', includeArchived = false, query = '') {
+  await loadInventoryItems(includeArchived, query);
+  const current = itemId ? await api(`/inventory-items/${encodeURIComponent(itemId)}`) : null;
+  if (current && !state.inventoryItems.some(item => item.id === current.id)) state.inventoryItems.unshift(current);
+  const [stockData, transactionData, reservationData] = current ? await Promise.all([
+    api(`/stock-entries?itemId=${encodeURIComponent(current.id)}&includeArchived=1`),
+    api(`/stock-transactions?itemId=${encodeURIComponent(current.id)}&limit=100`),
+    api(`/reservations?itemId=${encodeURIComponent(current.id)}`),
+  ]) : [{ entries:[], summary:null }, { transactions:[] }, { reservations:[] }];
+  state.inventoryStockItem = current;
+  state.inventoryStockEntries = stockData.entries || [];
+  state.inventoryStockTransactions = transactionData.transactions || [];
+  state.inventoryReservations = reservationData.reservations || [];
+  const rows = state.inventoryItems.map(item => inventoryItemRow(item, current?.id || '')).join('');
+  const empty = query ? `<div class="inventory-item-empty"><strong>Keine passenden Artikel.</strong><span>Versuche einen anderen Suchbegriff.</span></div>` : `<div class="inventory-item-empty"><strong>Noch keine Artikel vorhanden.</strong>${mayEditProjects() ? '<button class="button primary compact" type="button" data-inventory-item-create>Ersten Artikel anlegen</button>' : ''}</div>`;
+  const inventoryItemsHead = standardPageHeader({ title:'Artikel', description:'Artikelstammdaten unabhängig von Lagerort und Bestand.', icon:'tag', actions:mayEditProjects() ? '<button class="button primary compact" type="button" data-inventory-item-create>Artikel anlegen</button>' : '', className:'storage-finder-page-head inventory-items-page-head' });
+  $('#main').innerHTML = `${inventoryItemsHead}<form id="inventory-item-search" class="inventory-item-search" role="search"><span aria-hidden="true">${iconSvg('search')}</span><input name="q" type="search" maxlength="200" value="${escapeHtml(query)}" placeholder="Name, Hersteller, Artikelnummer oder Barcode" aria-label="Artikel durchsuchen"><button class="button primary compact" type="submit">Suchen</button>${query ? '<button class="button secondary compact" type="button" data-clear-inventory-search>Zurücksetzen</button>' : ''}</form><div class="inventory-item-shell${current ? ' has-selection' : ''}"><section class="inventory-item-list-panel" aria-label="Artikelliste">${rows || empty}</section>${inventoryItemDetail(current, includeArchived, stockData, transactionData.transactions || [], reservationData.reservations || [])}</div>`;
+  requestAnimationFrame(fitInventoryWorkspaces);
+  document.title = current ? `${current.name} · Artikel · Logbuch` : 'Artikel · Lager · Logbuch';
+  bindInventoryItemActions();
+}
+
+function replenishmentReasonMarkup(item) {
+  const reasons = [];
+  if (item.projectShortageQuantity > 0) reasons.push(`<span class="project">Projektbedarf fehlt: ${escapeHtml(formatInventoryQuantity(item.projectShortageQuantity))} ${escapeHtml(item.stockUnit)}</span>`);
+  if (item.globalReorderQuantity > 0 && item.minimumQuantity !== null) reasons.push('<span>Globaler Mindestbestand</span>');
+  if (item.localReorderQuantity > 0) reasons.push('<span>Lagerplatz-Mindestbestand</span>');
+  return reasons.join('');
+}
+
+function replenishmentItemMarkup(item) {
+  const local = (item.localShortages || []).map(shortage => `<a href="${storageLocationHref(shortage.storageLocationId)}"><span>${escapeHtml((shortage.locationPath || []).map(part => part.name).join(' › ') || shortage.locationName)}</span><strong>${escapeHtml(formatInventoryQuantity(shortage.quantity))} / ${escapeHtml(formatInventoryQuantity(shortage.minimumQuantity))} ${escapeHtml(item.stockUnit)}</strong></a>`).join('');
+  const metadata = [item.manufacturer, item.articleNumber].filter(Boolean).join(' · ');
+  const satisfied = item.reorderQuantity <= 0;
+  return `<article class="replenishment-item${satisfied ? ' satisfied' : ''}"><header><div><div class="replenishment-reasons">${replenishmentReasonMarkup(item) || '<span class="satisfied">Kein Fehlbedarf</span>'}</div><h2><a href="${inventoryItemHref(item.itemId, false, '')}">${escapeHtml(item.name)}</a></h2>${metadata ? `<p>${escapeHtml(metadata)}</p>` : ''}</div><div class="replenishment-order"><span>${satisfied ? 'Vorschlag' : 'Nachbestellen'}</span><strong>${escapeHtml(formatInventoryQuantity(item.reorderQuantity))} ${escapeHtml(item.stockUnit)}</strong></div></header><div class="replenishment-metrics"><div><span>Physisch</span><strong>${escapeHtml(formatInventoryQuantity(item.physicalQuantity))}</strong></div><div><span>Reserviert</span><strong>${escapeHtml(formatInventoryQuantity(item.reservedQuantity))}</strong></div><div class="${item.availableQuantity < 0 ? 'negative' : ''}"><span>Verfügbar</span><strong>${escapeHtml(formatInventoryQuantity(item.availableQuantity))}</strong></div><div><span>Globales Minimum</span><strong>${item.minimumQuantity === null ? '–' : escapeHtml(formatInventoryQuantity(item.minimumQuantity))}</strong></div></div>${local ? `<details class="replenishment-local"><summary>${item.localShortages.length} ${item.localShortages.length === 1 ? 'Lagerplatz' : 'Lagerplätze'} unter lokalem Minimum</summary><div>${local}</div></details>` : ''}<footer><a class="button secondary compact" href="${inventoryItemHref(item.itemId, false, '')}">Artikel öffnen</a>${item.merchantUrl ? `<a class="button primary compact" href="${escapeHtml(item.merchantUrl)}" target="_blank" rel="noopener noreferrer">Beim Händler öffnen</a>` : '<span class="replenishment-no-merchant">Kein Händlerlink hinterlegt</span>'}</footer></article>`;
+}
+
+async function renderInventoryReplenishment(routeQuery) {
+  const query = (routeQuery.get('q') || '').trim().slice(0, 200);
+  const includeSatisfied = routeQuery.get('all') === '1';
+  const sort = ['urgency','name','available','reorder'].includes(routeQuery.get('sort')) ? routeQuery.get('sort') : 'urgency';
+  const params = new URLSearchParams({ sort });
+  if (query) params.set('q', query);
+  if (includeSatisfied) params.set('includeSatisfied', '1');
+  const data = await api(`/inventory-replenishment?${params}`);
+  const summary = data.summary || { itemCount:0, projectShortageCount:0, localShortageCount:0, unitTotals:{} };
+  const totals = Object.entries(summary.unitTotals || {}).map(([unit, quantity]) => `${formatInventoryQuantity(quantity)} ${unit}`).join(' · ') || 'Kein Nachbestellbedarf';
+  const cards = (data.items || []).map(replenishmentItemMarkup).join('') || `<div class="empty replenishment-empty"><strong>${query ? 'Keine passenden Artikel.' : 'Aktuell ist nichts nachzubestellen.'}</strong>${query ? 'Passe den Suchbegriff oder die Ansicht an.' : 'Verfügbare Mengen und lokale Mindestbestände sind ausreichend.'}</div>`;
+  const replenishmentHead = standardPageHeader({ title:'Nachbestellen', description:'Projektbedarf und Mindestbestände in einer gemeinsamen, berechneten Übersicht.', icon:'shopping-cart', className:'storage-finder-page-head replenishment-page-head' });
+  $('#main').innerHTML = `${replenishmentHead}<section class="replenishment-summary" aria-label="Fehlbedarfsübersicht"><div><span>Angezeigte Artikel</span><strong>${summary.itemCount}</strong></div><div><span>Mit Projektfehlbedarf</span><strong>${summary.projectShortageCount}</strong></div><div><span>Mit lokalem Fehlbestand</span><strong>${summary.localShortageCount}</strong></div><div><span>Summen nach Einheit</span><strong>${escapeHtml(totals)}</strong></div></section><form id="replenishment-controls" class="replenishment-controls" role="search"><label class="replenishment-query">Artikel suchen<input name="q" type="search" maxlength="200" value="${escapeHtml(query)}" placeholder="Name, Hersteller, Artikelnummer oder Barcode"></label><label>Ansicht<select name="view"><option value="shortage"${includeSatisfied ? '' : ' selected'}>Nur Nachbestellbedarf</option><option value="all"${includeSatisfied ? ' selected' : ''}>Alle aktiven Artikel</option></select></label><label>Sortierung<select name="sort"><option value="urgency"${sort === 'urgency' ? ' selected' : ''}>Dringlichkeit</option><option value="reorder"${sort === 'reorder' ? ' selected' : ''}>Nachbestellmenge</option><option value="available"${sort === 'available' ? ' selected' : ''}>Verfügbarkeit</option><option value="name"${sort === 'name' ? ' selected' : ''}>Artikelname</option></select></label><button class="button primary compact" type="submit">Anzeigen</button></form><section class="replenishment-list" aria-live="polite">${cards}</section>`;
+  document.title = 'Nachbestellen · Lager · Logbuch';
+  const form = $('#replenishment-controls');
+  const navigate = () => { location.href = inventoryReplenishmentHref(form.elements.q.value.trim(), form.elements.view.value === 'all', form.elements.sort.value); };
+  form.onsubmit = event => { event.preventDefault(); navigate(); };
+  form.elements.view.onchange = navigate;
+  form.elements.sort.onchange = navigate;
+}
+
+function storageLocationDescendantIds(id) {
+  const descendants = new Set();
+  const pending = [id];
+  while (pending.length) {
+    const parentId = pending.pop();
+    state.storageLocations.filter(location => location.parentId === parentId).forEach(location => {
+      if (descendants.has(location.id)) return;
+      descendants.add(location.id);
+      pending.push(location.id);
+    });
+  }
+  return descendants;
+}
+
+function storageLocationPath(location, byId = new Map(state.storageLocations.map(item => [item.id, item]))) {
+  const path = [];
+  const seen = new Set();
+  for (let current = location; current; current = current.parentId ? byId.get(current.parentId) : null) {
+    if (seen.has(current.id)) break;
+    seen.add(current.id);
+    path.unshift(current);
+  }
+  return path;
+}
+
+function storageLocationTree(locations) {
+  const compare = (left, right) => Number(left.sortOrder || 0) - Number(right.sortOrder || 0)
+    || left.name.localeCompare(right.name, 'de', { sensitivity:'base', numeric:true })
+    || left.id.localeCompare(right.id);
+  const children = parentId => locations.filter(location => location.parentId === parentId).sort(compare);
+  const ordered = [];
+  const append = (parentId, depth) => children(parentId).forEach(location => {
+    ordered.push({ location, depth });
+    append(location.id, depth + 1);
+  });
+  append(null, 0);
+  return ordered;
+}
+
+function storageParentOptions(editingId = '', selectedParentId = null) {
+  const blocked = editingId ? storageLocationDescendantIds(editingId) : new Set();
+  if (editingId) blocked.add(editingId);
+  const active = state.storageLocations.filter(location => location.status === 'ACTIVE' && !blocked.has(location.id));
+  const ordered = storageLocationTree(active);
+  return `<option value=""${selectedParentId === null ? ' selected' : ''}>Oberste Ebene</option>${ordered.map(({ location, depth }) => {
+    const selected = location.id === selectedParentId ? ' selected' : '';
+    return `<option value="${escapeHtml(location.id)}"${selected}>${'  '.repeat(depth)}${depth ? '↳ ' : ''}${escapeHtml(location.name)}</option>`;
+  }).join('')}`;
+}
+
+function openStorageLocationDialog(locationId = '', parentId = null) {
+  const dialog = $('#storage-location-dialog');
+  const form = $('#storage-location-form');
+  const location = locationId ? state.storageLocations.find(item => item.id === locationId) : null;
+  if (locationId && !location) return toast('Lagerort nicht gefunden.');
+  form.reset();
+  form.elements.locationId.value = location?.id || '';
+  form.elements.name.value = location?.name || '';
+  form.elements.icon.value = entityIconName(location, 'archive');
+  form.elements.description.value = location?.description || '';
+  form.elements.parentId.innerHTML = storageParentOptions(location?.id || '', location ? location.parentId : parentId);
+  $('#storage-location-dialog-title').textContent = location ? 'Lagerort bearbeiten oder umplatzieren' : 'Lagerort anlegen';
+  $('#storage-location-error').textContent = '';
+  renderIconPicker('storage-location');
+  dialog.showModal();
+  requestAnimationFrame(() => form.elements.name.focus());
+}
+
+function storageLocationActionMenu(location) {
+  if (!location || !mayEditProjects()) return '';
+  const archived = location.status === 'ARCHIVED';
+  const actions = archived
+    ? `<button class="menu-item" type="button" data-storage-restore="${escapeHtml(location.id)}">Wiederherstellen</button>`
+    : `<button class="menu-item" type="button" data-storage-edit="${escapeHtml(location.id)}">Bearbeiten oder umplatzieren</button><button class="menu-item danger" type="button" data-storage-archive="${escapeHtml(location.id)}" data-storage-name="${escapeHtml(location.name)}">Unterbaum archivieren</button>`;
+  return `<details class="action-menu storage-finder-column-menu"><summary aria-label="Menü für ${escapeHtml(location.name)}" title="Menü für ${escapeHtml(location.name)}">${iconSvg('menu')}</summary><div class="action-menu-panel">${actions}</div></details>`;
+}
+
+function storageFinderEntry(location, selectedId = '') {
+  const archived = location.status === 'ARCHIVED';
+  const movable = mayEditProjects() && !archived;
+  const selected = location.id === selectedId;
+  return `<article class="storage-finder-row${selected ? ' selected' : ''}${archived ? ' archived' : ''}" data-storage-finder-row="${escapeHtml(location.id)}"${archived ? '' : ` data-storage-drop-target="${escapeHtml(location.id)}" data-storage-drop-name="${escapeHtml(location.name)}"`}${movable ? ` draggable="true" data-storage-move-location="${escapeHtml(location.id)}" data-storage-move-parent="${escapeHtml(location.parentId || '')}" data-storage-move-name="${escapeHtml(location.name)}"` : ''}>
+    <a class="storage-finder-link" href="${storageLocationHref(location.id)}"${selected ? ' aria-current="page"' : ''} data-storage-parent-href="${storageLocationHref(location.parentId || '')}"><span class="storage-finder-icon storage-finder-location-icon" aria-hidden="true">${iconSvg(entityIconName(location, 'archive'))}</span><span class="storage-finder-copy"><strong>${escapeHtml(location.name)}</strong>${archived ? '<small>Archiviert</small>' : ''}</span></a>
+  </article>`;
+}
+
+function storageFinderItemEntry(entry, parentId, selectedItemId = '', includeArchived = false) {
+  const selected = entry.itemId === selectedItemId;
+  const archived = entry.itemStatus === 'ARCHIVED' || entry.status === 'ARCHIVED';
+  const draggable = mayEditProjects() && !archived && entry.quantity > 0;
+  return `<article class="storage-finder-row storage-finder-item-row${selected ? ' selected' : ''}${archived ? ' archived' : ''}" data-storage-finder-item="${escapeHtml(entry.itemId)}"${draggable ? ` draggable="true" data-stock-drag-entry="${escapeHtml(entry.id)}" data-stock-drag-item="${escapeHtml(entry.itemId)}" data-stock-drag-source="${escapeHtml(parentId)}" data-stock-drag-source-name="${escapeHtml(entry.locationName)}" data-stock-drag-name="${escapeHtml(entry.itemName)}" data-stock-drag-quantity="${escapeHtml(entry.quantity)}" data-stock-drag-unit="${escapeHtml(entry.stockUnit)}"` : ''}>
+    <a class="storage-finder-link" href="${storageContextItemHref(parentId, entry.itemId, includeArchived)}"${selected ? ' aria-current="page"' : ''} data-storage-parent-href="${storageLocationHref(parentId, includeArchived)}"><span class="storage-finder-icon storage-finder-item-icon" aria-hidden="true">${iconSvg('tag')}</span><span class="storage-finder-copy"><strong>${escapeHtml(entry.itemName)}</strong><small>${escapeHtml(formatInventoryQuantity(entry.quantity))} ${escapeHtml(entry.stockUnit)}${entry.minimumQuantity === null ? '' : ` · Min. ${escapeHtml(formatInventoryQuantity(entry.minimumQuantity))}`}${archived ? ' · Archiviert' : ''}</small></span></a>
+  </article>`;
+}
+
+function storageFinderColumn(parent, locations, stockEntries = [], selectedLocationId = '', selectedItemId = '', current = false, includeArchived = false) {
+  const parentId = parent?.id || '';
+  const canAdd = mayEditProjects() && (!parent || parent.status === 'ACTIVE');
+  const heading = parent ? parent.name : 'Lagerorte';
+  const empty = parent ? 'Noch keine Unterorte oder Artikel' : 'Noch keine Lagerorte';
+  const locationRows = locations.map(location => storageFinderEntry(location, selectedLocationId)).join('');
+  const itemRows = parent ? stockEntries.map(entry => storageFinderItemEntry(entry, parentId, selectedItemId, includeArchived)).join('') : '';
+  const columnDropTarget = parent && parent.status === 'ACTIVE' ? ` data-storage-column-drop-target="${escapeHtml(parentId)}" data-storage-column-drop-name="${escapeHtml(parent.name)}"` : '';
+  const locationColumnDropTarget = !parent || parent.status === 'ACTIVE' ? ` data-storage-location-column-target="${escapeHtml(parentId)}"` : '';
+  const headerActions = `${canAdd ? `<button class="storage-finder-column-add" type="button" data-storage-create="${escapeHtml(parentId)}" aria-label="${parent ? `Unterort in ${escapeHtml(parent.name)} anlegen` : 'Obersten Lagerort anlegen'}" title="Lagerort anlegen">+</button>` : ''}${storageLocationActionMenu(parent)}`;
+  return `<section class="storage-finder-column" data-storage-finder-column data-storage-parent="${escapeHtml(parentId)}"${columnDropTarget}${locationColumnDropTarget}${current ? ' data-finder-current-column' : ''}><header><strong>${escapeHtml(heading)}</strong><div class="storage-finder-column-actions">${headerActions}</div></header><div class="storage-finder-list">${locationRows || itemRows ? `${locationRows}${itemRows}` : `<div class="storage-finder-empty"><span>${empty}</span>${canAdd ? `<button type="button" data-storage-create="${escapeHtml(parentId)}">Jetzt anlegen</button>` : ''}</div>`}</div></section>`;
+}
+
+function storageFinderItemInspector(location, item, localEntry, stockData, includeArchived) {
+  if (!location || !item || !localEntry) return '';
+  const summary = stockData.summary || {};
+  const archived = item.status === 'ARCHIVED' || localEntry.status === 'ARCHIVED';
+  const unit = item.stockUnit;
+  const otherEntries = (stockData.entries || []).filter(entry => entry.status === 'ACTIVE' && entry.storageLocationId !== location.id);
+  const localMinimum = localEntry.minimumQuantity === null ? '–' : `${formatInventoryQuantity(localEntry.minimumQuantity)} ${unit}`;
+  const otherLocations = otherEntries.length ? `<section class="storage-item-other-locations"><h3>Weitere Lagerorte</h3>${otherEntries.map(entry => `<a href="${storageContextItemHref(entry.storageLocationId, item.id)}"><span>${escapeHtml(stockLocationPath(entry))}</span><strong>${escapeHtml(formatInventoryQuantity(entry.quantity))} ${escapeHtml(unit)}</strong></a>`).join('')}</section>` : '';
+  const directConsume = mayEditProjects() && !archived && localEntry.quantity > 0 ? `<button class="button primary compact storage-item-header-consume" type="button" data-stock-movement="CONSUMPTION" data-stock-source="${escapeHtml(location.id)}">Entnehmen</button>` : '';
+  const transferAction = localEntry.quantity > 0 ? `<button class="menu-item" type="button" data-stock-transfer-menu data-stock-item="${escapeHtml(item.id)}" data-stock-name="${escapeHtml(item.name)}" data-stock-source="${escapeHtml(location.id)}" data-stock-source-name="${escapeHtml(location.name)}" data-stock-quantity="${escapeHtml(localEntry.quantity)}" data-stock-unit="${escapeHtml(unit)}">Umlagern</button>` : '';
+  const actions = mayEditProjects() && !archived ? `${transferAction}<button class="menu-item" type="button" data-stock-entry-edit="${escapeHtml(localEntry.id)}">Lokaler Mindestbestand</button>` : '';
+  const merchant = item.merchantUrl ? `<a class="menu-item storage-item-menu-link" href="${escapeHtml(item.merchantUrl)}" target="_blank" rel="noopener noreferrer">Händler öffnen</a>` : '';
+  const menu = `<details class="action-menu storage-finder-column-menu storage-item-column-menu"><summary aria-label="Menü für ${escapeHtml(item.name)}" title="Menü für ${escapeHtml(item.name)}">${iconSvg('menu')}</summary><div class="action-menu-panel">${actions}${merchant}<a class="menu-item storage-item-menu-link" href="${inventoryItemHref(item.id, archived, '')}">Vollständige Artikeldetails</a></div></details>`;
+  const localOverview = `<section class="storage-item-local"><span>In ${escapeHtml(location.name)}</span><strong>${escapeHtml(formatInventoryQuantity(localEntry.quantity))} ${escapeHtml(unit)}</strong><span>Lokales Minimum</span><strong class="storage-item-local-minimum">${escapeHtml(localMinimum)}</strong>${localEntry.note ? `<small>${escapeHtml(localEntry.note)}</small>` : ''}</section>`;
+  return `<aside class="storage-finder-detail storage-item-detail${archived ? ' archived' : ''}" data-storage-item-detail><header class="storage-finder-detail-header"><strong>${escapeHtml(item.name)}</strong><div class="storage-finder-column-actions">${directConsume}${menu}</div></header><div class="storage-finder-detail-body"><a class="storage-mobile-back" href="${storageLocationHref(location.id, includeArchived)}"><span aria-hidden="true">‹</span>Zurück zu ${escapeHtml(location.name)}</a>${inventoryItemOverview(item, summary, localOverview)}${otherLocations}</div></aside>`;
+}
+
+function bindStorageFinderKeyboard() {
+  document.querySelectorAll('.storage-finder-link').forEach(link => link.onkeydown = event => {
+    if (!['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(event.key)) return;
+    event.preventDefault();
+    const links = [...link.closest('.storage-finder-list').querySelectorAll('.storage-finder-link')];
+    const index = links.indexOf(link);
+    if (event.key === 'ArrowUp') links[Math.max(0, index - 1)]?.focus();
+    if (event.key === 'ArrowDown') links[Math.min(links.length - 1, index + 1)]?.focus();
+    if (event.key === 'ArrowLeft') location.href = link.dataset.storageParentHref;
+    if (event.key === 'ArrowRight') location.href = link.href;
+  });
+}
+
+function bindStorageLocationActions() {
+  document.querySelectorAll('[data-storage-create]').forEach(button => button.onclick = () => openStorageLocationDialog('', button.dataset.storageCreate || null));
+  document.querySelectorAll('[data-storage-edit]').forEach(button => button.onclick = () => openStorageLocationDialog(button.dataset.storageEdit));
+  document.querySelectorAll('[data-storage-archive]').forEach(button => button.onclick = async () => {
+    const id = button.dataset.storageArchive;
+    const name = button.dataset.storageName || state.storageLocations.find(item => item.id === id)?.name || 'Dieser Lagerort';
+    if (!confirm(`„${name}“ und alle enthaltenen Unterorte archivieren? Historische Verweise bleiben erhalten.`)) return;
+    try {
+      const result = await api(`/storage-locations/${encodeURIComponent(id)}/archive`, { method:'POST', body:'{}' });
+      toast(`${result.changed} ${result.changed === 1 ? 'Lagerort wurde' : 'Lagerorte wurden'} archiviert.`);
+      await route();
+    } catch (error) { toast(error.message); }
+  });
+  document.querySelectorAll('[data-storage-restore]').forEach(button => button.onclick = async () => {
+    try {
+      const result = await api(`/storage-locations/${encodeURIComponent(button.dataset.storageRestore)}/restore`, { method:'POST', body:'{}' });
+      toast(`${result.changed} ${result.changed === 1 ? 'Lagerort wurde' : 'Lagerorte wurden'} wiederhergestellt.`);
+      await route();
+    } catch (error) { toast(error.message); }
+  });
+  document.querySelectorAll('[data-storage-copy-link]').forEach(button => button.onclick = async () => {
+    const url = new URL(storageLocationHref(button.dataset.storageCopyLink), location.origin).href;
+    try { await navigator.clipboard.writeText(url); toast('Lagerort-Link kopiert.'); }
+    catch { toast('Der Link konnte nicht kopiert werden.'); }
+  });
+  bindStorageFinderKeyboard();
+  bindStorageTransferDragDrop();
+  bindStorageLocationMoveDragDrop();
+}
+
+async function renderInventory(locationId = '', includeArchived = false, itemId = '') {
+  await loadStorageLocations(includeArchived);
+  const detail = locationId ? await api(`/storage-locations/${encodeURIComponent(locationId)}`) : null;
+  const current = detail?.location || null;
+  const path = detail?.path || [];
+  const columnStockData = await Promise.all(path.map(location => api(`/stock-entries?storageLocationId=${encodeURIComponent(location.id)}${includeArchived ? '&includeArchived=1' : ''}`)));
+  const stockByLocation = new Map(path.map((location, index) => [location.id, columnStockData[index]?.entries || []]));
+  let selectedItem = null;
+  let selectedStockData = { entries:[], summary:null };
+  let localEntry = null;
+  if (itemId && current) {
+    [selectedItem, selectedStockData] = await Promise.all([
+      api(`/inventory-items/${encodeURIComponent(itemId)}`),
+      api(`/stock-entries?itemId=${encodeURIComponent(itemId)}&includeArchived=1`),
+    ]);
+    localEntry = (selectedStockData.entries || []).find(entry => entry.storageLocationId === current.id && (includeArchived || entry.status === 'ACTIVE')) || null;
+    if (!localEntry) {
+      location.href = storageLocationHref(current.id, includeArchived);
+      return;
+    }
+    if (!state.inventoryItems.some(item => item.id === selectedItem.id)) state.inventoryItems.unshift(selectedItem);
+    state.inventoryStockItem = selectedItem;
+    state.inventoryStockEntries = selectedStockData.entries || [];
+  } else {
+    state.inventoryStockItem = null;
+    state.inventoryStockEntries = [];
+  }
+  const visibleDetailChildren = (detail?.children || []).filter(location => includeArchived || location.status === 'ACTIVE');
+  const merged = new Map(state.storageLocations.map(location => [location.id, location]));
+  [...path, ...visibleDetailChildren].forEach(location => merged.set(location.id, location));
+  if (current) merged.set(current.id, current);
+  const locations = [...merged.values()];
+  const childrenOf = parentId => locations.filter(location => location.parentId === parentId && (includeArchived || location.status === 'ACTIVE'));
+  const roots = childrenOf(null);
+  const columns = [storageFinderColumn(null, roots, [], path[0]?.id || '', '', path.length === 0, includeArchived)];
+  path.forEach((parent, index) => columns.push(storageFinderColumn(parent, childrenOf(parent.id), stockByLocation.get(parent.id) || [], path[index + 1]?.id || '', index === path.length - 1 ? itemId : '', index === path.length - 1, includeArchived)));
+  const breadcrumbs = `<nav class="folder-breadcrumbs storage-breadcrumbs" aria-label="Lagerpfad"><a href="${storageLocationHref()}">Lager</a>${path.map(location => `<span>›</span><a href="${storageLocationHref(location.id)}"${!selectedItem && location.id === current?.id ? ' aria-current="page"' : ''}>${escapeHtml(location.name)}</a>`).join('')}${selectedItem ? `<span>›</span><a href="${storageContextItemHref(current.id, selectedItem.id, includeArchived)}" aria-current="page">${escapeHtml(selectedItem.name)}</a>` : ''}</nav>`;
+  const headingCopy = 'Lagerorte und Artikel verwalten.';
+  const inspector = selectedItem ? storageFinderItemInspector(current, selectedItem, localEntry, selectedStockData, includeArchived) : '';
+  const inventoryHead = standardPageHeader({ title:'Lager', description:headingCopy, icon:'warehouse', className:'storage-finder-page-head' });
+  $('#main').innerHTML = `${inventoryHead}<div class="storage-finder-frame"><div class="storage-finder-shell${selectedItem ? ' has-item-selection' : ''}" data-storage-finder-shell><div class="storage-finder-columns">${columns.join('')}</div>${inspector}</div><footer class="storage-finder-statusbar">${breadcrumbs}</footer></div>`;
+  document.title = selectedItem ? `${selectedItem.name} · ${current.name} · Lager · Logbuch` : current ? `${current.name} · Lager · Logbuch` : 'Lager · Logbuch';
+  bindStorageLocationActions();
+  if (selectedItem) bindInventoryItemActions();
+  requestAnimationFrame(() => {
+    fitInventoryWorkspaces();
+    const shell = $('[data-storage-finder-shell]');
+    const currentColumn = $('[data-finder-current-column]');
+    if (shell && currentColumn && window.matchMedia('(min-width:781px)').matches) shell.scrollLeft = Math.max(0, currentColumn.offsetLeft - shell.clientWidth / 3);
+    document.querySelector('[data-finder-current-column] .storage-finder-row.selected .storage-finder-link')?.scrollIntoView({ block:'nearest', inline:'nearest' });
+  });
+}
+
+async function renderInventoryArchive() {
+  const [locationData, itemData] = await Promise.all([
+    api('/storage-locations?includeArchived=1'),
+    api('/inventory-items?includeArchived=1'),
+  ]);
+  const locations = (locationData.locations || []).filter(location => location.status === 'ARCHIVED');
+  const items = (itemData.items || []).filter(item => item.status === 'ARCHIVED');
+  const locationRows = locations.map(location => `<a href="${storageLocationHref(location.id, true)}"><span><strong>${escapeHtml(location.name)}</strong></span><i aria-hidden="true">›</i></a>`).join('');
+  const itemRows = items.map(item => `<a href="${inventoryItemHref(item.id, true, '')}"><span><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(item.stockUnit)}${item.manufacturer ? ` · ${escapeHtml(item.manufacturer)}` : ''}</small></span><i aria-hidden="true">›</i></a>`).join('');
+  const inventoryArchiveHead = standardPageHeader({ title:'Archiviert', description:'Archivierte Lagerorte und Artikel bleiben mit ihren historischen Referenzen erhalten.', icon:'archive', className:'storage-finder-page-head inventory-archive-page-head' });
+  $('#main').innerHTML = `${inventoryArchiveHead}<div class="inventory-archive-grid"><section class="inventory-archive-group"><header><h2>Lagerorte</h2><span>${locations.length}</span></header>${locationRows ? `<div class="inventory-archive-list">${locationRows}</div>` : '<div class="inventory-archive-empty">Keine archivierten Lagerorte.</div>'}</section><section class="inventory-archive-group"><header><h2>Artikel</h2><span>${items.length}</span></header>${itemRows ? `<div class="inventory-archive-list">${itemRows}</div>` : '<div class="inventory-archive-empty">Keine archivierten Artikel.</div>'}</section></div>`;
+  document.title = 'Archiviert · Lager · Logbuch';
+}
+
 async function renderGlobalSearch(routeQuery) {
   const query = (routeQuery.get('q') || '').trim().slice(0, 200);
   const type = Object.hasOwn(searchTypeLabels, routeQuery.get('type')) ? routeQuery.get('type') : 'all';
@@ -1653,6 +2639,7 @@ async function renderGlobalSearch(routeQuery) {
   const statusOptions = { all:'Alle Status', idea:'Idee', active:'Aktiv', paused:'Pausiert', completed:'Abgeschlossen', archived:'Archiviert', trashed:'Papierkorb' };
   const searchDescription = query.length >= 2 ? `${data.total} ${data.total === 1 ? 'Treffer' : 'Treffer'} für „${escapeHtml(query)}“` : 'Alle Projekte und Inhalte an einem Ort';
   $('#main').innerHTML = `<div class="project-page-head standalone-page-head search-page-head"><section class="project-hero common-page-hero"><div class="project-heading-row"><span class="project-hero-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><circle cx="10.5" cy="10.5" r="6.5"></circle><path d="m15.5 15.5 5 5"></path></svg></span><div class="project-heading-content"><div class="project-title-line"><h1>Suche</h1></div><p class="project-description">${searchDescription}</p></div></div></section></div><section class="project-page-content search-page-content"><form id="search-page-form" class="global-search-controls" role="search"><div class="global-search-query"><span aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><circle cx="10.5" cy="10.5" r="6.5"></circle><path d="m15.5 15.5 5 5"></path></svg></span><div class="global-search-input-wrap"><input name="q" type="search" maxlength="200" value="${escapeHtml(query)}" placeholder="Suchbegriff eingeben" aria-label="Suchbegriff" autocomplete="off"><button type="button" data-clear-global-search aria-label="Suchbegriff löschen" title="Suchbegriff löschen"${query ? '' : ' hidden'}>×</button></div><button class="button primary" type="submit">Suchen</button></div><div class="global-search-filters"><label>Bereich<select name="type">${Object.entries(searchTypeLabels).map(([value,label]) => `<option value="${value}"${value === type ? ' selected' : ''}>${label}</option>`).join('')}</select></label><label>Projektstatus<select name="status">${Object.entries(statusOptions).map(([value,label]) => `<option value="${value}"${value === status ? ' selected' : ''}>${label}</option>`).join('')}</select></label><label>Sortierung<select name="sort">${Object.entries(searchSortLabels).map(([value,label]) => `<option value="${value}"${value === sort ? ' selected' : ''}>${label}</option>`).join('')}</select></label></div></form><section class="global-search-content" aria-live="polite">${content}</section></section>`;
+  normalizeCommonPageHeader('.search-page-head');
   const form = $('#search-page-form');
   const searchInput = form.elements.q;
   const clearSearch = form.querySelector('[data-clear-global-search]');
@@ -1694,10 +2681,12 @@ async function renderProjects() {
   const dedicatedStatusSection = regularProjectStatuses.includes(state.projectStatusFilter);
   const separateStatuses = dedicatedStatusSection || (state.projectStatusFilter === 'all' && state.projectSort.field === 'status');
   const collapsibleFolders = dedicatedStatusSection || state.projectStatusFilter === 'all';
-  const folderAdd = mayEditProjects() ? '<button class="button primary compact project-divider-add" type="button" data-new-folder aria-label="Ordner anlegen" title="Ordner anlegen">+ Ordner</button>' : '';
-  const folderGroup = collapsibleFolders && showFolders ? `<div class="project-group-head folder-group-head"><div class="project-status-divider project-list-divider folder-list-divider"><button type="button" data-toggle-project-folder-group aria-expanded="${!state.collapsedProjectFolders}" aria-label="Ordner ${state.collapsedProjectFolders ? 'ausklappen' : 'einklappen'}" title="${state.collapsedProjectFolders ? 'Ausklappen' : 'Einklappen'}"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="m6 8 4 4 4-4"></path></svg></button><h2>Ordner <b>(${folders.length})</b></h2></div>${folderAdd}</div><div class="folder-grid${state.collapsedProjectFolders ? ' hidden' : ''}" data-project-folder-group>${folders.map(folderCard).join('')}</div>` : folders.length ? `<div class="folder-grid" data-project-folder-group>${folders.map(folderCard).join('')}</div>` : '';
+  const folderGroup = collapsibleFolders && showFolders ? `<div class="project-group-head folder-group-head"><div class="project-status-divider project-list-divider folder-list-divider"><button class="project-divider-toggle" type="button" data-toggle-project-folder-group aria-expanded="${!state.collapsedProjectFolders}" aria-label="Ordner ${state.collapsedProjectFolders ? 'ausklappen' : 'einklappen'}" title="${state.collapsedProjectFolders ? 'Ausklappen' : 'Einklappen'}"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="m6 8 4 4 4-4"></path></svg><strong class="divider-label">Ordner <b>(${folders.length})</b></strong></button></div></div><div class="folder-grid${state.collapsedProjectFolders ? ' hidden' : ''}" data-project-folder-group>${folders.map(folderCard).join('')}</div>` : folders.length ? `<div class="folder-grid" data-project-folder-group>${folders.map(folderCard).join('')}</div>` : '';
   const groupedProjects = projectCards(projects, false, !showFolders, separateStatuses);
-  $('#main').innerHTML = `<div class="project-page-breadcrumbs project-browser-breadcrumbs">${folderBreadcrumbs(state.currentFolderId)}</div><div class="project-page-head project-browser-page-head"><section class="project-hero project-browser-hero"><div class="project-heading-row"><span class="project-hero-icon" aria-hidden="true">${iconSvg('box')}</span><div class="project-heading-content"><div class="project-title-line"><h1>${escapeHtml(title)}</h1></div>${currentFolder?.description ? `<p class="project-description">${escapeHtml(currentFolder.description)}</p>` : ''}</div><div class="project-browser-hero-actions">${projectListControls(false, projects, !separateStatuses)}</div></div></section></div><section class="project-page-content project-browser-page-content"><div id="active-tag-filters">${selectedTagFiltersMarkup(false)}</div>
+  const addButton = mayEditProjects() ? '<button class="button primary compact project-add-button project-browser-add-button" type="button" data-open-project-create aria-label="Projekt oder Ordner hinzufügen"><span aria-hidden="true">+</span><b>Hinzufügen</b></button>' : '';
+  const projectHead = standardPageHeader({ title, description:currentFolder?.description || 'Projekte nach Status und Ordnern verwalten.', icon:'box', actions:projectListControls(false, projects), breadcrumbs:folderBreadcrumbs(state.currentFolderId), className:'project-browser-page-head' });
+  $('#main').innerHTML = `${projectHead}<section class="project-page-content project-browser-page-content"><div id="active-tag-filters">${selectedTagFiltersMarkup(false)}</div>
+    ${addButton ? `<div class="project-content-toolbar project-browser-create-toolbar">${addButton}</div>` : ''}
     ${folderGroup || groupedProjects ? `<div class="project-grid project-list">${folderGroup}${groupedProjects}</div>${projects.length ? '<div id="project-no-results" class="empty hidden"><strong>Keine passenden Projekte gefunden.</strong>Versuche einen anderen Suchbegriff.</div>' : ''}` : `<div class="empty"><strong>${currentFolder ? 'Dieser Ordner enthält keine passenden Projekte.' : 'Noch keine Projekte vorhanden.'}</strong></div>`}</section>`;
   bindMobileProjectControls();
   bindNewProject();
@@ -1712,9 +2701,10 @@ async function renderProjects() {
 async function renderArchive() {
   await loadProjectBrowser();
   const projects = sortedProjects(state.projects.filter(project => project.status === 'archived'), state.archiveSort);
-  $('#main').innerHTML = `<header class="page-head project-browser-head"><div><h1>Archiv</h1></div><div class="page-actions">${projectListControls(true, projects)}</div></header><div id="active-tag-filters">${selectedTagFiltersMarkup(true)}</div>
+  const archiveHead = standardPageHeader({ title:'Archiv', description:'Archivierte Projekte bleiben vollständig erhalten.', icon:'archive', actions:projectListControls(true, projects), className:'project-browser-page-head project-archive-page-head' });
+  $('#main').innerHTML = `${archiveHead}<section class="project-page-content project-browser-page-content"><div id="active-tag-filters">${selectedTagFiltersMarkup(true)}</div>
     ${projects.length ? `<div class="project-grid project-list">${projectCards(projects, true)}</div><div id="project-no-results" class="empty hidden"><strong>Keine passenden Projekte gefunden.</strong>Versuche einen anderen Suchbegriff.</div>` : `<div class="empty"><strong>Das Archiv ist leer.</strong>Archivierte Projekte erscheinen hier und können jederzeit wiederhergestellt werden.</div>`}
-    <aside class="archive-note"><p>Das Archiv dient dazu, deine Projektliste übersichtlich zu halten. Archivierte Projekte und ihre Logs bleiben erhalten, werden in der Aktivitätsanzeige und der Projekt-Timeline in der Übersicht jedoch nicht mehr berücksichtigt.</p></aside>`;
+    <aside class="archive-note"><p>Das Archiv dient dazu, deine Projektliste übersichtlich zu halten. Archivierte Projekte und ihre Logs bleiben erhalten, werden in der Aktivitätsanzeige und der Projekt-Timeline in der Übersicht jedoch nicht mehr berücksichtigt.</p></aside></section>`;
   bindMobileProjectControls();
   bindProjectListControls(true);
   bindTagFilterSummary();
@@ -1734,8 +2724,9 @@ async function renderTrash() {
   await loadProjectBrowser();
   const projects = state.projects.filter(project => project.status === 'trashed').sort((a, b) => Number(b.deletedAt || 0) - Number(a.deletedAt || 0));
   const emptyButton = state.user.admin && projects.length ? '<button class="button danger" data-empty-trash>Papierkorb leeren</button>' : '';
-  $('#main').innerHTML = `<header class="page-head"><div><h1>Papierkorb</h1></div>${emptyButton}</header>
-    ${projects.length ? `<div class="project-grid project-list">${projects.map(trashProjectCard).join('')}</div>` : '<div class="empty"><strong>Der Papierkorb ist leer.</strong>Gelöschte Projekte erscheinen hier, bevor sie endgültig entfernt werden.</div>'}`;
+  const trashHead = standardPageHeader({ title:'Papierkorb', description:'Gelöschte Projekte prüfen, wiederherstellen oder endgültig entfernen.', icon:'trash', actions:emptyButton, className:'project-trash-page-head' });
+  $('#main').innerHTML = `${trashHead}<section class="project-page-content project-browser-page-content">
+    ${projects.length ? `<div class="project-grid project-list">${projects.map(trashProjectCard).join('')}</div>` : '<div class="empty"><strong>Der Papierkorb ist leer.</strong>Gelöschte Projekte erscheinen hier, bevor sie endgültig entfernt werden.</div>'}</section>`;
   bindTrashActions();
 }
 
@@ -1900,8 +2891,8 @@ function settingsContent(section) {
   </div><section class="danger-zone"><div class="danger-zone-head"><h2>DANGER ZONE</h2><p>Diese Aktionen verändern oder löschen zentrale Daten dieser Logbuch-Instanz.</p></div>
     <div class="danger-row"><div><strong>Alle Inhalte löschen</strong><p>Löscht sämtliche aktiven und archivierten Projekte einschließlich Logs, Materialien, Kontakte, Links und Ideen. Benutzerkonten bleiben erhalten.</p></div><button class="button danger-button" data-clear-content>Alle Inhalte löschen</button></div>
     <div class="danger-row"><div><strong>Benutzerkonten zurücksetzen</strong><p>Löscht alle Benutzerkonten und deren Sitzungen. Der aktuell angemeldete Administrator bleibt erhalten.</p></div><button class="button danger-button" data-clear-users>Andere Benutzer löschen</button></div>
-    <div class="danger-row demo-row"><div><strong>Beispieldaten einspielen</strong><p>Spielt elf Maker-Projekte und zwei thematische Ordner ein oder setzt sie auf den Lieferzustand zurück. Eigene Inhalte bleiben erhalten.</p></div><button class="button secondary" data-load-demo>${system.demoProjectCount || system.demoFolderCount ? 'Beispieldaten zurücksetzen' : 'Beispieldaten einspielen'}</button></div>
-    <div class="danger-row demo-row"><div><strong>Beispieldaten entfernen</strong><p>Löscht die mitgelieferten Demo-Projekte. Demo-Ordner werden nur gelöscht, wenn keine eigenen Projekte oder Unterordner darin liegen. Inhalte innerhalb eines Demo-Projekts werden mitgelöscht.</p></div><button class="button danger-button" data-remove-demo ${system.demoProjectCount || system.demoFolderCount ? '' : 'disabled'}>Beispieldaten entfernen</button></div>
+    <div class="danger-row demo-row"><div><strong>Beispieldaten einspielen</strong><p>Spielt Maker-Projekte, Lagerorte, Artikel, Bestände und Reservierungen ein oder setzt sie auf den Lieferzustand zurück. Eigene Inhalte bleiben erhalten.</p></div><button class="button secondary" data-load-demo>${system.demoProjectCount || system.demoFolderCount || system.demoStorageLocationCount || system.demoInventoryItemCount ? 'Beispieldaten zurücksetzen' : 'Beispieldaten einspielen'}</button></div>
+    <div class="danger-row demo-row"><div><strong>Beispieldaten entfernen</strong><p>Löscht die mitgelieferten Demo-Projekte und Demo-Artikel. Demo-Ordner und Demo-Lagerorte mit eigenen Inhalten bleiben erhalten.</p></div><button class="button danger-button" data-remove-demo ${system.demoProjectCount || system.demoFolderCount || system.demoStorageLocationCount || system.demoInventoryItemCount ? '' : 'disabled'}>Beispieldaten entfernen</button></div>
   </section></div>`;
 }
 
@@ -1983,6 +2974,7 @@ async function renderSettings() {
   if (active === 'general') await loadIconLibrary();
   const headerAction = active === 'users' && state.user?.admin ? '<button class="button primary compact" data-new-user>+ Benutzer</button>' : active === 'tags' && state.user?.admin ? '<button class="button primary compact" data-new-tag>+ Tag</button>' : '';
   $('#main').innerHTML = `<div class="project-page-head standalone-page-head settings-page-head"><section class="project-hero common-page-hero"><div class="project-heading-row"><span class="project-hero-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.09a2 2 0 0 1 1 1.74v.5a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.38a2 2 0 0 0-.73-2.73l-.15-.09a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2Z"></path><circle cx="12" cy="12" r="3"></circle></svg></span><div class="project-heading-content"><div class="project-title-line"><h1>${escapeHtml(title)}</h1></div><p class="project-description">${escapeHtml(description)}</p></div><div class="common-page-hero-actions">${headerAction}</div></div></section></div><section class="project-page-content settings-page-content"><section class="settings-panel settings-panel-wide">${settingsContent(active)}</section></section>`;
+  normalizeCommonPageHeader('.settings-page-head');
   if (active === 'users' && state.user?.admin) bindUserActions();
   if (active === 'tags' && state.user?.admin) bindTagActions();
   if (active === 'data' && state.user?.admin) bindDataActions();
@@ -2285,13 +3277,13 @@ function diaryView(project) {
   const entries = project.entries || [];
   const taskHeading = workStepCount(tasks.length);
   const entryHeading = workStepCount(entries.length, true);
-  const sectionToggle = (section, label) => `<div class="project-status-divider log-section-divider"><button type="button" data-toggle-log-section="${section}" aria-expanded="${!state.collapsedLogSections[section]}" aria-label="${label} ${state.collapsedLogSections[section] ? 'ausklappen' : 'einklappen'}" title="${state.collapsedLogSections[section] ? 'Ausklappen' : 'Einklappen'}"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="m6 8 4 4 4-4"></path></svg></button><h2>${escapeHtml(label)}</h2></div>`;
+  const sectionToggle = (section, label) => `<div class="project-status-divider log-section-divider"><button class="log-divider-toggle" type="button" data-toggle-log-section="${section}" aria-expanded="${!state.collapsedLogSections[section]}" aria-label="${label} ${state.collapsedLogSections[section] ? 'ausklappen' : 'einklappen'}" title="${state.collapsedLogSections[section] ? 'Ausklappen' : 'Einklappen'}"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="m6 8 4 4 4-4"></path></svg><strong class="divider-label">${escapeHtml(label)}</strong></button></div>`;
   const tasksSection = tasks.length ? `<section class="next-steps-section"><div class="section-head log-section-head">${sectionToggle('tasks', taskHeading)}</div><div data-log-section-content="tasks"${state.collapsedLogSections.tasks ? ' hidden' : ''}><div class="next-steps-list" data-reorder-list="tasks">${tasks.map(taskCard).join('')}</div></div></section>` : '';
   const entriesSection = entries.length ? `<section class="diary-section"><div class="section-head log-section-head">${sectionToggle('entries', entryHeading)}</div><div data-log-section-content="entries"${state.collapsedLogSections.entries ? ' hidden' : ''}>${entriesView(project)}</div></section>` : '';
   return `${tasksSection}${entriesSection}`;
 }
 
-const projectSectionLabels = { logbook:'Logbuch', notes:'Notizen', shopping:'Einkaufsliste', materials:'Material', contacts:'Kontakte', links:'Links', ideas:'Ideen', learnings:'Erkenntnisse', files:'Dateien' };
+const projectSectionLabels = { logbook:'Logbuch', inventoryMaterials:'Reserviertes Lagermaterial', notes:'Notizen', shopping:'Einkaufsliste', materials:'Material', contacts:'Kontakte', links:'Links', ideas:'Ideen', learnings:'Erkenntnisse', files:'Dateien' };
 
 function unifiedProjectSection(id, count, content) {
   const collapsed = state.collapsedProjectSections[id] === true;
@@ -2304,6 +3296,7 @@ function unifiedProjectView(project) {
   const logCount = openTasks.length + (project.entries || []).length;
   const definitions = [
     ['logbook', logCount, () => diaryView(project)],
+    ['inventoryMaterials', state.projectReservations.length, () => `<div class="project-reservation-list">${state.projectReservations.map(reservation => reservationMarkup(reservation, 'project')).join('')}</div>`],
     ['notes', (project.notes || []).length, () => itemsView(project, 'notes')],
     ['shopping', (project.shopping || []).length, () => itemsView(project, 'shopping')],
     ['materials', (project.materials || []).length, () => itemsView(project, 'materials')],
@@ -2488,19 +3481,21 @@ function bindMobileProjectControls() {
 }
 
 async function renderProject(id) {
-  const [view] = await Promise.all([api(`/project-view/${encodeURIComponent(id)}`), loadIconLibrary().catch(() => null)]);
+  const [view, reservationData] = await Promise.all([api(`/project-view/${encodeURIComponent(id)}`), api(`/reservations?projectId=${encodeURIComponent(id)}`), loadIconLibrary().catch(() => null)]);
   if (state.current?.id !== view.project.id) state.visibleProjectFiles = 50;
   state.current = view.project;
   state.tags = view.tags || [];
   state.folders = view.folders || [];
+  state.projectReservations = (reservationData.reservations || []).filter(reservation => reservation.status === 'ACTIVE');
   const p = state.current;
   if (p.status === 'trashed') { location.href = '/#/trash'; return; }
   setProjectsMenu(true, p.status);
   const content = unifiedProjectView(p);
   const breadcrumbs = p.status === 'archived' ? '<nav class="folder-breadcrumbs" aria-label="Projektpfad"><a href="/#/archive">Archiviert</a></nav>' : folderBreadcrumbs(p.folderId || null);
-  const addButton = mayEditProjects() ? '<button class="button primary compact project-add-button" type="button" data-open-project-add aria-label="Projektinhalt hinzufügen"><span aria-hidden="true">+</span><b>Hinzufügen</b></button>' : '';
+  const addButton = mayEditProjects() ? `<button class="button primary compact project-add-button" type="button" data-open-project-add aria-label="Projektinhalt hinzufügen"><span aria-hidden="true">+</span><b>Hinzufügen</b></button><button class="button secondary compact" type="button" data-reservation-create data-reservation-project="${escapeHtml(p.id)}">Lagermaterial reservieren</button>` : '';
   $('#main').innerHTML = `<div class="project-page-breadcrumbs">${breadcrumbs}</div><div class="project-page-head"><section class="project-hero"><div class="project-hero-layout"><div class="project-hero-main"><div class="project-heading-row"><span class="project-hero-icon" aria-hidden="true">${iconSvg(projectIconName(p))}</span><div class="project-heading-content"><div class="project-title-line"><h1>${escapeHtml(p.title)}</h1></div><p class="project-description">${escapeHtml(p.description || 'Noch keine Projektbeschreibung hinterlegt.')}</p></div></div></div><aside class="project-hero-status mobile-collapsed" data-mobile-status-panel aria-label="Projektstatus"><div class="project-hero-status-head"><span class="desktop-status-label">Projektdaten</span><div class="mobile-project-status-controls">${mobileStatusToggle('Statusdetails')}</div><div class="project-hero-actions">${projectExportButton(p)}${projectCardActions(p)}</div></div><div class="project-hero-facts" data-mobile-status-content><div class="project-hero-fact"><small>Status</small>${projectStatusControl(p)}</div><div class="project-hero-fact"><small>Priorität</small>${projectPriorityControl(p)}</div><div class="project-hero-fact"><small>Start</small><span class="project-status-value">${p.createdAt ? formatDate(p.createdAt) : 'ohne'}</span></div><div class="project-hero-fact"><small>Fällig</small><span class="project-status-value">${p.dueDate ? formatDate(p.dueDate) : 'ohne'}</span></div><div class="project-hero-fact project-hero-tags"><small>Tags</small>${tagChips(p.tagIds, { limit:20, archived:p.status === 'archived' }) || '<span class="project-status-empty">Keine</span>'}</div></div></aside></div></section></div><section class="project-page-content">${addButton ? `<div class="project-content-toolbar">${addButton}</div>` : ''}${content}</section>`;
   document.querySelectorAll('[data-open-project-add]').forEach(button => button.onclick = () => openProjectAddDialog(p.id));
+  bindReservationActions();
   bindMobileProjectControls();
   document.querySelectorAll('[data-toggle-project-section]').forEach(button => button.onclick = () => {
     const section = button.dataset.toggleProjectSection;
@@ -2515,7 +3510,7 @@ async function renderProject(id) {
     const section = button.dataset.toggleLogSection;
     state.collapsedLogSections[section] = !state.collapsedLogSections[section];
     const expanded = !state.collapsedLogSections[section];
-    const label = button.closest('.section-head')?.querySelector('h2')?.textContent || '';
+    const label = button.querySelector('.divider-label')?.textContent || '';
     button.setAttribute('aria-expanded', String(expanded));
     button.setAttribute('aria-label', `${label} ${expanded ? 'einklappen' : 'ausklappen'}`);
     button.title = expanded ? 'Einklappen' : 'Ausklappen';
@@ -2581,6 +3576,24 @@ function setProjectsMenu(open, activeStatus = '') {
   document.querySelectorAll('[data-projects-route]').forEach(node => node.classList.toggle('active', open && node.dataset.projectsRoute === activeStatus));
 }
 
+function setInventoryMenu(open, activeRoute = '') {
+  const toggle = $('#inventory-toggle');
+  const subnav = $('#inventory-subnav');
+  toggle.setAttribute('aria-expanded', String(open));
+  toggle.setAttribute('aria-label', open ? 'Lager' : 'Lagermenü aufklappen');
+  toggle.title = open ? 'Lager' : 'Lagermenü aufklappen';
+  subnav.hidden = !open;
+  document.querySelectorAll('[data-inventory-route]').forEach(node => node.classList.toggle('active', open && node.dataset.inventoryRoute === activeRoute));
+}
+
+function currentInventoryMenuRoute() {
+  const path = location.hash.replace(/^#\/?/, '').split('?')[0];
+  if (path.startsWith('inventory/archive')) return 'archive';
+  if (path.startsWith('inventory/replenishment')) return 'replenishment';
+  if (path.startsWith('inventory/items') || path.startsWith('inventory/item/')) return 'items';
+  return 'locations';
+}
+
 function currentProjectMenuStatus() {
   const hash = location.hash;
   if (hash.startsWith('#/archive')) return 'archived';
@@ -2600,8 +3613,10 @@ function setNav(routeName, projectStatus = '') {
   }
   const settingsActive = routeName === 'settings';
   const projectsActive = routeName === 'projects';
+  const inventoryActive = routeName === 'inventory';
   setSettingsMenu(settingsActive);
   setProjectsMenu(projectsActive, projectStatus);
+  setInventoryMenu(inventoryActive, inventoryActive ? currentInventoryMenuRoute() : '');
   document.querySelectorAll('[data-settings-route]').forEach(node => node.classList.toggle('active', settingsActive && node.dataset.settingsRoute === state.activeSettings));
 }
 async function route() {
@@ -2619,6 +3634,21 @@ async function route() {
   const parts = hashParts.length ? hashParts : directProject ? ['projects', pathParts[1]] : [];
   try {
     if (parts[0] === 'todos') { setNav('todos'); await renderTodos(); }
+    else if (parts[0] === 'inventory') {
+      setNav('inventory');
+      if (parts[1] === 'replenishment') {
+        await renderInventoryReplenishment(routeQuery);
+      } else if (parts[1] === 'archive') {
+        await renderInventoryArchive();
+      } else if (parts[1] === 'items' || parts[1] === 'item') {
+        const itemId = parts[1] === 'item' && parts[2] ? parts[2] : '';
+        await renderInventoryItems(itemId, routeQuery.get('archived') === '1', (routeQuery.get('q') || '').trim());
+      } else {
+        const locationId = parts[1] === 'location' && parts[2] ? parts[2] : '';
+        const itemId = parts[1] === 'location' && parts[3] === 'item' && parts[4] ? parts[4] : '';
+        await renderInventory(locationId, routeQuery.get('archived') === '1', itemId);
+      }
+    }
     else if (parts[0] === 'projects' && parts[1] && parts[2] === 'export') {
       setNav('projects');
       await renderProjectExport(parts[1]);
@@ -2776,7 +3806,7 @@ function renderIconPicker(scope, query = '', open = false) {
   const input = form.elements.icon;
   const projectPicker = scope === 'project';
   const defaultPicker = scope === 'default-project';
-  const fallback = scope === 'folder' ? 'folder' : defaultProjectIconName();
+  const fallback = scope === 'folder' ? 'folder' : scope === 'storage-location' ? 'archive' : defaultProjectIconName();
   const inherited = projectPicker && form.elements.iconInherited?.value === '1';
   const selected = inherited ? defaultProjectIconName() : entityIconName({ icon:input.value }, fallback);
   const pickerLabel = defaultPicker ? '' : '<label>Symbol</label>';
@@ -3337,9 +4367,12 @@ function bindSystemActions() {
 }
 
 function bindNewProject() {
-  const button = $('[data-new-project]');
-  if (button) button.onclick = () => openProjectDialog();
-  document.querySelectorAll('[data-new-project-status]').forEach(statusButton => statusButton.onclick = () => openProjectDialog(null, { status:statusButton.dataset.newProjectStatus }));
+  const button = $('[data-open-project-create]');
+  if (button) button.onclick = () => {
+    const dialog = $('#project-create-dialog');
+    showFormDialog(dialog);
+    requestAnimationFrame(() => dialog.querySelector('[data-project-create-choice]')?.focus());
+  };
 }
 
 function bindFolderActions() {
@@ -3353,7 +4386,6 @@ function bindFolderActions() {
       await renderProjects();
     } catch (error) { toast(error.message); button.disabled = false; }
   });
-  document.querySelectorAll('[data-new-folder]').forEach(create => create.onclick = () => openFolderDialog());
   document.querySelectorAll('[data-edit-folder]').forEach(button => button.onclick = event => {
     event.preventDefault();
     const folder = folderById(button.dataset.editFolder);
@@ -4069,6 +5101,16 @@ document.querySelectorAll('[data-project-add-choice]').forEach(button => button.
   else openItemDialog(projectId, choice);
 }));
 
+document.querySelectorAll('[data-project-create-choice]').forEach(button => button.addEventListener('click', () => {
+  $('#project-create-dialog').close();
+  if (button.dataset.projectCreateChoice === 'folder') {
+    openFolderDialog();
+    return;
+  }
+  const status = regularProjectStatuses.includes(state.projectStatusFilter) ? state.projectStatusFilter : 'active';
+  openProjectDialog(null, { status });
+}));
+
 document.querySelectorAll('dialog form').forEach(form => form.addEventListener('keydown', event => {
   if (event.key !== 'Enter' || event.repeat || event.isComposing) return;
   if (event.target.matches('button')) {
@@ -4408,6 +5450,211 @@ $('#global-search-form').onsubmit = event => {
   const query = $('#global-search-input').value.trim();
   location.href = `/#/search${query ? `?q=${encodeURIComponent(query)}` : ''}`;
 };
+
+$('#storage-location-form').onsubmit = async event => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  if (!form.reportValidity()) return;
+  const id = form.elements.locationId.value;
+  const payload = {
+    name:form.elements.name.value,
+    icon:form.elements.icon.value,
+    parentId:form.elements.parentId.value || null,
+    description:form.elements.description.value,
+  };
+  try {
+    const saved = await api(id ? `/storage-locations/${encodeURIComponent(id)}` : '/storage-locations', { method:id ? 'PATCH' : 'POST', body:JSON.stringify(payload) });
+    $('#storage-location-dialog').close();
+    form.reset();
+    toast(id ? 'Lagerort aktualisiert.' : 'Lagerort angelegt.');
+    if (id && location.hash.includes(`/location/${encodeURIComponent(id)}`)) await route();
+    else location.href = storageLocationHref(saved.id);
+  } catch (error) { $('#storage-location-error').textContent = error.message; }
+};
+$('#inventory-item-form').onsubmit = async event => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  if (!form.reportValidity()) return;
+  const id = form.elements.itemId.value;
+  const payload = {
+    name:form.elements.name.value,
+    stockUnit:form.elements.stockUnit.value,
+    description:form.elements.description.value,
+    manufacturer:form.elements.manufacturer.value,
+    articleNumber:form.elements.articleNumber.value,
+    barcode:form.elements.barcode.value,
+    defaultMinimumQuantity:form.elements.defaultMinimumQuantity.value || null,
+    merchantUrl:form.elements.merchantUrl.value,
+  };
+  try {
+    const saved = await api(id ? `/inventory-items/${encodeURIComponent(id)}` : '/inventory-items', { method:id ? 'PATCH' : 'POST', body:JSON.stringify(payload) });
+    $('#inventory-item-dialog').close();
+    form.reset();
+    toast(id ? 'Artikel aktualisiert.' : 'Artikel angelegt.');
+    if (id && location.hash.includes(`/item/${encodeURIComponent(id)}`)) await route();
+    else location.href = inventoryItemHref(saved.id, false, '');
+  } catch (error) { $('#inventory-item-error').textContent = error.message; }
+};
+$('#stock-entry-form').onsubmit = async event => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  if (!form.reportValidity()) return;
+  const entryId = form.elements.entryId.value;
+  const payload = {
+    itemId:form.elements.itemId.value,
+    storageLocationId:form.elements.storageLocationId.value,
+    initialQuantity:form.elements.initialQuantity.value || 0,
+    minimumQuantity:form.elements.minimumQuantity.value || null,
+    note:form.elements.note.value,
+  };
+  try {
+    await api(entryId ? `/stock-entries/${encodeURIComponent(entryId)}` : '/stock-entries', { method:entryId ? 'PATCH' : 'POST', body:JSON.stringify(payload) });
+    $('#stock-entry-dialog').close();
+    toast(entryId ? 'Lokaler Mindestbestand aktualisiert.' : 'Lagerort hinzugefügt.');
+    await route();
+  } catch (error) { $('#stock-entry-error').textContent = error.message; }
+};
+$('#stock-movement-form').elements.type.onchange = syncStockMovementFields;
+$('#stock-movement-form').elements.sourceStorageLocationId.onchange = syncStockMovementFields;
+function stepInventoryQuantity(input, direction) {
+  const minimum = Number(input.min);
+  const maximum = Number(input.max);
+  const current = Number(input.value);
+  const base = Number.isFinite(current) && input.value !== '' ? current : direction > 0 ? 0 : minimum;
+  const next = Math.round((base + direction) * 1000000) / 1000000;
+  input.value = String(Math.min(maximum, Math.max(minimum, next)));
+  input.dispatchEvent(new Event('input', { bubbles:true }));
+}
+document.querySelectorAll('[data-stock-quantity-step]').forEach(button => button.onclick = () => {
+  const input = $('#stock-movement-form').elements.quantity;
+  stepInventoryQuantity(input, Number(button.dataset.stockQuantityStep));
+});
+document.querySelectorAll('[data-stock-counted-step]').forEach(button => button.onclick = () => stepInventoryQuantity(
+  $('#stock-movement-form').elements.countedQuantity,
+  Number(button.dataset.stockCountedStep),
+));
+document.querySelectorAll('[data-stock-entry-initial-step]').forEach(button => button.onclick = () => stepInventoryQuantity(
+  $('#stock-entry-form').elements.initialQuantity,
+  Number(button.dataset.stockEntryInitialStep),
+));
+document.querySelectorAll('[data-stock-entry-minimum-step]').forEach(button => button.onclick = () => {
+  const input = $('#stock-entry-form').elements.minimumQuantity;
+  const current = Number(input.value);
+  const direction = Number(button.dataset.stockEntryMinimumStep);
+  const next = input.value === '' ? (direction > 0 ? 1 : 0) : current + direction;
+  input.value = String(Math.min(Number(input.max), Math.max(0, next)));
+  input.dispatchEvent(new Event('input', { bubbles:true }));
+});
+$('#stock-movement-form').onsubmit = async event => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  syncStockMovementFields();
+  if (!form.reportValidity()) return;
+  const type = form.elements.type.value;
+  const payload = { type, itemId:form.elements.itemId.value, note:form.elements.note.value };
+  if (type === 'CORRECTION') {
+    payload.storageLocationId = form.elements.storageLocationId.value;
+    payload.countedQuantity = form.elements.countedQuantity.value;
+  } else {
+    payload.quantity = form.elements.quantity.value;
+    if (['CONSUMPTION','DISPOSAL','LOSS','TRANSFER'].includes(type)) payload.sourceStorageLocationId = form.elements.sourceStorageLocationId.value;
+    if (['RECEIPT','RETURN','TRANSFER'].includes(type)) payload.destinationStorageLocationId = form.elements.destinationStorageLocationId.value;
+  }
+  try {
+    const result = await api('/stock-movements', { method:'POST', body:JSON.stringify(payload) });
+    $('#stock-movement-dialog').close();
+    toast(result.changed ? 'Bestandsbewegung verbucht.' : 'Der gezählte Bestand war bereits aktuell.');
+    await route();
+  } catch (error) { $('#stock-movement-error').textContent = error.message; }
+};
+[...$('#stock-transfer-form').elements.quantityMode].forEach(input => input.onchange = syncStockTransferQuantityMode);
+document.querySelectorAll('[data-stock-transfer-quantity-step]').forEach(button => button.onclick = () => {
+  const input = $('#stock-transfer-form').elements.quantity;
+  const minimum = Number(input.min);
+  const maximum = Number(input.max);
+  const current = Number(input.value);
+  const next = (Number.isFinite(current) && input.value !== '' ? current : minimum) + Number(button.dataset.stockTransferQuantityStep);
+  input.value = String(Math.min(maximum, Math.max(minimum, next)));
+  input.dispatchEvent(new Event('input', { bubbles:true }));
+});
+$('#stock-transfer-form').onsubmit = async event => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  syncStockTransferQuantityMode();
+  if (!form.reportValidity()) return;
+  const maximum = Number(form.elements.maximumQuantity.value);
+  const quantity = form.elements.quantityMode.value === 'all' ? maximum : Number(form.elements.quantity.value);
+  if (!Number.isFinite(quantity) || quantity <= 0 || quantity > maximum) {
+    $('#stock-transfer-error').textContent = `Die Menge muss größer als 0 und höchstens ${formatInventoryQuantity(maximum)} ${form.elements.stockUnit.value} sein.`;
+    return;
+  }
+  try {
+    await api('/stock-movements', { method:'POST', body:JSON.stringify({
+      type:'TRANSFER',
+      itemId:form.elements.itemId.value,
+      sourceStorageLocationId:form.elements.sourceStorageLocationId.value,
+      destinationStorageLocationId:form.elements.destinationStorageLocationId.value,
+      quantity,
+      note:form.elements.note.value,
+    }) });
+    $('#stock-transfer-dialog').close();
+    toast(`${formatInventoryQuantity(quantity)} ${form.elements.stockUnit.value} umgelagert.`);
+    await route();
+  } catch (error) { $('#stock-transfer-error').textContent = error.message; }
+};
+$('#reservation-form').elements.projectId.onchange = async event => {
+  const projectId = event.currentTarget.value;
+  $('#reservation-form').elements.projectEntryId.disabled = !projectId;
+  if (!projectId) return setReservationTaskOptions(null);
+  try { setReservationTaskOptions(await reservationProject(projectId)); }
+  catch (error) { $('#reservation-error').textContent = error.message; }
+};
+$('#reservation-form').elements.itemId.onchange = () => { syncReservationQuantityUnit(); updateReservationAvailability(); };
+document.querySelectorAll('[data-reservation-quantity-step]').forEach(button => button.onclick = () => {
+  const input = $('#reservation-form').elements.requestedQuantity;
+  const minimum = Number(input.min);
+  const maximum = Number(input.max);
+  const current = Number(input.value);
+  const next = (Number.isFinite(current) && input.value !== '' ? current : minimum) + Number(button.dataset.reservationQuantityStep);
+  input.value = String(Math.min(maximum, Math.max(minimum, next)));
+  input.dispatchEvent(new Event('input', { bubbles:true }));
+});
+$('#reservation-form').onsubmit = async event => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  if (!form.reportValidity()) return;
+  const id = form.elements.reservationId.value;
+  const payload = {
+    itemId:form.elements.itemId.value,
+    projectId:form.elements.projectId.value,
+    projectEntryCollection:form.elements.projectEntryId.value ? 'tasks' : null,
+    projectEntryId:form.elements.projectEntryId.value || null,
+    requestedQuantity:form.elements.requestedQuantity.value,
+    note:form.elements.note.value,
+  };
+  try {
+    await api(id ? `/reservations/${encodeURIComponent(id)}` : '/reservations', { method:id ? 'PATCH' : 'POST', body:JSON.stringify(payload) });
+    $('#reservation-dialog').close();
+    toast(id ? 'Reservierung aktualisiert.' : 'Material reserviert.');
+    await route();
+  } catch (error) { $('#reservation-error').textContent = error.message; }
+};
+$('#reservation-fulfill-form').onsubmit = async event => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  if (!form.reportValidity()) return;
+  try {
+    await api(`/reservations/${encodeURIComponent(form.elements.reservationId.value)}/fulfill`, { method:'POST', body:JSON.stringify({
+      sourceStorageLocationId:form.elements.sourceStorageLocationId.value,
+      quantity:form.elements.quantity.value,
+      note:form.elements.note.value,
+    }) });
+    $('#reservation-fulfill-dialog').close();
+    toast('Material entnommen und Projektbedarf aktualisiert.');
+    await route();
+  } catch (error) { $('#reservation-fulfill-error').textContent = error.message; }
+};
+$('#reservation-fulfill-form').elements.sourceStorageLocationId.onchange = syncReservationFulfillLimit;
 const sidebarSearchInput = $('#global-search-input');
 const sidebarSearchClear = $('.sidebar-search-clear');
 function syncSidebarSearchClear() {
@@ -4422,6 +5669,7 @@ sidebarSearchClear.onclick = () => {
 $('#settings-toggle').onclick = () => {
   if ($('#settings-toggle').getAttribute('aria-expanded') === 'true') return;
   setProjectsMenu(false);
+  setInventoryMenu(false);
   if (location.hash !== '#/settings/general') {
     setSettingsMenu(true);
     location.href = '/#/settings/general';
@@ -4432,6 +5680,7 @@ $('#settings-toggle').onclick = () => {
 $('#projects-toggle').onclick = async () => {
   if ($('#projects-toggle').getAttribute('aria-expanded') === 'true') return;
   setSettingsMenu(false);
+  setInventoryMenu(false);
   if (location.hash !== '#/projects') {
     setProjectsMenu(true);
     location.href = '/#/projects';
@@ -4439,6 +5688,17 @@ $('#projects-toggle').onclick = async () => {
   }
   try { await loadProjects(); } catch (error) { toast(error.message); }
   setProjectsMenu(true, currentProjectMenuStatus());
+};
+$('#inventory-toggle').onclick = () => {
+  if ($('#inventory-toggle').getAttribute('aria-expanded') === 'true') return;
+  setProjectsMenu(false);
+  setSettingsMenu(false);
+  if (!location.hash.startsWith('#/inventory')) {
+    setInventoryMenu(true, 'locations');
+    location.href = '/#/inventory';
+    return;
+  }
+  setInventoryMenu(true, currentInventoryMenuRoute());
 };
 $('#menu-button').onclick = () => {
   const open = $('.sidebar').classList.toggle('open');
@@ -4456,6 +5716,7 @@ window.addEventListener('hashchange', () => {
   $('#menu-button').setAttribute('aria-label', 'Menü öffnen');
   route();
 });
+window.addEventListener('resize', fitInventoryWorkspaces);
 document.addEventListener('click', event => {
   const removeAttachment = event.target.closest('[data-remove-dialog-attachment]');
   if (removeAttachment) removeDialogAttachment(removeAttachment);

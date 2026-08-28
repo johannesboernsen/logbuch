@@ -108,6 +108,8 @@ test('Beispieldaten lassen sich unabhängig von eigenen Projekten verwalten', as
   assert.equal(installed.response.status, 200);
   assert.equal(installed.data.installed, 11);
   assert.equal(installed.data.folders, 2);
+  assert.equal(installed.data.storageLocations, 15);
+  assert.equal(installed.data.inventoryItems, 13);
 
   const list = await request('/api/projects');
   const demoProjects = list.data.projects.filter(project => project.id.startsWith('demo-'));
@@ -129,8 +131,23 @@ test('Beispieldaten lassen sich unabhängig von eigenen Projekten verwalten', as
   assert.equal(demoFolders.data.folders.filter(folder => folder.id.startsWith('demo-folder-')).length, 2);
   assert.deepEqual(demoFolders.data.folders.filter(folder => folder.id.startsWith('demo-folder-')).map(folder => folder.name).sort(), ['Elektronik', 'Holzwerken']);
 
+  const demoLocations = (await request('/api/storage-locations?includeArchived=1')).data.locations.filter(location => location.id.startsWith('demo-location-'));
+  assert.equal(demoLocations.length, 15);
+  assert.deepEqual((await request('/api/storage-locations/demo-location-garage-kiste-1')).data.path.map(location => location.name), ['Garage', 'Regal Rückwand', 'Graue Kiste 1']);
+  const demoItems = (await request('/api/inventory-items?includeArchived=1')).data.items.filter(item => item.id.startsWith('demo-item-'));
+  assert.equal(demoItems.length, 13);
+  assert.equal(demoItems.find(item => item.id === 'demo-item-mini-usb').status, 'ARCHIVED');
+  const screwStock = await request('/api/stock-entries?itemId=demo-item-schrauben-m4x30&includeArchived=1');
+  assert.equal(screwStock.data.entries.length, 3);
+  assert.equal(screwStock.data.summary.physicalQuantity, 70);
+  assert.equal((await request('/api/stock-transactions?itemId=demo-item-schrauben-m4x30')).data.transactions.length, 3);
+  assert.equal((await request('/api/reservations?itemId=demo-item-luefter-120')).data.reservations[0].projectId, 'demo-loetstation-absaugung');
+  assert.ok((await request('/api/inventory-replenishment')).data.items.some(item => item.itemId === 'demo-item-kabelbinder'));
+
   const ownChildFolder = await request('/api/folders', { method: 'POST', body: JSON.stringify({ name: 'Mein Unterordner', description: 'Soll erhalten bleiben.', parentId: 'demo-folder-elektronik' }) });
   assert.equal(ownChildFolder.response.status, 201);
+  const ownStorageChild = await request('/api/storage-locations', { method: 'POST', body: JSON.stringify({ name: 'Meine eigene Kiste', icon: 'package', parentId: 'demo-location-garage' }) });
+  assert.equal(ownStorageChild.response.status, 201);
   const ownProjectInDemoFolder = await request(`/api/projects/${ownProject.data.id}`, { method: 'PATCH', body: JSON.stringify({ folderId: 'demo-folder-elektronik' }) });
   assert.equal(ownProjectInDemoFolder.data.folderId, 'demo-folder-elektronik');
 
@@ -142,6 +159,9 @@ test('Beispieldaten lassen sich unabhängig von eigenen Projekten verwalten', as
   assert.equal(removed.data.removed, 11);
   assert.equal(removed.data.foldersRemoved, 1);
   assert.equal(removed.data.foldersRetained, 1);
+  assert.equal(removed.data.inventoryItemsRemoved, 13);
+  assert.equal(removed.data.storageLocationsRemoved, 14);
+  assert.equal(removed.data.storageLocationsRetained, 1);
   assert.equal((await request('/api/projects/demo-loetstation-absaugung')).response.status, 404);
   assert.equal((await request(`/api/projects/${ownProject.data.id}`)).data.folderId, 'demo-folder-elektronik');
   const foldersAfterRemoval = (await request('/api/folders')).data.folders;
@@ -149,15 +169,26 @@ test('Beispieldaten lassen sich unabhängig von eigenen Projekten verwalten', as
   assert.ok(foldersAfterRemoval.some(folder => folder.id === 'demo-folder-elektronik'));
   assert.ok(!foldersAfterRemoval.some(folder => folder.id === 'demo-folder-werkstatt'));
   assert.ok((await request('/api/project-browser')).data.tags.some(tag => tag.id === existingTag.data.id));
+  assert.equal((await request('/api/inventory-items?includeArchived=1')).data.items.filter(item => item.id.startsWith('demo-item-')).length, 0);
+  const locationsAfterRemoval = (await request('/api/storage-locations?includeArchived=1')).data.locations;
+  assert.equal(locationsAfterRemoval.find(location => location.id === ownStorageChild.data.id)?.parentId, 'demo-location-garage');
+  assert.ok(locationsAfterRemoval.some(location => location.id === 'demo-location-garage'));
   assert.equal((await request('/api/system')).data.demoProjectCount, 0);
   assert.equal((await request('/api/system')).data.demoFolderCount, 1);
+  assert.equal((await request('/api/system')).data.demoInventoryItemCount, 0);
+  assert.equal((await request('/api/system')).data.demoStorageLocationCount, 1);
 
   await request(`/api/projects/${ownProject.data.id}`, { method: 'PATCH', body: JSON.stringify({ folderId: null }) });
   assert.equal((await request(`/api/folders/${ownChildFolder.data.id}`, { method: 'DELETE' })).response.status, 204);
   const removedEmptyFolder = await request('/api/demo', { method: 'DELETE' });
   assert.equal(removedEmptyFolder.data.foldersRemoved, 1);
   assert.equal(removedEmptyFolder.data.foldersRetained, 0);
+  await request(`/api/storage-locations/${ownStorageChild.data.id}`, { method: 'PATCH', body: JSON.stringify({ parentId: null }) });
+  const removedEmptyLocation = await request('/api/demo', { method: 'DELETE' });
+  assert.equal(removedEmptyLocation.data.storageLocationsRemoved, 1);
+  assert.equal(removedEmptyLocation.data.storageLocationsRetained, 0);
   assert.equal((await request('/api/system')).data.demoFolderCount, 0);
+  assert.equal((await request('/api/system')).data.demoStorageLocationCount, 0);
 });
 
 test('Übersichtsbereiche werden in Zeilen konfiguriert', async () => {

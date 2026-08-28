@@ -91,6 +91,31 @@ final class ProjectStore
         return $project;
     }
 
+    public function reservationTarget(string $projectId, ?string $collection = null, ?string $itemId = null): array
+    {
+        $project = $this->getBase($projectId);
+        $target = null;
+        if ($collection !== null || $itemId !== null) {
+            if ($collection === null || $itemId === null) {
+                throw new HttpError(422, 'Projektelement-Typ und -ID müssen gemeinsam angegeben werden.');
+            }
+            $entry = $this->item($projectId, $collection, $itemId);
+            $target = [
+                'collection' => $collection,
+                'id' => $itemId,
+                'title' => trim((string) ($entry['title'] ?? $entry['name'] ?? 'Projektelement')) ?: 'Projektelement',
+            ];
+        }
+        return [
+            'project' => [
+                'id' => (string) $project['id'],
+                'title' => (string) ($project['title'] ?? 'Projekt'),
+                'status' => (string) ($project['status'] ?? 'active'),
+            ],
+            'entry' => $target,
+        ];
+    }
+
     public function search(string $query, array $projectIds): array
     {
         $normalizedQuery = mb_strtolower(trim($query), 'UTF-8');
