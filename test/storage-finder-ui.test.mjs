@@ -11,10 +11,25 @@ const [html, script, styles] = await Promise.all([
 
 test('Lager ist unter Projekte über ein Untermenü und stabile Location-Routen erreichbar', () => {
   assert.match(html, /id="inventory-toggle"[\s\S]*<b>Lager<\/b>/);
-  assert.match(html, /href="\/#\/inventory" data-inventory-route="locations">Lagerorte<\/a>/);
+  assert.match(html, /href="\/#\/inventory" data-inventory-route="locations"><span>Lagerorte<\/span><small[^>]+data-inventory-count="locations">0<\/small><\/a>/);
   assert.match(html, /projects-menu[\s\S]*inventory-menu[\s\S]*settings-menu/);
   assert.match(script, /`\/location\/\$\{encodeURIComponent\(id\)\}`/);
   assert.match(script, /parts\[1\] === 'location'/);
+  assert.match(html, /inventory-subnav[\s\S]*data-inventory-route="items"[\s\S]*data-inventory-route="categories"[\s\S]*data-inventory-route="locations"[\s\S]*data-inventory-route="replenishment"[\s\S]*data-inventory-route="archive"/);
+});
+
+test('Das Lagermenü zeigt aktuelle Zähler für alle Bereiche', () => {
+  for (const area of ['locations', 'items', 'replenishment', 'archive']) assert.match(html, new RegExp(`data-inventory-count="${area}"`));
+  assert.match(html, /id="inventory-nav-count"[^>]*title="Anzahl unterschiedlicher Artikel im Lager"[^>]*>0<\/i>/);
+  assert.doesNotMatch(html, /id="inventory-nav-count"[^>]*\shidden[^>]*>/);
+  assert.match(script, /async function loadInventoryMenuCounts\(\)/);
+  assert.match(script, /locations:locations\.filter\(location => location\.status === 'ACTIVE'\)\.length/);
+  assert.match(script, /items:items\.filter\(item => item\.status === 'ACTIVE'\)\.length/);
+  assert.match(script, /replenishment:Number\(replenishmentData\.summary\?\.itemCount \|\| 0\)/);
+  assert.match(script, /archive:locations\.filter[\s\S]+items\.filter/);
+  assert.match(script, /badge\.textContent = String\(counts\.items\)/);
+  assert.match(script, /badge\.title = 'Anzahl unterschiedlicher Artikel im Lager'/);
+  assert.match(script, /badge\.hidden = menuOpen;/);
 });
 
 test('Finder-Spalten werden aus dem rekonstruierten Parent-Pfad aufgebaut', () => {
@@ -43,9 +58,15 @@ test('Die Lageransicht besitzt dieselbe weiße Kopffläche wie die Hauptbereiche
   assert.match(styles, /@media \(max-width:780px\)[\s\S]*\.standard-page-head \{ height:auto;/);
 });
 
-test('Lagerorte werden ausschließlich über die Plus-Schaltflächen der Spalten angelegt', () => {
-  assert.match(script, /data-storage-create="\$\{escapeHtml\(parentId\)\}"/);
-  assert.doesNotMatch(script, /data-storage-create="">Lagerort anlegen/);
+test('Die Plus-Schaltfläche öffnet zuerst die Auswahl der Anlageart', () => {
+  assert.match(script, /function storageLocationCreateMenu\(parent\)/);
+  assert.match(script, /storageLocationCreateMenu\(parent\)/);
+  assert.match(script, /data-storage-create-single="\$\{escapeHtml\(parentId\)\}"/);
+  assert.match(script, /data-storage-create-series="\$\{escapeHtml\(parentId\)\}"/);
+  assert.match(script, /data-storage-create-matrix="\$\{escapeHtml\(parentId\)\}"/);
+  assert.match(script, /<strong>Lagermatrix<\/strong>/);
+  assert.doesNotMatch(script, /data-storage-create="/);
+  assert.match(styles, /\.storage-finder-create-menu \.action-menu-panel \{ width:248px; \}/);
 });
 
 test('Ortsaktionen stehen im Kopf der geöffneten Spalte statt an jeder Lagerortzeile', () => {
@@ -76,6 +97,35 @@ test('Lagerorte besitzen denselben hinterlegten Icon-Picker wie Projektordner', 
   assert.doesNotMatch(script, /storageLocationTypeLabels|location\.type/);
 });
 
+test('Lagerorte lassen sich einzeln oder als nummerierte Serie anlegen', () => {
+  assert.match(html, /type="hidden" name="creationMode" value="single"/);
+  assert.doesNotMatch(html, /type="radio" name="creationMode"/);
+  assert.match(html, /name="counterStart" type="number" min="0" max="999999999" step="1" value="1"/);
+  assert.match(html, /name="count" type="number" min="2" max="500" step="1" value="10"/);
+  assert.match(script, /function syncStorageLocationCreationMode/);
+  assert.match(script, /function updateStorageLocationSeriesPreview/);
+  assert.match(script, /openStorageLocationDialog\('', parentId \|\| null, mode\)/);
+  assert.match(script, /'Mehrere Lagerorte anlegen'/);
+  assert.match(script, /series \? '\/storage-locations\/batch' : matrix \? '\/storage-locations\/matrix' : '\/storage-locations'/);
+  assert.match(script, /storageLocationHref\(payload\.parentId \|\| ''\)/);
+  assert.match(styles, /\.storage-location-series-fields,\.storage-location-matrix-fields \{[^}]*grid-template-columns:1fr 1fr;/);
+  assert.match(styles, /#storage-location-form \[hidden\][^{]*\{ display:none; \}/);
+});
+
+test('Eine Lagermatrix erzeugt Lagerorte aus frei gewählten Buchstaben- und Zählerbereichen', () => {
+  assert.match(html, /id="storage-location-matrix-fields"/);
+  assert.match(html, /name="letterStart"[^>]*value="A"/);
+  assert.match(html, /name="letterEnd"[^>]*value="C"/);
+  assert.match(html, /name="matrixCounterStart"[^>]*value="1"/);
+  assert.match(html, /name="matrixCounterEnd"[^>]*value="3"/);
+  assert.match(script, /function updateStorageLocationMatrixPreview/);
+  assert.match(script, /\(letterEnd\.charCodeAt\(0\) - letterStart\.charCodeAt\(0\) \+ 1\) \* \(counterEnd - counterStart \+ 1\)/);
+  assert.match(script, /form\.elements\.creationMode\.value === 'matrix'/);
+  assert.match(script, /'Lagermatrix anlegen'/);
+  assert.match(script, /matrix \? '\/storage-locations\/matrix'/);
+  assert.match(styles, /\.storage-location-series-fields,\.storage-location-matrix-fields \{[^}]*grid-template-columns:1fr 1fr;/);
+});
+
 test('Die Auswahl verändert nicht die gespeicherte Reihenfolge einer Spalte', () => {
   assert.match(script, /const merged = new Map\(state\.storageLocations\.map/);
   assert.match(script, /\[\.\.\.path, \.\.\.visibleDetailChildren\]\.forEach\(location => merged\.set/);
@@ -101,9 +151,36 @@ test('Lagerorte lassen sich per Drag-and-drop unter einen anderen Lagerort versc
 test('Jede Lagerortspalte mischt direkte Unterorte und direkt gelagerte Artikel', () => {
   assert.match(script, /function storageFinderColumn\(parent, locations, stockEntries/);
   assert.match(script, /locations\.map\(location => storageFinderEntry/);
-  assert.match(script, /stockEntries\.map\(entry => storageFinderItemEntry/);
+  assert.match(script, /stockEntries\]\.sort[\s\S]*\.map\(entry => storageFinderItemEntry/);
   assert.match(script, /storage-finder-item-row/);
   assert.match(script, /storageLocationId=\$\{encodeURIComponent\(location\.id\)\}/);
+});
+
+test('Lagerortzeilen zeigen den vollständigen Unterbaum als kompakte Zähler', () => {
+  assert.match(script, /const descendantCount = Number\(location\.descendantCount \|\| 0\)/);
+  assert.match(script, /const itemCount = Number\(location\.subtreeItemCount \|\| 0\)/);
+  assert.match(script, /title="Anzahl aller untergeordneten Lagerorte"/);
+  assert.match(script, /title="Anzahl unterschiedlicher Artikel in diesem Lagerort und seinem Unterbaum"/);
+  assert.match(script, /storage-finder-counts/);
+  assert.match(styles, /\.storage-finder-column \{ width:340px; min-width:340px;[^}]*flex:0 0 340px;/);
+  assert.match(styles, /\.storage-finder-count \{[^}]*border-radius:999px;[^}]*background:#eef0f2;/);
+  assert.match(styles, /\.storage-finder-row\.selected \.storage-finder-count[^}]*background:#fff;/);
+});
+
+test('Alle Lagerortspalten teilen sich Sortierung und Leerfilter aus dem Seitenkopf', () => {
+  assert.match(script, /function storageLocationViewControls\(\)/);
+  assert.match(script, /Titel · A–Z/);
+  assert.match(script, /Unterlagerorte · viele → wenige/);
+  assert.match(script, /Artikel · viele → wenige/);
+  assert.match(script, /Zuletzt geändert · neueste zuerst/);
+  assert.match(script, /new Intl\.Collator\('de', \{ sensitivity:'base', numeric:true \}\)/);
+  assert.match(script, /Number\(location\.subtreeItemCount \|\| 0\) > 0 \|\| selectedPathIds\.has\(location\.id\)/);
+  assert.match(script, /Leere Lagerorte anzeigen/);
+  assert.match(script, /params\.set\('empty', 'hide'\)/);
+  assert.match(script, /params\.set\('sort', state\.storageLocationSort\)/);
+  assert.match(script, /bindStorageLocationViewControls\(locationId, itemId, includeArchived\)/);
+  assert.match(script, /stockEntries\]\.sort\(\(left, right\) => String\(left\.itemName/);
+  assert.match(styles, /\.storage-view-controls \.project-filter-control\.has-value \.project-tool-toggle::after/);
 });
 
 test('Artikel im Lager besitzen einen eindeutigen Lagerort-Kontext und eine rechte Detailspalte', () => {
@@ -141,4 +218,12 @@ test('Finder-Navigation unterstützt Tastatur und Browser-History-fähige Links'
   for (const key of ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']) assert.match(script, new RegExp(key));
   assert.match(script, /class="storage-finder-link" href="\$\{storageLocationHref\(location\.id\)\}"/);
   assert.match(script, /aria-current="page"/);
+});
+
+test('Ein Klick auf die freie Spaltenfläche hebt die Auswahl der nächsten Ebene auf', () => {
+  assert.match(script, /data-storage-clear-selection="\$\{escapeHtml\(parentId\)\}"/);
+  assert.match(script, /function bindStorageFinderBlankNavigation\(includeArchived = false\)/);
+  assert.match(script, /event\.target\.closest\('\.storage-finder-row'\)/);
+  assert.match(script, /storageLocationHref\(list\.dataset\.storageClearSelection \|\| '', includeArchived\)/);
+  assert.match(script, /bindStorageFinderBlankNavigation\(state\.storageLocationsIncludeArchived\)/);
 });

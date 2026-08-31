@@ -58,14 +58,19 @@ test('Der Update-Hinweis folgt dem geöffneten Einstellungsmenü bis System', as
   assert.match(css, /\.settings-subnav \.update-nav-badge/);
 });
 
-test('Der eingeklappte Projekt-Menüpunkt zeigt die Anzahl der Projekte', async () => {
+test('Der eingeklappte Projekt-Menüpunkt zeigt die Anzahl aktiver Projekte', async () => {
   const html = await readFile(join(root, 'public', 'app.html'), 'utf8');
   const ui = await readFile(join(root, 'public', 'app.js'), 'utf8');
   const css = await readFile(join(root, 'public', 'styles.css'), 'utf8');
   assert.match(html, /id="projects-toggle"[\s\S]+id="project-nav-count"/);
+  assert.match(html, /id="project-nav-count"[^>]*title="Anzahl der aktiven Projekte"[^>]*>0<\/i>/);
+  assert.doesNotMatch(html, /id="project-nav-count"[^>]*\shidden[^>]*>/);
+  assert.match(ui, /badge\.textContent = String\(counts\.active\)/);
+  assert.match(ui, /badge\.title = 'Anzahl der aktiven Projekte'/);
+  assert.match(ui, /badge\.hidden = menuOpen;/);
   assert.match(ui, /loadProjects\(\)\.catch\(\(\) => \{\}\)/);
-  assert.match(ui, /badge\.hidden = menuOpen \|\| counts\.all === 0/);
-  assert.match(ui, /badge\.hidden = open \|\| Number\(badge\.textContent\) === 0/);
+  assert.match(ui, /badge\.dataset\.count = String\(counts\.active\)/);
+  assert.match(ui, /badge\.hidden = open;/);
   assert.match(css, /\.project-nav-count \{[^}]+line-height:1;/);
 });
 
@@ -232,7 +237,12 @@ test('Persönliche Erinnerungen besitzen einen eigenständigen kompakten Bereich
   const ui = await readFile(join(root, 'public', 'app.js'), 'utf8');
   const css = await readFile(join(root, 'public', 'styles.css'), 'utf8');
   assert.match(html, /href="\/#\/todos"[^>]+data-route="todos"/);
-  assert.match(html, /> Erinnerungen <i id="todo-nav-count"/);
+  assert.match(html, /> Erinnerungen <i id="todo-nav-count"[^>]*title="Anzahl der offenen Erinnerungen"/);
+  assert.doesNotMatch(html, /id="todo-nav-count"[^>]*\shidden[^>]*>/);
+  assert.match(ui, /const count = state\.todos\.filter\(todo => !todo\.completedAt\)\.length;/);
+  assert.match(ui, /badge\.textContent = String\(count\);\s*badge\.hidden = false;/);
+  assert.match(ui, /badge\.title = 'Anzahl der offenen Erinnerungen'/);
+  assert.match(ui, /`Anzahl der offenen Erinnerungen: \$\{count\}`/);
   assert.match(ui, /async function renderTodos\(\)/);
   assert.doesNotMatch(ui, /Hier werden nur Erinnerungen ohne Projektbezug gesammelt/);
   assert.match(ui, /Notiere dir hier wichtige Dinge, die keinen Projektbezug haben\./);
@@ -453,6 +463,7 @@ test('Dateien können bereits beim Anlegen von Projektinhalten ausgewählt werde
 
 test('Erfassungsdialoge begrenzen breite Inhalte auf das Fenster', async () => {
   const css = await readFile(join(root, 'public', 'styles.css'), 'utf8');
+  assert.match(css, /\.dialog-head h2 \+ \.dialog-copy \{ margin:6px 0 0; \}/);
   assert.match(css, /dialog form \{ min-width:0;[^}]+grid-template-columns:minmax\(0,1fr\)/);
   assert.match(css, /\.item-fields \{ min-width:0;[^}]+grid-template-columns:minmax\(0,1fr\)/);
   assert.match(css, /\.dialog-attachments \{ min-width:0; max-width:100%;[^}]+overflow:hidden/);

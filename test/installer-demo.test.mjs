@@ -48,6 +48,9 @@ test('Installer kann den mitgelieferten Beispieldatensatz aktivieren', async () 
     assert.equal(locations.locations.find(location => location.id === 'demo-location-garage-kiste-1').parentId, 'demo-location-garage-regal');
     const items = await fetch(`${baseUrl}/api/inventory-items?includeArchived=1`, { headers: { Cookie: cookie } }).then(response => response.json());
     assert.equal(items.items.filter(item => item.id.startsWith('demo-item-')).length, 13);
+    const categories = await fetch(`${baseUrl}/api/inventory-categories`, { headers: { Cookie: cookie } }).then(response => response.json());
+    assert.equal(categories.categories.filter(category => category.id.startsWith('demo-category-')).length, 10);
+    assert.deepEqual(items.items.find(item => item.id === 'demo-item-schrauben-m4x30').categoryIds.sort(), ['demo-category-befestigung', 'demo-category-m4']);
     const screwStock = await fetch(`${baseUrl}/api/stock-entries?itemId=demo-item-schrauben-m4x30&includeArchived=1`, { headers: { Cookie: cookie } }).then(response => response.json());
     assert.equal(screwStock.entries.length, 3);
     assert.equal(screwStock.summary.physicalQuantity, 70);

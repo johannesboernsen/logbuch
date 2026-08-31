@@ -13,7 +13,7 @@ test('Nachbestellen besitzt eine stabile Lagerroute im gemeinsamen Untermenü', 
   assert.match(script, /inventoryReplenishmentHref/);
   assert.match(script, /parts\[1\] === 'replenishment'/);
   assert.match(script, /renderInventoryReplenishment\(routeQuery\)/);
-  assert.match(html, /data-inventory-route="replenishment">Nachbestellen<\/a>/);
+  assert.match(html, /data-inventory-route="replenishment"><span>Nachbestellen<\/span>/);
 });
 
 test('Fehlbedarfsansicht erklärt globale, lokale und projektbezogene Gründe', () => {

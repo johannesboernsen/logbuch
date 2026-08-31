@@ -10,6 +10,8 @@ require_once __DIR__ . '/FolderStore.php';
 require_once __DIR__ . '/TodoStore.php';
 require_once __DIR__ . '/StorageLocationStore.php';
 require_once __DIR__ . '/InventoryItemStore.php';
+require_once __DIR__ . '/InventoryCategoryStore.php';
+require_once __DIR__ . '/InventoryPurgeStore.php';
 require_once __DIR__ . '/InventoryStockStore.php';
 require_once __DIR__ . '/InventoryReservationStore.php';
 require_once __DIR__ . '/UpdateService.php';

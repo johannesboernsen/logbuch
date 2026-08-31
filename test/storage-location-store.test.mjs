@@ -43,6 +43,95 @@ test('Lagerorte bilden einen beliebig tiefen Baum mit stabiler Detailroute', asy
   assert.equal(result.leafIcon, 'archive');
 });
 
+test('Lagerorte liefern eindeutige Artikel- und Ortszähler für den vollständigen Unterbaum', async () => {
+  const result = await storageLocationScript(`
+    $garage = $store->create(['name' => 'Garage']);
+    $shelf = $store->create(['name' => 'Regal', 'parentId' => $garage['id']]);
+    $box = $store->create(['name' => 'Kiste', 'parentId' => $shelf['id']]);
+    $pdo = $database->pdo();
+    $pdo->exec("INSERT INTO inventory_items (id, name, stock_unit, created_at, updated_at) VALUES ('item-counter', 'Schrauben', 'Stück', '2026-08-30T00:00:00Z', '')");
+    $pdo->exec("INSERT INTO inventory_items (id, name, stock_unit, created_at, updated_at) VALUES ('item-counter-two', 'Muttern', 'Stück', '2026-08-30T00:00:00Z', '')");
+    $entry = $pdo->prepare("INSERT INTO stock_entries (id, item_id, storage_location_id, quantity, created_at, updated_at) VALUES (:id, :item, :location, 10, '2026-08-30T00:00:00Z', '')");
+    $entry->execute(['id' => 'stock-counter-shelf', 'item' => 'item-counter', 'location' => $shelf['id']]);
+    $entry->execute(['id' => 'stock-counter-box', 'item' => 'item-counter', 'location' => $box['id']]);
+    $entry->execute(['id' => 'stock-counter-two', 'item' => 'item-counter-two', 'location' => $box['id']]);
+    $active = array_column($store->list(), null, 'id');
+    $pdo->exec("UPDATE stock_entries SET status = 'ARCHIVED'");
+    $afterArchive = array_column($store->list(), null, 'id');
+    $includingArchived = array_column($store->list(true), null, 'id');
+    echo json_encode([
+      'garageDescendants' => $active[$garage['id']]['descendantCount'],
+      'garageItems' => $active[$garage['id']]['subtreeItemCount'],
+      'shelfDescendants' => $active[$shelf['id']]['descendantCount'],
+      'shelfItems' => $active[$shelf['id']]['subtreeItemCount'],
+      'boxDescendants' => $active[$box['id']]['descendantCount'],
+      'boxItems' => $active[$box['id']]['subtreeItemCount'],
+      'activeAfterArchive' => $afterArchive[$garage['id']]['subtreeItemCount'],
+      'historicalItems' => $includingArchived[$garage['id']]['subtreeItemCount'],
+    ]);
+  `);
+  assert.deepEqual(result, { garageDescendants:2, garageItems:2, shelfDescendants:1, shelfItems:2, boxDescendants:0, boxItems:2, activeAfterArchive:0, historicalItems:2 });
+});
+
+test('Nummerierte Lagerortserien werden atomar mit fortlaufenden Namen angelegt', async () => {
+  const result = await storageLocationScript(`
+    $garage = $store->create(['name' => 'Garage']);
+    $locations = $store->createSeries(['name' => 'Kiste', 'counterStart' => 5, 'count' => 10, 'parentId' => $garage['id'], 'icon' => 'package', 'description' => 'Graue Kiste']);
+    $beforeConflict = count($store->list());
+    $conflictStatus = 0;
+    try { $store->createSeries(['name' => 'Kiste', 'counterStart' => 14, 'count' => 3, 'parentId' => $garage['id']]); }
+    catch (\\Logbuch\\HttpError $error) { $conflictStatus = $error->status; }
+    echo json_encode([
+      'names' => array_column($locations, 'name'),
+      'parents' => array_values(array_unique(array_column($locations, 'parentId'))),
+      'sortOrders' => array_column($locations, 'sortOrder'),
+      'icons' => array_values(array_unique(array_column($locations, 'icon'))),
+      'descriptions' => array_values(array_unique(array_column($locations, 'description'))),
+      'conflictStatus' => $conflictStatus,
+      'unchangedAfterConflict' => count($store->list()) === $beforeConflict,
+    ]);
+  `);
+  assert.deepEqual(result.names, Array.from({ length:10 }, (_, index) => `Kiste ${index + 5}`));
+  assert.equal(result.parents.length, 1);
+  assert.deepEqual(result.sortOrders, Array.from({ length:10 }, (_, index) => index));
+  assert.deepEqual(result.icons, ['package']);
+  assert.deepEqual(result.descriptions, ['Graue Kiste']);
+  assert.equal(result.conflictStatus, 409);
+  assert.equal(result.unchangedAfterConflict, true);
+});
+
+test('Lagermatrizen werden zeilenweise und atomar aus Buchstaben und Zählern erzeugt', async () => {
+  const result = await storageLocationScript(`
+    $cabinet = $store->create(['name' => 'Sortierschrank']);
+    $locations = $store->createMatrix(['name' => 'Schublade', 'letterStart' => 'b', 'letterEnd' => 'E', 'counterStart' => 3, 'counterEnd' => 5, 'parentId' => $cabinet['id'], 'icon' => 'layout-grid', 'description' => 'Kleinteile']);
+    $beforeConflict = count($store->list());
+    $conflictStatus = 0;
+    $reverseStatus = 0;
+    try { $store->createMatrix(['name' => 'Schublade', 'letterStart' => 'E', 'letterEnd' => 'F', 'counterStart' => 5, 'counterEnd' => 6, 'parentId' => $cabinet['id']]); }
+    catch (\\Logbuch\\HttpError $error) { $conflictStatus = $error->status; }
+    try { $store->createMatrix(['name' => 'Fach', 'letterStart' => 'D', 'letterEnd' => 'B', 'counterStart' => 1, 'counterEnd' => 2, 'parentId' => $cabinet['id']]); }
+    catch (\\Logbuch\\HttpError $error) { $reverseStatus = $error->status; }
+    echo json_encode([
+      'names' => array_column($locations, 'name'),
+      'parents' => array_values(array_unique(array_column($locations, 'parentId'))),
+      'sortOrders' => array_column($locations, 'sortOrder'),
+      'icons' => array_values(array_unique(array_column($locations, 'icon'))),
+      'descriptions' => array_values(array_unique(array_column($locations, 'description'))),
+      'conflictStatus' => $conflictStatus,
+      'reverseStatus' => $reverseStatus,
+      'unchangedAfterConflict' => count($store->list()) === $beforeConflict,
+    ]);
+  `);
+  assert.deepEqual(result.names, ['Schublade B3', 'Schublade B4', 'Schublade B5', 'Schublade C3', 'Schublade C4', 'Schublade C5', 'Schublade D3', 'Schublade D4', 'Schublade D5', 'Schublade E3', 'Schublade E4', 'Schublade E5']);
+  assert.equal(result.parents.length, 1);
+  assert.deepEqual(result.sortOrders, Array.from({ length:12 }, (_, index) => index));
+  assert.deepEqual(result.icons, ['layout-grid']);
+  assert.deepEqual(result.descriptions, ['Kleinteile']);
+  assert.equal(result.conflictStatus, 409);
+  assert.equal(result.reverseStatus, 422);
+  assert.equal(result.unchangedAfterConflict, true);
+});
+
 test('Lagerortsymbole werden validiert und bearbeitet', async () => {
   const result = await storageLocationScript(`
     $location = $store->create(['name' => 'Regal', 'type' => 'SHELF', 'icon' => 'rows-3']);

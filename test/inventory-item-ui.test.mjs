@@ -13,7 +13,7 @@ test('Artikel besitzen Katalog- und stabile Detailrouten innerhalb des Lagers', 
   assert.match(script, /inventoryItemHref/);
   assert.match(script, /`item\/\$\{encodeURIComponent\(id\)\}`/);
   assert.match(script, /parts\[1\] === 'items' \|\| parts\[1\] === 'item'/);
-  assert.match(html, /href="\/#\/inventory\/items" data-inventory-route="items">Artikel<\/a>/);
+  assert.match(html, /href="\/#\/inventory\/items" data-inventory-route="items"><span>Artikel<\/span>/);
 });
 
 test('Artikelstammdaten werden über den gemeinsamen Dialog gepflegt', () => {
@@ -22,13 +22,69 @@ test('Artikelstammdaten werden über den gemeinsamen Dialog gepflegt', () => {
   assert.match(script, /\/inventory-items/);
 });
 
+test('Artikel können ein validiertes Bild erhalten und wieder entfernen', () => {
+  assert.match(html, /name="image" type="file" accept="image\/jpeg,image\/png,image\/webp,image\/gif"/);
+  assert.match(html, /id="inventory-item-image-remove"/);
+  assert.match(script, /function setInventoryItemImagePreview/);
+  assert.match(script, /imagePayload\.append\('image', image, image\.name\)/);
+  assert.match(script, /\/inventory-items\/\$\{encodeURIComponent\(saved\.id\)\}\/image/);
+  assert.match(script, /item\.hasImage \? `<img src=/);
+  assert.match(styles, /\.storage-item-preview\.has-image img \{[^}]*object-fit:contain;/);
+  assert.match(styles, /\.inventory-item-image-editor \[hidden\] \{ display:none; \}/);
+});
+
+test('Artikel besitzen mehrere bearbeitbare Notizen in Artikel- und Lageransicht', () => {
+  assert.match(html, /id="inventory-item-note-dialog"/);
+  assert.match(html, /name="content" minlength="1" maxlength="10000"/);
+  assert.match(script, /function inventoryItemNotesSection\(item, notes = \[\], archived = false\)/);
+  assert.match(script, /inventoryDetailSummary\('Notizen'/);
+  assert.match(script, /data-inventory-item-note-create/);
+  assert.match(script, /data-inventory-item-note-edit/);
+  assert.match(script, /data-inventory-item-note-delete/);
+  assert.match(script, /storageFinderItemInspector\(location, item, localEntry, stockData, notes, includeArchived\)/);
+  assert.match(script, /api\(`\/inventory-items\/\$\{encodeURIComponent\(current\.id\)\}\/notes`\)/);
+  assert.match(styles, /\.inventory-item-note \{[^}]*border:1px solid var\(--line\);[^}]*border-radius:12px;/);
+});
+
 test('Artikelliste unterstützt Suche und Detaildarstellung; Archive liegen im Lagermenü', () => {
   assert.match(script, /inventory-item-search/);
-  assert.match(html, /href="\/#\/inventory\/archive" data-inventory-route="archive">Archiviert<\/a>/);
+  assert.match(html, /href="\/#\/inventory\/archive" data-inventory-route="archive"><span>Archiviert<\/span>/);
   assert.match(script, /renderInventoryArchive/);
   assert.match(script, /inventoryItemDetail/);
   assert.match(styles, /\.inventory-item-shell \{/);
   assert.match(styles, /\.inventory-item-row\.selected/);
+  assert.match(script, /function inventoryItemTable/);
+  for (const heading of ['Artikel','Hersteller · Artikelnummer','Bestand','Reserviert','Verfügbar']) assert.match(script, new RegExp(`inventoryItemSortHeader\\('${heading}'`));
+  assert.match(script, /new URLSearchParams\(\{ withOverview:'1' \}\)/);
+  assert.match(script, /physicalQuantity/);
+  assert.match(script, /reservedQuantity/);
+  assert.match(script, /availableQuantity/);
+  assert.doesNotMatch(script.match(/function inventoryItemRow[\s\S]*?\n}\n\nfunction inventoryItemTable/)?.[0] || '', /inventory-item-row-icon|iconSvg\('tag'\)|aria-hidden="true">›/);
+  assert.match(styles, /\.inventory-item-row \{[^}]*height:46px;/);
+  assert.match(styles, /\.inventory-item-shell:not\(\.has-selection\) \.inventory-item-welcome \{ display:none; \}/);
+  assert.match(styles, /\.inventory-item-shell\.has-selection \.inventory-item-meta-column,[^{]+\{ display:none; \}/);
+});
+
+test('Artikelliste lässt sich über den hierarchischen Kategorienbaum filtern', () => {
+  assert.match(script, /name="category" aria-label="Nach Kategorie filtern"/);
+  assert.match(script, /function inventoryItemCategoryFilterOptions/);
+  assert.match(script, /inventoryCategoryTree\(state\.inventoryCategories\)/);
+  assert.match(script, /const categoryIds = categoryId \? inventoryCategoryDescendants\(categoryId\) : new Set\(\);/);
+  assert.match(script, /if \(categoryId\) categoryIds\.add\(categoryId\);/);
+  assert.match(script, /\(item\.categoryIds \|\| \[\]\)\.some\(id => categoryIds\.has\(id\)\)/);
+  assert.match(script, /routeQuery\.get\('category'\) \|\| ''/);
+  assert.match(styles, /\.inventory-item-category-filter \{[^}]*width:min\(260px,28vw\);/);
+});
+
+test('Alle sichtbaren Artikelspalten lassen sich auf- und absteigend sortieren', () => {
+  assert.match(script, /function inventoryItemSortHeader/);
+  assert.match(script, /active && direction === 'asc' \? 'desc' : 'asc'/);
+  assert.match(script, /function sortInventoryItems/);
+  for (const field of ['manufacturer','physical','reserved','available']) assert.match(script, new RegExp(`sort === '${field}'`));
+  assert.match(script, /direction === 'desc' \? -result : result/);
+  assert.match(script, /routeQuery\.get\('sort'\) \|\| 'name'/);
+  assert.match(script, /routeQuery\.get\('direction'\) \|\| 'asc'/);
+  assert.match(styles, /\.inventory-item-sort-link\.active/);
 });
 
 test('Artikelverwaltung und Lager verwenden dieselbe Artikelübersicht', () => {
@@ -51,6 +107,10 @@ test('Artikelverwaltung und Lager verwenden dieselbe Artikelübersicht', () => {
   assert.match(styles, /@media \(max-width:420px\)[\s\S]*\.inventory-item-detail \.inventory-item-overview \{ grid-template-columns:1fr; \}/);
 });
 
+test('Artikelvorschaubilder halten Abstand zu den folgenden Metadaten', () => {
+  assert.match(styles, /\.inventory-item-detail \.inventory-item-overview > \.storage-item-metadata \{[^}]*grid-row:3;[^}]*margin:16px 0 0;/);
+});
+
 test('Bestandsaktionen stehen bei den jeweils betroffenen Daten', () => {
   assert.match(script, /inventory-item-overview-actions/);
   assert.match(script, /stockBookingAction[\s\S]*data-stock-movement="RECEIPT">Bestand buchen/);
@@ -65,12 +125,14 @@ test('Bestandsaktionen stehen bei den jeweils betroffenen Daten', () => {
 test('Alle Detailabschnitte besitzen dieselbe einklappbare Darstellung', () => {
   assert.match(script, /inventory-detail-section inventory-reservation-section" open/);
   assert.match(script, /inventory-detail-section inventory-location-section" open/);
+  assert.match(script, /inventory-detail-section inventory-category-section" open/);
+  assert.match(script, /inventory-detail-section inventory-item-notes-section" open/);
   assert.match(script, /inventory-detail-section inventory-history-section/);
   assert.match(script, /inventory-detail-section inventory-item-master-data/);
   assert.match(script, /inventoryDetailSummary\('Weitere Stammdaten', 'Zusätzliche Artikelangaben'\)/);
   assert.match(styles, /\.inventory-detail-section > summary::before,\.inventory-detail-section > summary::after/);
   assert.doesNotMatch(styles, /\.inventory-item-master-data summary \{/);
-  assert.match(script, /\$\{reservationSection\}\$\{entrySection\}\$\{masterData\}\$\{history\}/);
+  assert.match(script, /\$\{reservationSection\}\$\{entrySection\}\$\{categorySection\}\$\{masterData\}\$\{history\}/);
 });
 
 test('Detailabschnitte verwenden gemeinsame Flächen und Projektlisten-Trenner', () => {
@@ -87,6 +149,13 @@ test('Detailabschnitte verwenden gemeinsame Flächen und Projektlisten-Trenner',
 test('Smartphones wechseln vom Katalog in eine eigenständige Artikeldetailansicht', () => {
   assert.match(styles, /@media \(max-width:780px\)[\s\S]*\.inventory-item-shell\.has-selection \.inventory-item-list-panel \{ display:none; \}/);
   assert.match(styles, /\.inventory-item-mobile-back \{[^}]*display:flex/);
+});
+
+test('Geöffnete Artikeldetails lassen sich über X und die freie Seitenfläche schließen', () => {
+  assert.match(script, /class="inventory-item-detail-close"[^>]+aria-label="Artikelansicht schließen"/);
+  assert.match(styles, /\.inventory-item-detail-close \{[^}]*width:36px;[^}]*height:36px;/);
+  assert.match(script, /main\.onclick = state\.inventoryStockItem \? event => \{/);
+  assert.match(script, /if \(event\.target === main && location\.hash\.startsWith\('#\/inventory\/item\/'\)\) location\.href = inventoryItemHref\('', state\.inventoryItemsIncludeArchived, state\.inventoryItemQuery, state\.inventoryItemCategoryFilter, state\.inventoryItemSort, state\.inventoryItemSortDirection\);/);
 });
 
 test('Der Artikelrahmen reicht dynamisch bis zum unteren Browserrand', () => {

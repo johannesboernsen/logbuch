@@ -56,6 +56,20 @@ test('StorageLocation-API unterstützt Baum, Deep-Link, Verschieben, Zyklenschut
   assert.equal(garage.data.icon, 'warehouse');
   assert.equal(box.data.icon, 'archive');
 
+  const batch = await request('/api/storage-locations/batch', { method:'POST', body:JSON.stringify({ name:'Fach', counterStart:5, count:10, parentId:shelf.data.id, icon:'layout-grid' }) });
+  assert.equal(batch.response.status, 201, JSON.stringify(batch.data));
+  assert.equal(batch.data.count, 10);
+  assert.deepEqual(batch.data.locations.map(location => location.name), Array.from({ length:10 }, (_, index) => `Fach ${index + 5}`));
+  assert.ok(batch.data.locations.every(location => location.parentId === shelf.data.id && location.icon === 'layout-grid'));
+  assert.equal((await request('/api/storage-locations/batch', { method:'POST', body:JSON.stringify({ name:'Fach', counterStart:14, count:2, parentId:shelf.data.id }) })).response.status, 409);
+
+  const matrix = await request('/api/storage-locations/matrix', { method:'POST', body:JSON.stringify({ name:'Schublade', letterStart:'B', letterEnd:'E', counterStart:3, counterEnd:5, parentId:workshop.data.id, icon:'layout-grid' }) });
+  assert.equal(matrix.response.status, 201, JSON.stringify(matrix.data));
+  assert.equal(matrix.data.count, 12);
+  assert.deepEqual(matrix.data.locations.map(location => location.name), ['Schublade B3', 'Schublade B4', 'Schublade B5', 'Schublade C3', 'Schublade C4', 'Schublade C5', 'Schublade D3', 'Schublade D4', 'Schublade D5', 'Schublade E3', 'Schublade E4', 'Schublade E5']);
+  assert.ok(matrix.data.locations.every(location => location.parentId === workshop.data.id && location.icon === 'layout-grid'));
+  assert.equal((await request('/api/storage-locations/matrix', { method:'POST', body:JSON.stringify({ name:'Fach', letterStart:'E', letterEnd:'B', counterStart:3, counterEnd:5, parentId:workshop.data.id }) })).response.status, 422);
+
   const iconUpdate = await request(`/api/storage-locations/${box.data.id}`, { method:'PATCH', body:JSON.stringify({ icon:'package-open' }) });
   assert.equal(iconUpdate.data.icon, 'package-open');
   assert.equal((await request(`/api/storage-locations/${box.data.id}`, { method:'PATCH', body:JSON.stringify({ icon:'<svg>' }) })).response.status, 422);
@@ -69,7 +83,7 @@ test('StorageLocation-API unterstützt Baum, Deep-Link, Verschieben, Zyklenschut
   assert.equal(cycle.response.status, 422);
 
   const archived = await request(`/api/storage-locations/${shelf.data.id}/archive`, { method:'POST', body:'{}' });
-  assert.equal(archived.data.changed, 2);
+  assert.equal(archived.data.changed, 12);
   const active = await request('/api/storage-locations');
   assert.ok(!active.data.locations.some(location => location.id === shelf.data.id || location.id === box.data.id));
   const all = await request('/api/storage-locations?includeArchived=1');
@@ -77,7 +91,7 @@ test('StorageLocation-API unterstützt Baum, Deep-Link, Verschieben, Zyklenschut
   assert.equal((await request(`/api/storage-locations/${box.data.id}`)).response.status, 200);
 
   const restored = await request(`/api/storage-locations/${shelf.data.id}/restore`, { method:'POST', body:'{}' });
-  assert.equal(restored.data.changed, 2);
+  assert.equal(restored.data.changed, 12);
   const reordered = await request('/api/storage-locations/reorder', { method:'POST', body:JSON.stringify({ parentId:null, ids:[workshop.data.id, garage.data.id] }) });
   assert.equal(reordered.response.status, 200);
   assert.deepEqual((await request('/api/storage-locations')).data.locations.filter(location => location.parentId === null).map(location => location.name), ['Werkstatt', 'Garage']);

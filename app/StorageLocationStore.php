@@ -13,13 +13,30 @@ final class StorageLocationStore
     public function list(bool $includeArchived = false): array
     {
         $where = $includeArchived ? '' : "WHERE location.status = 'ACTIVE'";
+        $rootStatus = $includeArchived ? '' : "WHERE root.status = 'ACTIVE'";
         $childStatus = $includeArchived ? '' : "AND child.status = 'ACTIVE'";
+        $entryStatus = $includeArchived ? '' : "AND entry.status = 'ACTIVE'";
         $rows = $this->db->query(<<<SQL
+            WITH RECURSIVE subtree(root_id, id) AS (
+                SELECT root.id, root.id FROM storage_locations AS root {$rootStatus}
+                UNION
+                SELECT subtree.root_id, child.id
+                FROM subtree
+                JOIN storage_locations AS child ON child.parent_id = subtree.id {$childStatus}
+            )
             SELECT location.id, location.parent_id, location.name, location.icon,
                    location.description, location.status, location.sort_order,
                    location.created_at, location.updated_at,
                    (SELECT COUNT(*) FROM storage_locations AS child
-                    WHERE child.parent_id = location.id {$childStatus}) AS child_count
+                    WHERE child.parent_id = location.id {$childStatus}) AS child_count,
+                   (SELECT COUNT(DISTINCT entry.item_id) FROM stock_entries AS entry
+                    WHERE entry.storage_location_id = location.id {$entryStatus}) AS direct_item_count,
+                   (SELECT COUNT(*) - 1 FROM subtree
+                    WHERE subtree.root_id = location.id) AS descendant_count,
+                   (SELECT COUNT(DISTINCT entry.item_id)
+                    FROM subtree
+                    JOIN stock_entries AS entry ON entry.storage_location_id = subtree.id
+                    WHERE subtree.root_id = location.id {$entryStatus}) AS subtree_item_count
             FROM storage_locations AS location
             {$where}
             ORDER BY location.parent_id, location.sort_order, location.name COLLATE NOCASE, location.id
@@ -61,12 +78,58 @@ final class StorageLocationStore
                 'status' => 'ACTIVE',
                 'sortOrder' => $sortOrder,
                 'childCount' => 0,
+                'directItemCount' => 0,
+                'descendantCount' => 0,
+                'subtreeItemCount' => 0,
                 'createdAt' => nowIso(),
                 'updatedAt' => '',
             ];
             $statement = $this->db->prepare('INSERT INTO storage_locations (id, parent_id, name, icon, description, status, sort_order, created_at, updated_at) VALUES (:id, :parent, :name, :icon, :description, \'ACTIVE\', :sort, :created, \'\')');
             $statement->execute(['id' => $location['id'], 'parent' => $parentId, 'name' => $name, 'icon' => $icon, 'description' => $description, 'sort' => $sortOrder, 'created' => $location['createdAt']]);
             return $location;
+        });
+    }
+
+    public function createSeries(array $input): array
+    {
+        return $this->transaction(function () use ($input): array {
+            $baseName = $this->validName($input['name'] ?? '');
+            $counterStart = $this->validSeriesInteger($input['counterStart'] ?? null, 'Der Zählerstart', 0, 999_999_999);
+            $count = $this->validSeriesInteger($input['count'] ?? null, 'Die Anzahl der Lagerorte', 2, 500);
+            if ($counterStart + $count - 1 > 999_999_999) throw new HttpError(422, 'Der letzte Zählerwert darf höchstens 999.999.999 sein.');
+            $icon = $this->validIcon($input['icon'] ?? 'archive');
+            $description = $this->validDescription($input['description'] ?? '');
+            $parentId = $this->validParent($input['parentId'] ?? null);
+            $names = [];
+            for ($offset = 0; $offset < $count; ++$offset) {
+                $names[] = $this->validName($baseName . ' ' . ($counterStart + $offset));
+            }
+            return $this->createNamedLocations($names, $icon, $description, $parentId);
+        });
+    }
+
+    public function createMatrix(array $input): array
+    {
+        return $this->transaction(function () use ($input): array {
+            $baseName = $this->validName($input['name'] ?? '');
+            $letterStart = $this->validMatrixLetter($input['letterStart'] ?? null, 'Der Startbuchstabe');
+            $letterEnd = $this->validMatrixLetter($input['letterEnd'] ?? null, 'Der Endbuchstabe');
+            $counterStart = $this->validSeriesInteger($input['counterStart'] ?? null, 'Der Startzähler', 0, 999_999_999);
+            $counterEnd = $this->validSeriesInteger($input['counterEnd'] ?? null, 'Der Endzähler', 0, 999_999_999);
+            if ($letterStart > $letterEnd) throw new HttpError(422, 'Der Endbuchstabe darf nicht vor dem Startbuchstaben liegen.');
+            if ($counterStart > $counterEnd) throw new HttpError(422, 'Der Endzähler darf nicht kleiner als der Startzähler sein.');
+            $count = (ord($letterEnd) - ord($letterStart) + 1) * ($counterEnd - $counterStart + 1);
+            if ($count < 2 || $count > 500) throw new HttpError(422, 'Eine Lagermatrix muss zwischen 2 und 500 Lagerorte enthalten.');
+            $icon = $this->validIcon($input['icon'] ?? 'archive');
+            $description = $this->validDescription($input['description'] ?? '');
+            $parentId = $this->validParent($input['parentId'] ?? null);
+            $names = [];
+            for ($letterCode = ord($letterStart); $letterCode <= ord($letterEnd); ++$letterCode) {
+                for ($counter = $counterStart; $counter <= $counterEnd; ++$counter) {
+                    $names[] = $this->validName($baseName . ' ' . chr($letterCode) . $counter);
+                }
+            }
+            return $this->createNamedLocations($names, $icon, $description, $parentId);
         });
     }
 
@@ -154,10 +217,20 @@ final class StorageLocationStore
     {
         if (!validId($id)) throw new HttpError(404, 'Lagerort nicht gefunden.');
         $statement = $this->db->prepare(<<<'SQL'
+            WITH RECURSIVE subtree(id) AS (
+                SELECT id FROM storage_locations WHERE id = :id
+                UNION
+                SELECT child.id FROM subtree
+                JOIN storage_locations AS child ON child.parent_id = subtree.id
+                WHERE child.status = 'ACTIVE'
+            )
             SELECT location.id, location.parent_id, location.name, location.icon,
                    location.description, location.status, location.sort_order,
                    location.created_at, location.updated_at,
-                   (SELECT COUNT(*) FROM storage_locations AS child WHERE child.parent_id = location.id AND child.status = 'ACTIVE') AS child_count
+                   (SELECT COUNT(*) FROM storage_locations AS child WHERE child.parent_id = location.id AND child.status = 'ACTIVE') AS child_count,
+                   (SELECT COUNT(DISTINCT entry.item_id) FROM stock_entries AS entry WHERE entry.storage_location_id = location.id AND entry.status = 'ACTIVE') AS direct_item_count,
+                   (SELECT COUNT(*) - 1 FROM subtree) AS descendant_count,
+                   (SELECT COUNT(DISTINCT entry.item_id) FROM subtree JOIN stock_entries AS entry ON entry.storage_location_id = subtree.id WHERE entry.status = 'ACTIVE') AS subtree_item_count
             FROM storage_locations AS location WHERE location.id = :id
         SQL);
         $statement->execute(['id' => $id]);
@@ -177,6 +250,9 @@ final class StorageLocationStore
             'status' => (string) $row['status'],
             'sortOrder' => (int) $row['sort_order'],
             'childCount' => (int) $row['child_count'],
+            'directItemCount' => (int) $row['direct_item_count'],
+            'descendantCount' => (int) $row['descendant_count'],
+            'subtreeItemCount' => (int) $row['subtree_item_count'],
             'createdAt' => (string) $row['created_at'],
             'updatedAt' => (string) $row['updated_at'],
         ];
@@ -201,6 +277,58 @@ final class StorageLocationStore
         $icon = trim((string) $value);
         if (!preg_match('/^[a-z0-9][a-z0-9-]{0,63}$/', $icon)) throw new HttpError(422, 'Ungültiges Lagerortsymbol.');
         return $icon;
+    }
+
+    private function validSeriesInteger(mixed $value, string $label, int $minimum, int $maximum): int
+    {
+        $validated = filter_var($value, FILTER_VALIDATE_INT, ['options' => ['min_range' => $minimum, 'max_range' => $maximum]]);
+        if ($validated === false) throw new HttpError(422, "{$label} muss eine ganze Zahl zwischen {$minimum} und {$maximum} sein.");
+        return $validated;
+    }
+
+    private function validMatrixLetter(mixed $value, string $label): string
+    {
+        $letter = strtoupper(trim((string) $value));
+        if (!preg_match('/^[A-Z]$/', $letter)) throw new HttpError(422, "{$label} muss ein einzelner Buchstabe von A bis Z sein.");
+        return $letter;
+    }
+
+    private function createNamedLocations(array $names, string $icon, string $description, ?string $parentId): array
+    {
+        $existingNames = [];
+        foreach ($this->list() as $location) {
+            if ($location['parentId'] === $parentId) $existingNames[normalizeName($location['name'])] = true;
+        }
+        foreach ($names as $name) {
+            $normalized = normalizeName($name);
+            if (isset($existingNames[$normalized])) throw new HttpError(409, "Auf dieser Ebene gibt es bereits einen Lagerort mit dem Namen „{$name}“.");
+            $existingNames[$normalized] = true;
+        }
+
+        $sortOrder = $this->nextSortOrder($parentId);
+        $createdAt = nowIso();
+        $statement = $this->db->prepare('INSERT INTO storage_locations (id, parent_id, name, icon, description, status, sort_order, created_at, updated_at) VALUES (:id, :parent, :name, :icon, :description, \'ACTIVE\', :sort, :created, \'\')');
+        $locations = [];
+        foreach ($names as $offset => $name) {
+            $location = [
+                'id' => randomId('location-'),
+                'parentId' => $parentId,
+                'name' => $name,
+                'icon' => $icon,
+                'description' => $description,
+                'status' => 'ACTIVE',
+                'sortOrder' => $sortOrder + $offset,
+                'childCount' => 0,
+                'directItemCount' => 0,
+                'descendantCount' => 0,
+                'subtreeItemCount' => 0,
+                'createdAt' => $createdAt,
+                'updatedAt' => '',
+            ];
+            $statement->execute(['id' => $location['id'], 'parent' => $parentId, 'name' => $name, 'icon' => $icon, 'description' => $description, 'sort' => $location['sortOrder'], 'created' => $createdAt]);
+            $locations[] = $location;
+        }
+        return $locations;
     }
 
     private function validParent(mixed $value): ?string

@@ -72,6 +72,11 @@ test('Bestands-API verbindet Artikel und Lagerorte über atomare Bewegungen', as
   const corrected = await request('/api/stock-movements', { method:'POST', body:JSON.stringify({ type:'CORRECTION', itemId:item.data.id, storageLocationId:workshop.data.id, countedQuantity:2, note:'Inventur' }) });
   assert.equal(corrected.response.status, 201);
   assert.equal(corrected.data.summary.physicalQuantity, 13);
+  const tableOverview = await request(`/api/inventory-items?q=Schraube&withOverview=1`);
+  assert.deepEqual(
+    { physicalQuantity:tableOverview.data.items[0].physicalQuantity, reservedQuantity:tableOverview.data.items[0].reservedQuantity, availableQuantity:tableOverview.data.items[0].availableQuantity },
+    { physicalQuantity:13, reservedQuantity:0, availableQuantity:13 },
+  );
 
   const history = await request(`/api/stock-transactions?itemId=${item.data.id}`);
   assert.deepEqual(history.data.transactions.map(transaction => transaction.type), ['CORRECTION','TRANSFER','RECEIPT','RECEIPT']);

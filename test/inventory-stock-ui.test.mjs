@@ -92,7 +92,7 @@ test('Lagerortspalten zeigen lokale Artikelmengen und öffnen kontextuelle Artik
   assert.match(html, /id="inventory-toggle"[\s\S]+M18 21V10/);
   assert.match(script, /storage-finder-item-icon[^\n]+iconSvg\('tag'\)/);
   assert.match(styles, /\.storage-finder-icon \{[^}]+border:1px solid var\(--line\)[^}]+color:#747b84;[^}]+background:transparent;/);
-  assert.match(styles, /\.inventory-item-row-icon \{[^}]+border:1px solid var\(--line\)[^}]+color:#747b84;[^}]+background:transparent;/);
+  assert.doesNotMatch(script, /inventory-item-row-icon/);
   assert.match(script, /formatInventoryQuantity\(entry\.quantity\)/);
   assert.match(script, /localEntry\.minimumQuantity/);
   assert.match(script, /Gesamtbestand/);

@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#f6f7f9">
   <title>Logbuch</title>
   <link rel="icon" href="/favicon.svg?v=20260824-1" type="image/svg+xml">
-  <link rel="stylesheet" href="/styles.css?v=20260828-082">
+  <link rel="stylesheet" href="/styles.css?v=20260830-111">
 </head>
 <body>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
@@ -34,9 +34,9 @@
       <a class="brand" href="/#/" aria-label="Logbuch"><img src="/logbuch-logo.svg?v=20260822-3" alt=""></a>
       <nav aria-label="Hauptnavigation">
         <a class="nav-item active" href="/#/" data-route="home"><span aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="8.5"></circle><path d="m8.2 12.2 2.5 2.5 5.4-5.6"></path></svg></span> Übersicht</a>
-        <a class="nav-item" href="/#/todos" data-route="todos"><span aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M9 6h11M9 12h11M9 18h11"></path><path d="m3.5 6 1 1 2-2M3.5 12l1 1 2-2M3.5 18l1 1 2-2"></path></svg></span> Erinnerungen <i id="todo-nav-count" class="todo-nav-count" hidden>0</i></a>
+        <a class="nav-item" href="/#/todos" data-route="todos"><span aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M9 6h11M9 12h11M9 18h11"></path><path d="m3.5 6 1 1 2-2M3.5 12l1 1 2-2M3.5 18l1 1 2-2"></path></svg></span> Erinnerungen <i id="todo-nav-count" class="todo-nav-count" title="Anzahl der offenen Erinnerungen" aria-label="Anzahl der offenen Erinnerungen">0</i></a>
         <div class="projects-menu">
-          <button id="projects-toggle" class="nav-item bare" type="button" data-route="projects" aria-expanded="false" aria-controls="projects-subnav"><span data-project-nav-icon aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M12 3 20 7.5v9L12 21l-8-4.5v-9L12 3Z"></path><path d="m4 7.5 8 4.5 8-4.5M12 12v9"></path></svg></span><b>Projekte</b><i id="project-nav-count" class="todo-nav-count" hidden>0</i></button>
+          <button id="projects-toggle" class="nav-item bare" type="button" data-route="projects" aria-expanded="false" aria-controls="projects-subnav"><span data-project-nav-icon aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M12 3 20 7.5v9L12 21l-8-4.5v-9L12 3Z"></path><path d="m4 7.5 8 4.5 8-4.5M12 12v9"></path></svg></span><b>Projekte</b><i id="project-nav-count" class="todo-nav-count" title="Anzahl der aktiven Projekte" aria-label="Anzahl der aktiven Projekte">0</i></button>
           <div id="projects-subnav" class="settings-subnav projects-subnav" hidden>
             <a href="/#/projects" data-projects-route="all"><span>Alle</span><small class="project-nav-count" data-project-count="all">0</small></a>
             <a href="/#/projects?status=idea" data-projects-route="idea"><span>Idee</span><small class="project-nav-count" data-project-count="idea">0</small></a>
@@ -49,12 +49,13 @@
           </div>
         </div>
         <div class="inventory-menu">
-          <button id="inventory-toggle" class="nav-item bare" type="button" data-route="inventory" aria-expanded="false" aria-controls="inventory-subnav"><span aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M18 21V10a1 1 0 0 0-1-1H7a1 1 0 0 0-1 1v11"></path><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8a2 2 0 0 1 1.132-1.803l7.95-3.974a2 2 0 0 1 1.837 0l7.948 3.974A2 2 0 0 1 22 8zM6 13h12M6 17h12"></path></svg></span><b>Lager</b></button>
+          <button id="inventory-toggle" class="nav-item bare" type="button" data-route="inventory" aria-expanded="false" aria-controls="inventory-subnav"><span aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M18 21V10a1 1 0 0 0-1-1H7a1 1 0 0 0-1 1v11"></path><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8a2 2 0 0 1 1.132-1.803l7.95-3.974a2 2 0 0 1 1.837 0l7.948 3.974A2 2 0 0 1 22 8zM6 13h12M6 17h12"></path></svg></span><b>Lager</b><i id="inventory-nav-count" class="todo-nav-count" title="Anzahl unterschiedlicher Artikel im Lager" aria-label="Anzahl unterschiedlicher Artikel im Lager">0</i></button>
           <div id="inventory-subnav" class="settings-subnav inventory-subnav" hidden>
-            <a href="/#/inventory" data-inventory-route="locations">Lagerorte</a>
-            <a href="/#/inventory/items" data-inventory-route="items">Artikel</a>
-            <a href="/#/inventory/replenishment" data-inventory-route="replenishment">Nachbestellen</a>
-            <a href="/#/inventory/archive" data-inventory-route="archive">Archiviert</a>
+            <a href="/#/inventory/items" data-inventory-route="items"><span>Artikel</span><small class="project-nav-count" data-inventory-count="items">0</small></a>
+            <a href="/#/inventory/categories" data-inventory-route="categories"><span>Kategorien</span><small class="project-nav-count" data-inventory-count="categories">0</small></a>
+            <a href="/#/inventory" data-inventory-route="locations"><span>Lagerorte</span><small class="project-nav-count" data-inventory-count="locations">0</small></a>
+            <a href="/#/inventory/replenishment" data-inventory-route="replenishment"><span>Nachbestellen</span><small class="project-nav-count" data-inventory-count="replenishment">0</small></a>
+            <a href="/#/inventory/archive" data-inventory-route="archive"><span>Archiviert</span><small class="project-nav-count" data-inventory-count="archive">0</small></a>
           </div>
         </div>
         <div class="settings-menu">
@@ -155,6 +156,16 @@
         <button type="button" data-project-create-choice="project"><strong>Projekt</strong><small>Ein neues Vorhaben anlegen</small></button>
         <button type="button" data-project-create-choice="folder"><strong>Ordner</strong><small>Projekte übersichtlich gruppieren</small></button>
       </div>
+    </form>
+  </dialog>
+
+  <dialog id="ai-project-export-dialog" class="ai-project-dialog">
+    <form id="ai-project-export-form" method="dialog">
+      <input type="hidden" name="projectId">
+      <div class="dialog-head"><div><h2>Projekt für KI herunterladen</h2><p class="dialog-copy">Die Markdown-Datei enthält den aktuellen Projektstand als Kontext für eine KI.</p></div><button class="icon-button" type="button" value="cancel" aria-label="Schließen">×</button></div>
+      <label>Dateien<select name="files"><option value="metadata">Dateinamen, Beschreibungen und Zuordnung mitgeben</option><option value="none">Dateien vollständig auslassen</option></select><small class="field-hint">Dateiinhalte werden nicht eingebettet.</small></label>
+      <div class="ai-project-notice"><strong>Datenschutz prüfen</strong><p>Projekttexte und auf Wunsch Dateiinformationen werden in die Markdown-Datei geschrieben. Teile sie nur mit einem geeigneten KI-Dienst.</p></div>
+      <div class="dialog-actions"><button class="button secondary" type="button" value="cancel">Abbrechen</button><button class="button primary" type="submit">Markdown herunterladen</button></div>
     </form>
   </dialog>
 
@@ -300,14 +311,42 @@
   <dialog id="storage-location-dialog">
     <form id="storage-location-form" method="dialog" novalidate>
       <input type="hidden" name="locationId">
+      <input type="hidden" name="creationMode" value="single">
       <input type="hidden" name="icon" value="archive">
-      <div class="dialog-head"><div><h2 id="storage-location-dialog-title">Lagerort anlegen</h2><p class="dialog-copy">Lagerorte können beliebig tief ineinander verschachtelt werden.</p></div><button class="icon-button" type="button" value="cancel" aria-label="Schließen">×</button></div>
-      <label>Name<input name="name" minlength="1" maxlength="160" placeholder="z. B. Garage" required></label>
+      <div class="dialog-head"><div><h2 id="storage-location-dialog-title">Lagerort anlegen</h2><p id="storage-location-dialog-copy" class="dialog-copy">Lagerorte können beliebig tief ineinander verschachtelt werden.</p></div><button class="icon-button" type="button" value="cancel" aria-label="Schließen">×</button></div>
+      <label><span id="storage-location-name-label">Name</span><input name="name" minlength="1" maxlength="160" placeholder="z. B. Garage" required></label>
+      <div id="storage-location-series-fields" class="storage-location-series-fields" hidden>
+        <label>Zählerstart<div class="storage-location-series-stepper"><input name="counterStart" type="number" min="0" max="999999999" step="1" value="1" inputmode="numeric" required><button type="button" data-storage-series-step="counterStart:-1" aria-label="Zählerstart um eins verringern">−</button><button type="button" data-storage-series-step="counterStart:1" aria-label="Zählerstart um eins erhöhen">+</button></div></label>
+        <label>Anzahl der Lagerorte<div class="storage-location-series-stepper"><input name="count" type="number" min="2" max="500" step="1" value="10" inputmode="numeric" required><button type="button" data-storage-series-step="count:-1" aria-label="Anzahl um eins verringern">−</button><button type="button" data-storage-series-step="count:1" aria-label="Anzahl um eins erhöhen">+</button></div></label>
+        <p id="storage-location-series-preview" class="storage-location-series-preview"></p>
+      </div>
+      <div id="storage-location-matrix-fields" class="storage-location-matrix-fields" hidden>
+        <label>Startbuchstabe<input name="letterStart" type="text" maxlength="1" pattern="[A-Za-z]" value="A" autocapitalize="characters" required></label>
+        <label>Endbuchstabe<input name="letterEnd" type="text" maxlength="1" pattern="[A-Za-z]" value="C" autocapitalize="characters" required></label>
+        <label>Startzähler<div class="storage-location-series-stepper"><input name="matrixCounterStart" type="number" min="0" max="999999999" step="1" value="1" inputmode="numeric" required><button type="button" data-storage-matrix-step="matrixCounterStart:-1" aria-label="Startzähler um eins verringern">−</button><button type="button" data-storage-matrix-step="matrixCounterStart:1" aria-label="Startzähler um eins erhöhen">+</button></div></label>
+        <label>Endzähler<div class="storage-location-series-stepper"><input name="matrixCounterEnd" type="number" min="0" max="999999999" step="1" value="3" inputmode="numeric" required><button type="button" data-storage-matrix-step="matrixCounterEnd:-1" aria-label="Endzähler um eins verringern">−</button><button type="button" data-storage-matrix-step="matrixCounterEnd:1" aria-label="Endzähler um eins erhöhen">+</button></div></label>
+        <p id="storage-location-matrix-preview" class="storage-location-series-preview"></p>
+      </div>
       <div class="icon-picker" data-icon-picker="storage-location"></div>
       <label>Übergeordneter Lagerort<select name="parentId"><option value="">Oberste Ebene</option></select><small class="field-hint">Eigene Unterorte werden beim Umplatzieren vollständig mitgenommen.</small></label>
       <label>Beschreibung <span class="optional">optional</span><textarea name="description" maxlength="2000" rows="4" placeholder="Hinweise zum Ort, Zugriff oder Inhalt"></textarea></label>
       <p id="storage-location-error" class="form-error"></p>
+      <div class="dialog-actions"><button class="button secondary" type="button" value="cancel">Abbrechen</button><button id="storage-location-submit" class="button primary" type="submit">Speichern</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="inventory-category-dialog">
+    <form id="inventory-category-form" method="dialog" novalidate>
+      <input type="hidden" name="categoryId">
+      <input type="hidden" name="icon" value="folder">
+      <div class="dialog-head"><div><h2 id="inventory-category-dialog-title">Kategorie anlegen</h2><p class="dialog-copy">Kategorien können verschachtelt und Artikel mehreren Kategorien zugeordnet werden.</p></div><button class="icon-button" type="button" value="cancel" aria-label="Schließen">×</button></div>
+      <label>Name<input name="name" minlength="1" maxlength="160" placeholder="z. B. Schrauben" required></label>
+      <div class="icon-picker" data-icon-picker="inventory-category"></div>
+      <label>Übergeordnete Kategorie<select name="parentId"><option value="">Oberste Ebene</option></select><small class="field-hint">Unterkategorien werden beim Verschieben vollständig mitgenommen.</small></label>
+      <label>Beschreibung <span class="optional">optional</span><textarea name="description" maxlength="2000" rows="4"></textarea></label>
+      <p id="inventory-category-error" class="form-error"></p>
       <div class="dialog-actions"><button class="button secondary" type="button" value="cancel">Abbrechen</button><button class="button primary" type="submit">Speichern</button></div>
+      <section id="inventory-category-delete-zone" class="dialog-danger" hidden><div><strong>Kategorie löschen</strong><p>Nur leere Kategorien ohne Unterkategorien können gelöscht werden.</p></div><button class="button danger-button" id="inventory-category-delete" type="button">Kategorie löschen</button></section>
     </form>
   </dialog>
 
@@ -317,10 +356,22 @@
       <div class="dialog-head"><div><h2 id="inventory-item-dialog-title">Artikel anlegen</h2><p class="dialog-copy">Der Artikel beschreibt den Gegenstand unabhängig von Lagerort und Bestand.</p></div><button class="icon-button" type="button" value="cancel" aria-label="Schließen">×</button></div>
       <div class="inventory-item-core-fields"><label>Name<input name="name" minlength="1" maxlength="200" placeholder="z. B. Schraube M4 × 30" required></label><label>Bestandseinheit<input name="stockUnit" list="inventory-stock-units" minlength="1" maxlength="40" placeholder="z. B. Stück" required></label></div>
       <datalist id="inventory-stock-units"><option value="Stück"><option value="Meter"><option value="Zentimeter"><option value="Kilogramm"><option value="Gramm"><option value="Liter"><option value="Milliliter"><option value="Rolle"><option value="Packung"></datalist>
+      <section class="inventory-item-image-editor"><div class="inventory-item-image-editor-preview"><img id="inventory-item-image-preview" alt="" hidden><span id="inventory-item-image-placeholder">Kein Bild</span></div><div><label class="button secondary compact" for="inventory-item-image-input">Bild auswählen</label><input id="inventory-item-image-input" name="image" type="file" accept="image/jpeg,image/png,image/webp,image/gif"><button id="inventory-item-image-remove" class="button secondary compact danger" type="button" hidden>Bild entfernen</button><small>JPEG, PNG, WebP oder GIF · maximal 15 MB</small></div></section>
       <label>Beschreibung <span class="optional">optional</span><textarea name="description" maxlength="4000" rows="4" placeholder="Ausführung, Material oder Verwendungszweck"></textarea></label>
       <div class="inventory-item-meta-fields"><label>Hersteller <span class="optional">optional</span><input name="manufacturer" maxlength="160"></label><label>Artikelnummer <span class="optional">optional</span><input name="articleNumber" maxlength="120"></label><label>Barcode / EAN <span class="optional">optional</span><input name="barcode" maxlength="120" inputmode="numeric"></label><label>Globaler Mindestbestand <span class="optional">optional</span><input name="defaultMinimumQuantity" type="number" min="0" max="1000000000000" step="any"></label></div>
       <label>Händlerlink <span class="optional">optional</span><input name="merchantUrl" type="url" maxlength="2000" placeholder="https://…"></label>
+      <fieldset class="inventory-category-picker"><legend>Kategorien <span class="optional">optional</span></legend><p class="field-hint">Ein Artikel kann mehreren Kategorien zugeordnet werden.</p><div id="inventory-item-category-options"></div></fieldset>
       <p id="inventory-item-error" class="form-error"></p>
+      <div class="dialog-actions"><button class="button secondary" type="button" value="cancel">Abbrechen</button><button class="button primary" type="submit">Speichern</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="inventory-item-note-dialog" class="inventory-stock-dialog">
+    <form id="inventory-item-note-form" method="dialog" novalidate>
+      <input type="hidden" name="itemId"><input type="hidden" name="noteId">
+      <div class="dialog-head"><div><h2 id="inventory-item-note-dialog-title">Notiz hinzufügen</h2><p class="dialog-copy">Notizen ergänzen die Artikelbeschreibung um laufende Hinweise.</p></div><button class="icon-button" type="button" value="cancel" aria-label="Schließen">×</button></div>
+      <label>Notiz<textarea name="content" minlength="1" maxlength="10000" rows="7" placeholder="Hinweis, Erfahrung oder Information zum Artikel" required></textarea></label>
+      <p id="inventory-item-note-error" class="form-error"></p>
       <div class="dialog-actions"><button class="button secondary" type="button" value="cancel">Abbrechen</button><button class="button primary" type="submit">Speichern</button></div>
     </form>
   </dialog>
@@ -398,7 +449,8 @@
   </dialog>
 
   <script src="/backup-format.js?v=20260823-142" defer></script>
+  <script src="/ai-project-format.js?v=20260830-005" defer></script>
   <script src="/update-monitor.js?v=20260822-001" defer></script>
-  <script src="/app.js?v=20260828-083" defer></script>
+  <script src="/app.js?v=20260830-113" defer></script>
 </body>
 </html>

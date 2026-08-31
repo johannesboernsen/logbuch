@@ -9,6 +9,25 @@ use PDO;
 final class Application
 {
     private const MAX_JSON_BYTES = 31_457_280;
+    private const FULL_BACKUP_VERSION = 1;
+    private const FULL_BACKUP_MIN_SCHEMA = 17;
+    private const FULL_BACKUP_TABLES = [
+        'users' => ['id', 'role', 'active', 'access_mode', 'password_hash', 'must_change_password', 'preferences_json', 'created_at', 'last_login_at'],
+        'user_projects' => ['user_id', 'project_id'],
+        'audit' => ['id', 'occurred_at', 'actor', 'action', 'target', 'details'],
+        'tags' => ['id', 'name', 'normalized_name', 'active', 'created_at'],
+        'settings' => ['key', 'value'],
+        'folders' => ['id', 'parent_id', 'name', 'description', 'priority', 'flagged', 'icon', 'tag_ids_json', 'created_by', 'created_at', 'updated_at'],
+        'todos' => ['id', 'user_id', 'title', 'parent_id', 'completed_at', 'cleared_at', 'repeat_interval', 'repeat_unit', 'repeat_due_at', 'repeat_waiting_at', 'sort_order', 'created_at', 'updated_at'],
+        'storage_locations' => ['id', 'parent_id', 'name', 'description', 'status', 'created_at', 'updated_at', 'sort_order', 'icon'],
+        'inventory_categories' => ['id', 'parent_id', 'name', 'description', 'icon', 'sort_order', 'created_at', 'updated_at'],
+        'inventory_items' => ['id', 'name', 'description', 'stock_unit', 'manufacturer', 'article_number', 'barcode', 'merchant_url', 'default_minimum_quantity', 'status', 'created_at', 'updated_at'],
+        'inventory_item_notes' => ['id', 'item_id', 'content', 'created_by', 'created_at', 'updated_at'],
+        'inventory_item_categories' => ['item_id', 'category_id', 'created_at'],
+        'stock_entries' => ['id', 'item_id', 'storage_location_id', 'quantity', 'minimum_quantity', 'note', 'status', 'created_at', 'updated_at'],
+        'reservations' => ['id', 'item_id', 'project_id', 'project_entry_collection', 'project_entry_id', 'requested_quantity', 'fulfilled_quantity', 'status', 'note', 'created_by', 'created_at', 'updated_at', 'closed_at'],
+        'stock_transactions' => ['id', 'item_id', 'type', 'quantity', 'source_storage_location_id', 'destination_storage_location_id', 'reservation_id', 'reversal_of_transaction_id', 'note', 'recorded_by', 'occurred_at', 'created_at'],
+    ];
 
     private readonly PDO $db;
     private readonly Auth $auth;
@@ -17,6 +36,8 @@ final class Application
     private readonly TodoStore $todos;
     private readonly StorageLocationStore $storageLocations;
     private readonly InventoryItemStore $inventoryItems;
+    private readonly InventoryCategoryStore $inventoryCategories;
+    private readonly InventoryPurgeStore $inventoryPurge;
     private readonly InventoryStockStore $inventoryStock;
     private readonly InventoryReservationStore $inventoryReservations;
     private readonly UpdateService $updates;
@@ -30,7 +51,9 @@ final class Application
         $this->folders = new FolderStore($this->db);
         $this->todos = new TodoStore($this->db);
         $this->storageLocations = new StorageLocationStore($this->db);
-        $this->inventoryItems = new InventoryItemStore($this->db);
+        $this->inventoryItems = new InventoryItemStore($this->db, $storagePath . '/inventory-items');
+        $this->inventoryCategories = new InventoryCategoryStore($this->db);
+        $this->inventoryPurge = new InventoryPurgeStore($this->db);
         $this->inventoryStock = new InventoryStockStore($this->db);
         $this->inventoryReservations = new InventoryReservationStore($this->db, $this->projects);
         $this->updates = new UpdateService($storagePath, \logbuch_root_path(), $this->db, (string) (getenv('LOGBUCH_PLATFORM') ?: 'webhosting'));
@@ -163,6 +186,18 @@ final class Application
                 $this->audit($user['id'], 'storage_location.created', $location['id']);
                 $this->json(201, $location);
             }
+            if ($path === '/api/storage-locations/batch' && $method === 'POST') {
+                $this->requireEditor($user);
+                $locations = $this->storageLocations->createSeries($input);
+                $this->audit($user['id'], 'storage_locations.batch_created', $locations[0]['id'], 'count=' . count($locations) . ';parent=' . ($locations[0]['parentId'] ?? 'root'));
+                $this->json(201, ['locations' => $locations, 'count' => count($locations)]);
+            }
+            if ($path === '/api/storage-locations/matrix' && $method === 'POST') {
+                $this->requireEditor($user);
+                $locations = $this->storageLocations->createMatrix($input);
+                $this->audit($user['id'], 'storage_locations.matrix_created', $locations[0]['id'], 'count=' . count($locations) . ';parent=' . ($locations[0]['parentId'] ?? 'root'));
+                $this->json(201, ['locations' => $locations, 'count' => count($locations)]);
+            }
             if ($path === '/api/storage-locations/reorder' && $method === 'POST') {
                 $this->requireEditor($user);
                 $this->storageLocations->reorder($input['parentId'] ?? null, $input['ids'] ?? null);
@@ -176,6 +211,16 @@ final class Application
                 $this->audit($user['id'], 'storage_location.' . ($match[2] === 'archive' ? 'archived' : 'restored'), $locationId, 'subtree=' . $changed);
                 $this->json(200, ['changed' => $changed]);
             }
+            if (preg_match('#^/api/storage-locations/([^/]+)/purge-preview$#', $path, $match) && $method === 'GET') {
+                $this->json(200, $this->inventoryPurge->locationPreview(rawurldecode($match[1])));
+            }
+            if (preg_match('#^/api/storage-locations/([^/]+)/permanent$#', $path, $match) && $method === 'DELETE') {
+                $this->requireEditor($user);
+                $locationId = rawurldecode($match[1]);
+                $result = $this->inventoryPurge->deleteLocation($locationId);
+                $this->audit($user['id'], 'storage_location.permanently_deleted', $locationId, 'locations=' . $result['locations'] . ';entries=' . $result['stockEntries'] . ';transactions=' . $result['transactions']);
+                $this->json(200, $result);
+            }
             if (preg_match('#^/api/storage-locations/([^/]+)$#', $path, $match)) {
                 $locationId = rawurldecode($match[1]);
                 if ($method === 'GET') $this->json(200, $this->storageLocations->detail($locationId));
@@ -188,13 +233,62 @@ final class Application
             }
             if ($path === '/api/inventory-items' && $method === 'GET') {
                 $includeArchived = ($_GET['includeArchived'] ?? '') === '1';
-                $this->json(200, ['items' => $this->inventoryItems->list($includeArchived, (string) ($_GET['q'] ?? ''))]);
+                $items = $this->inventoryItemsWithCategories($this->inventoryItems->list($includeArchived, (string) ($_GET['q'] ?? '')));
+                if (($_GET['withOverview'] ?? '') === '1') {
+                    $overview = $this->inventoryStock->overview(array_column($items, 'id'));
+                    $items = array_map(static fn(array $item): array => [...$item, ...($overview[$item['id']] ?? ['physicalQuantity' => 0.0, 'reservedQuantity' => 0.0, 'availableQuantity' => 0.0])], $items);
+                }
+                $this->json(200, ['items' => $items]);
             }
             if ($path === '/api/inventory-items' && $method === 'POST') {
                 $this->requireEditor($user);
+                if (array_key_exists('categoryIds', $input)) $this->inventoryCategories->validateCategoryIds($input['categoryIds']);
                 $item = $this->inventoryItems->create($input);
+                if (array_key_exists('categoryIds', $input)) $this->inventoryCategories->replaceItemCategories($item['id'], $input['categoryIds']);
                 $this->audit($user['id'], 'inventory_item.created', $item['id']);
-                $this->json(201, $item);
+                $this->json(201, $this->inventoryItemWithCategories($item));
+            }
+            if (preg_match('#^/api/inventory-items/([^/]+)/image$#', $path, $match)) {
+                $itemId = rawurldecode($match[1]);
+                if ($method === 'GET') $this->streamAttachment($this->inventoryItems->imageContent($itemId), false);
+                if ($method === 'POST') {
+                    $this->requireEditor($user);
+                    $image = $this->inventoryItems->uploadImage($itemId, (array) ($_FILES['image'] ?? []));
+                    $this->audit($user['id'], 'inventory_item.image_updated', $itemId, 'name=' . $image['originalName']);
+                    $this->json(201, $image);
+                }
+                if ($method === 'DELETE') {
+                    $this->requireEditor($user);
+                    $removed = $this->inventoryItems->deleteImage($itemId);
+                    $this->audit($user['id'], 'inventory_item.image_removed', $itemId);
+                    $this->json(200, ['removed' => $removed]);
+                }
+            }
+            if (preg_match('#^/api/inventory-items/([^/]+)/notes$#', $path, $match)) {
+                $itemId = rawurldecode($match[1]);
+                if ($method === 'GET') $this->json(200, ['notes' => $this->inventoryItems->notes($itemId)]);
+                if ($method === 'POST') {
+                    $this->requireEditor($user);
+                    $note = $this->inventoryItems->createNote($itemId, $input, (string) $user['id']);
+                    $this->audit($user['id'], 'inventory_item.note_created', $itemId, 'note=' . $note['id']);
+                    $this->json(201, $note);
+                }
+            }
+            if (preg_match('#^/api/inventory-items/([^/]+)/notes/([^/]+)$#', $path, $match)) {
+                $itemId = rawurldecode($match[1]);
+                $noteId = rawurldecode($match[2]);
+                if ($method === 'PATCH') {
+                    $this->requireEditor($user);
+                    $note = $this->inventoryItems->updateNote($itemId, $noteId, $input);
+                    $this->audit($user['id'], 'inventory_item.note_updated', $itemId, 'note=' . $noteId);
+                    $this->json(200, $note);
+                }
+                if ($method === 'DELETE') {
+                    $this->requireEditor($user);
+                    $removed = $this->inventoryItems->deleteNote($itemId, $noteId);
+                    $this->audit($user['id'], 'inventory_item.note_deleted', $itemId, 'note=' . $noteId);
+                    $this->json(200, ['removed' => $removed]);
+                }
             }
             if (preg_match('#^/api/inventory-items/([^/]+)/(archive|restore)$#', $path, $match) && $method === 'POST') {
                 $this->requireEditor($user);
@@ -203,14 +297,80 @@ final class Application
                 $this->audit($user['id'], 'inventory_item.' . ($match[2] === 'archive' ? 'archived' : 'restored'), $itemId);
                 $this->json(200, ['changed' => $changed]);
             }
+            if (preg_match('#^/api/inventory-items/([^/]+)/purge-preview$#', $path, $match) && $method === 'GET') {
+                $this->json(200, $this->inventoryPurge->itemPreview(rawurldecode($match[1])));
+            }
+            if (preg_match('#^/api/inventory-items/([^/]+)/permanent$#', $path, $match) && $method === 'DELETE') {
+                $this->requireEditor($user);
+                $itemId = rawurldecode($match[1]);
+                $result = $this->inventoryPurge->deleteItem($itemId);
+                $this->inventoryItems->deleteImageFiles($itemId);
+                $this->audit($user['id'], 'inventory_item.permanently_deleted', $itemId, 'entries=' . $result['stockEntries'] . ';transactions=' . $result['transactions'] . ';reservations=' . $result['reservations']);
+                $this->json(200, $result);
+            }
             if (preg_match('#^/api/inventory-items/([^/]+)$#', $path, $match)) {
                 $itemId = rawurldecode($match[1]);
-                if ($method === 'GET') $this->json(200, $this->inventoryItems->detail($itemId));
+                if ($method === 'GET') $this->json(200, $this->inventoryItemWithCategories($this->inventoryItems->detail($itemId)));
                 if ($method === 'PATCH') {
                     $this->requireEditor($user);
+                    if (array_key_exists('categoryIds', $input)) $this->inventoryCategories->validateCategoryIds($input['categoryIds']);
                     $item = $this->inventoryItems->update($itemId, $input);
+                    if (array_key_exists('categoryIds', $input)) $this->inventoryCategories->replaceItemCategories($itemId, $input['categoryIds']);
                     $this->audit($user['id'], 'inventory_item.updated', $itemId);
-                    $this->json(200, $item);
+                    $this->json(200, $this->inventoryItemWithCategories($item));
+                }
+            }
+            if ($path === '/api/inventory-categories' && $method === 'GET') {
+                $this->json(200, ['categories' => $this->inventoryCategories->list()]);
+            }
+            if ($path === '/api/inventory-categories' && $method === 'POST') {
+                $this->requireEditor($user);
+                $category = $this->inventoryCategories->create($input);
+                $this->audit($user['id'], 'inventory_category.created', $category['id']);
+                $this->json(201, $category);
+            }
+            if ($path === '/api/inventory-categories/reorder' && $method === 'POST') {
+                $this->requireEditor($user);
+                $this->inventoryCategories->reorder($input['parentId'] ?? null, $input['ids'] ?? null);
+                $this->json(200, ['saved' => true]);
+            }
+            if (preg_match('#^/api/inventory-categories/([^/]+)/items$#', $path, $match)) {
+                $categoryId = rawurldecode($match[1]);
+                if ($method === 'GET') {
+                    $ids = array_flip($this->inventoryCategories->itemIds($categoryId, ($_GET['recursive'] ?? '') === '1'));
+                    $items = array_values(array_filter($this->inventoryItems->list(false), static fn(array $item): bool => isset($ids[$item['id']])));
+                    $this->json(200, ['items' => $this->inventoryItemsWithCategories($items)]);
+                }
+                if ($method === 'POST') {
+                    $this->requireEditor($user);
+                    $itemId = (string) ($input['itemId'] ?? '');
+                    $added = $this->inventoryCategories->addItem($categoryId, $itemId);
+                    $this->audit($user['id'], 'inventory_category.item_added', $categoryId, 'item=' . $itemId);
+                    $this->json(200, ['added' => $added]);
+                }
+            }
+            if (preg_match('#^/api/inventory-categories/([^/]+)/items/([^/]+)$#', $path, $match) && $method === 'DELETE') {
+                $this->requireEditor($user);
+                $categoryId = rawurldecode($match[1]);
+                $itemId = rawurldecode($match[2]);
+                $removed = $this->inventoryCategories->removeItem($categoryId, $itemId);
+                $this->audit($user['id'], 'inventory_category.item_removed', $categoryId, 'item=' . $itemId);
+                $this->json(200, ['removed' => $removed]);
+            }
+            if (preg_match('#^/api/inventory-categories/([^/]+)$#', $path, $match)) {
+                $categoryId = rawurldecode($match[1]);
+                if ($method === 'GET') $this->json(200, $this->inventoryCategories->detail($categoryId));
+                if ($method === 'PATCH') {
+                    $this->requireEditor($user);
+                    $category = $this->inventoryCategories->update($categoryId, $input);
+                    $this->audit($user['id'], 'inventory_category.updated', $categoryId);
+                    $this->json(200, $category);
+                }
+                if ($method === 'DELETE') {
+                    $this->requireEditor($user);
+                    $deleted = $this->inventoryCategories->delete($categoryId);
+                    $this->audit($user['id'], 'inventory_category.deleted', $categoryId);
+                    $this->json(200, ['deleted' => $deleted]);
                 }
             }
             if ($path === '/api/stock-entries' && $method === 'GET') {
@@ -651,6 +811,10 @@ final class Application
                 $this->requireAdmin($user);
                 $this->json(200, $this->importProjectArchive($user, (array) ($_FILES['archive'] ?? []), (string) ($input['conflict'] ?? 'skip')));
             }
+            if ($path === '/api/import/full-archive' && $method === 'POST') {
+                $this->requireAdmin($user);
+                $this->json(200, $this->importFullArchive($user, (array) ($_FILES['archive'] ?? [])));
+            }
             if ($path === '/api/backup/users' && $method === 'GET') {
                 $this->requireAdmin($user);
                 $this->json(200, ['accounts' => $this->exportUsers()]);
@@ -658,6 +822,10 @@ final class Application
             if ($path === '/api/backup/projects' && $method === 'GET') {
                 $this->requireAdmin($user);
                 $this->streamProjectBackup($user);
+            }
+            if ($path === '/api/backup/full' && $method === 'GET') {
+                $this->requireAdmin($user);
+                $this->streamFullBackup();
             }
             if (preg_match('#^/api/backup/projects/([^/]+)$#', $path, $match) && $method === 'GET') {
                 $projectId = rawurldecode($match[1]);
@@ -690,12 +858,7 @@ final class Application
             }
             if ($path === '/api/system/content' && $method === 'DELETE') {
                 $this->requireAdmin($user);
-                $removed = $this->projects->clear();
-                $this->db->exec('DELETE FROM tags');
-                $this->db->exec('DELETE FROM folders');
-                $this->db->exec('DELETE FROM user_projects');
-                $this->audit($user['id'], 'system.content_cleared', (string) $removed);
-                $this->json(200, ['removed' => $removed]);
+                $this->json(200, $this->clearAllContent($user['id']));
             }
             if ($path === '/api/system/users' && $method === 'DELETE') {
                 $this->requireAdmin($user);
@@ -882,6 +1045,73 @@ final class Application
             $title = $projectId === null ? 'projekte' : (string) ($projects[0]['title'] ?? 'projekt');
             $safeTitle = trim(preg_replace('/[^A-Za-z0-9_-]+/', '-', iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $title) ?: $title), '-') ?: 'projekt';
             $filename = 'logbuch-' . strtolower($safeTitle) . '-' . gmdate('Y-m-d') . '.tar';
+            http_response_code(200);
+            header('Content-Type: application/x-tar');
+            header('Content-Length: ' . (string) filesize($archivePath));
+            header('Content-Disposition: attachment; filename="' . $filename . '"');
+            header('X-Content-Type-Options: nosniff');
+            header('Cache-Control: private, no-store');
+            readfile($archivePath);
+        } finally {
+            @unlink($archivePath);
+        }
+        exit;
+    }
+
+    private function streamFullBackup(): never
+    {
+        if (!class_exists(\PharData::class)) throw new HttpError(500, 'Die TAR-Unterstützung ist auf diesem Server nicht verfügbar.');
+        $projects = [];
+        foreach ($this->projects->list() as $summary) {
+            $project = $this->projects->get((string) $summary['id']);
+            $project['accessUsers'] = $this->projectUsers((string) $project['id']);
+            $projects[] = $project;
+        }
+        $tables = [];
+        foreach (self::FULL_BACKUP_TABLES as $table => $columns) {
+            $quotedColumns = implode(', ', array_map(static fn(string $column): string => '"' . $column . '"', $columns));
+            $tables[$table] = $this->db->query('SELECT ' . $quotedColumns . ' FROM "' . $table . '"')->fetchAll() ?: [];
+        }
+        $inventoryItemImages = [];
+        foreach ($tables['inventory_items'] as $item) {
+            $metadata = $this->inventoryItems->imageMetadata((string) $item['id']);
+            if ($metadata !== null) $inventoryItemImages[] = ['itemId' => (string) $item['id'], ...$metadata];
+        }
+        $manifest = [
+            'format' => 'logbuch-full',
+            'version' => self::FULL_BACKUP_VERSION,
+            'schemaVersion' => \logbuch_schema_version(),
+            'appVersion' => \logbuch_version(),
+            'exportedAt' => nowIso(),
+            'source' => ['name' => 'Logbuch', 'host' => parse_url($this->detectedBaseUrl(), PHP_URL_HOST) ?: 'localhost'],
+            'tables' => $tables,
+            'projects' => $projects,
+            'inventoryItemImages' => $inventoryItemImages,
+        ];
+
+        $temporaryDirectory = $this->storagePath . '/tmp';
+        if (!is_dir($temporaryDirectory) && !mkdir($temporaryDirectory, 0770, true) && !is_dir($temporaryDirectory)) throw new HttpError(507, 'Temporäres Backup-Verzeichnis konnte nicht angelegt werden.');
+        $base = tempnam($temporaryDirectory, 'full-backup-');
+        if ($base === false) throw new HttpError(507, 'Temporäre Backup-Datei konnte nicht angelegt werden.');
+        @unlink($base);
+        $archivePath = $base . '.tar';
+        try {
+            $archive = new \PharData($archivePath);
+            $archive->addFromString('manifest.json', json_encode($manifest, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
+            foreach ($projects as $project) {
+                foreach ((array) ($project['files'] ?? []) as $file) {
+                    $fileRoot = 'projects/' . $project['id'] . '/attachments/' . $file['id'];
+                    $archive->addFromString($fileRoot . '/metadata.json', json_encode($file, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
+                    $content = $this->projects->attachmentContent((string) $project['id'], (string) $file['id']);
+                    $archive->addFile((string) $content['path'], $fileRoot . '/original.bin');
+                }
+            }
+            foreach ($inventoryItemImages as $image) {
+                $content = $this->inventoryItems->imageContent((string) $image['itemId']);
+                $archive->addFile((string) $content['path'], 'inventory-items/' . $image['itemId'] . '/image.bin');
+            }
+            unset($archive);
+            $filename = 'logbuch-vollbackup-' . gmdate('Y-m-d') . '.tar';
             http_response_code(200);
             header('Content-Type: application/x-tar');
             header('Content-Length: ' . (string) filesize($archivePath));
@@ -1127,6 +1357,17 @@ final class Application
         return $scheme . '://' . $host;
     }
 
+    private function inventoryItemWithCategories(array $item): array
+    {
+        $item['categoryIds'] = $this->inventoryCategories->categoryIdsForItem((string) $item['id']);
+        return $item;
+    }
+
+    private function inventoryItemsWithCategories(array $items): array
+    {
+        return array_map(fn(array $item): array => $this->inventoryItemWithCategories($item), $items);
+    }
+
     private function clientIp(): string
     {
         return (string) ($_SERVER['REMOTE_ADDR'] ?? '');
@@ -1152,6 +1393,66 @@ final class Application
         $statement = $this->db->prepare('INSERT INTO audit (occurred_at, actor, action, target, details) VALUES (:at, :actor, :action, :target, :details)');
         $statement->execute(['at' => nowIso(), 'actor' => $actor, 'action' => $action, 'target' => $target, 'details' => $details]);
         $this->db->exec('DELETE FROM audit WHERE id NOT IN (SELECT id FROM audit ORDER BY id DESC LIMIT 2000)');
+    }
+
+    private function clearAllContent(string $actor): array
+    {
+        $counts = [
+            'projects' => count($this->projects->list()),
+            'reminders' => (int) $this->db->query('SELECT COUNT(*) FROM todos')->fetchColumn(),
+            'storageLocations' => (int) $this->db->query('SELECT COUNT(*) FROM storage_locations')->fetchColumn(),
+            'items' => (int) $this->db->query('SELECT COUNT(*) FROM inventory_items')->fetchColumn(),
+            'itemNotes' => (int) $this->db->query('SELECT COUNT(*) FROM inventory_item_notes')->fetchColumn(),
+            'categories' => (int) $this->db->query('SELECT COUNT(*) FROM inventory_categories')->fetchColumn(),
+            'stockEntries' => (int) $this->db->query('SELECT COUNT(*) FROM stock_entries')->fetchColumn(),
+            'reservations' => (int) $this->db->query('SELECT COUNT(*) FROM reservations')->fetchColumn(),
+            'stockTransactions' => (int) $this->db->query('SELECT COUNT(*) FROM stock_transactions')->fetchColumn(),
+        ];
+
+        $this->db->exec('BEGIN IMMEDIATE');
+        $transactionActive = true;
+        try {
+            // Dependent inventory records must go first so historical foreign
+            // keys never point at content removed by this reset.
+            $this->db->exec('DELETE FROM stock_transactions');
+            $this->db->exec('DELETE FROM reservations');
+            $this->db->exec('DELETE FROM stock_entries');
+            $this->db->exec('DELETE FROM inventory_item_notes');
+            $this->db->exec('DELETE FROM inventory_item_categories');
+            $this->db->exec('DELETE FROM inventory_items');
+            $this->db->exec('UPDATE inventory_categories SET parent_id = NULL WHERE parent_id IS NOT NULL');
+            $this->db->exec('DELETE FROM inventory_categories');
+            $this->db->exec('UPDATE storage_locations SET parent_id = NULL WHERE parent_id IS NOT NULL');
+            $this->db->exec('DELETE FROM storage_locations');
+            $this->db->exec('DELETE FROM todos');
+            $this->db->exec('DELETE FROM user_projects');
+            $this->db->exec('DELETE FROM tags');
+            $this->db->exec('UPDATE folders SET parent_id = NULL WHERE parent_id IS NOT NULL');
+            $this->db->exec('DELETE FROM folders');
+
+            $counts['projects'] = $this->projects->clear();
+            $this->audit(
+                $actor,
+                'system.content_cleared',
+                (string) array_sum($counts),
+                json_encode($counts, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: ''
+            );
+            $this->db->exec('COMMIT');
+            $transactionActive = false;
+            $this->inventoryItems->clearImages();
+        } catch (\Throwable $error) {
+            if ($transactionActive) {
+                try {
+                    $this->db->exec('ROLLBACK');
+                } catch (\Throwable) {
+                }
+            }
+            throw $error;
+        }
+
+        // Keep the legacy field for API clients that only displayed the
+        // deleted project count before the reset covered every content area.
+        return ['removed' => $counts['projects'], ...$counts];
     }
 
     private function auditEvents(): array
@@ -1615,6 +1916,253 @@ final class Application
         }
     }
 
+    private function importFullArchive(array $actor, array $upload): array
+    {
+        if (!class_exists(\PharData::class)) throw new HttpError(500, 'Die TAR-Unterstützung ist auf diesem Server nicht verfügbar.');
+        $error = (int) ($upload['error'] ?? UPLOAD_ERR_NO_FILE);
+        if (in_array($error, [UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE], true)) throw new HttpError(413, 'Das Vollbackup ist zu groß.');
+        $source = (string) ($upload['tmp_name'] ?? '');
+        $size = (int) ($upload['size'] ?? 0);
+        if ($error !== UPLOAD_ERR_OK || $size < 1 || $size > 4 * 1024 ** 3 || !is_uploaded_file($source)) throw new HttpError(422, 'Das Vollbackup konnte nicht hochgeladen werden.');
+
+        $temporaryDirectory = $this->storagePath . '/tmp';
+        if (!is_dir($temporaryDirectory) && !mkdir($temporaryDirectory, 0770, true) && !is_dir($temporaryDirectory)) throw new HttpError(507, 'Temporäres Import-Verzeichnis konnte nicht angelegt werden.');
+        $base = tempnam($temporaryDirectory, 'full-import-');
+        if ($base === false) throw new HttpError(507, 'Temporäre Import-Datei konnte nicht angelegt werden.');
+        @unlink($base);
+        $archivePath = $base . '.tar';
+        if (!move_uploaded_file($source, $archivePath)) throw new HttpError(507, 'Das Vollbackup konnte nicht für den Import vorbereitet werden.');
+
+        try {
+            try {
+                $archive = new \PharData($archivePath);
+            } catch (\Throwable) {
+                throw new HttpError(422, 'Das gewählte Archiv ist kein lesbares TAR-Vollbackup.');
+            }
+            if (!isset($archive['manifest.json'])) throw new HttpError(422, 'Im Vollbackup fehlt manifest.json.');
+            $manifestEntry = $archive['manifest.json'];
+            if ($manifestEntry->getSize() > 256 * 1024 * 1024) throw new HttpError(413, 'Die Beschreibung des Vollbackups ist zu groß.');
+            $manifest = json_decode($manifestEntry->getContent(), true);
+            $this->validateFullBackupManifest($manifest, $archive);
+            return $this->restoreFullBackup($actor, $manifest, $archive);
+        } finally {
+            unset($archive);
+            @unlink($archivePath);
+        }
+    }
+
+    private function validateFullBackupManifest(mixed $manifest, \PharData $archive): void
+    {
+        if (!is_array($manifest) || ($manifest['format'] ?? '') !== 'logbuch-full' || (int) ($manifest['version'] ?? 0) !== self::FULL_BACKUP_VERSION) {
+            throw new HttpError(422, 'Kein unterstütztes Logbuch-Vollbackup.');
+        }
+        $schemaVersion = (int) ($manifest['schemaVersion'] ?? 0);
+        if ($schemaVersion < self::FULL_BACKUP_MIN_SCHEMA || $schemaVersion > \logbuch_schema_version()) {
+            throw new HttpError(422, 'Das Vollbackup verwendet eine nicht unterstützte Datenbankversion.');
+        }
+        $tables = $manifest['tables'] ?? null;
+        $projects = $manifest['projects'] ?? null;
+        if (!is_array($tables) || !is_array($projects) || count($projects) > 10000) throw new HttpError(422, 'Das Vollbackup ist unvollständig.');
+        foreach (self::FULL_BACKUP_TABLES as $table => $columns) {
+            $rows = $tables[$table] ?? ($schemaVersion < 18 && $table === 'inventory_item_notes' ? [] : null);
+            if (!is_array($rows) || count($rows) > 500000) throw new HttpError(422, 'Die Tabelle „' . $table . '“ im Vollbackup ist ungültig.');
+            foreach ($rows as $row) {
+                if (!is_array($row)) throw new HttpError(422, 'Die Tabelle „' . $table . '“ im Vollbackup ist ungültig.');
+                foreach ($columns as $column) if (!array_key_exists($column, $row)) throw new HttpError(422, 'In der Tabelle „' . $table . '“ fehlt „' . $column . '“.');
+            }
+        }
+        $users = $tables['users'];
+        if (!$users || count($users) > 500) throw new HttpError(422, 'Das Vollbackup enthält keine gültigen Benutzerkonten.');
+        $activeAdmin = false;
+        foreach ($users as $row) {
+            $passwordInfo = password_get_info((string) $row['password_hash']);
+            if (!preg_match('/^[A-Za-z0-9._-]{3,40}$/', (string) $row['id']) || !in_array($row['role'], ['admin', 'editor', 'viewer'], true) || !in_array($row['access_mode'], ['include', 'exclude', 'all'], true) || ($passwordInfo['algoName'] ?? 'unknown') !== 'argon2id' || !is_array(json_decode((string) $row['preferences_json'], true))) {
+                throw new HttpError(422, 'Das Vollbackup enthält ein ungültiges Benutzerkonto.');
+            }
+            if ($row['role'] === 'admin' && (int) $row['active'] === 1) $activeAdmin = true;
+        }
+        if (!$activeAdmin) throw new HttpError(422, 'Das Vollbackup enthält keinen aktiven Administrator.');
+
+        $seenProjects = [];
+        foreach ($projects as $project) {
+            $projectId = is_array($project) ? (string) ($project['id'] ?? '') : '';
+            if (!validId($projectId) || isset($seenProjects[$projectId])) throw new HttpError(422, 'Das Vollbackup enthält eine ungültige oder doppelte Projekt-ID.');
+            $seenProjects[$projectId] = true;
+            $seenFiles = [];
+            foreach ((array) ($project['files'] ?? []) as $file) {
+                $fileId = is_array($file) ? (string) ($file['id'] ?? '') : '';
+                $path = 'projects/' . $projectId . '/attachments/' . $fileId . '/original.bin';
+                if (!validId($fileId) || isset($seenFiles[$fileId]) || !isset($archive[$path])) throw new HttpError(422, 'Eine Projektdatei im Vollbackup fehlt oder besitzt eine ungültige ID.');
+                $seenFiles[$fileId] = true;
+                $entry = $archive[$path];
+                $expectedSize = (int) ($file['size'] ?? 0);
+                $expectedHash = strtolower((string) ($file['sha256'] ?? ''));
+                if ($entry->getSize() < 1 || $entry->getSize() > ProjectStore::MAX_ATTACHMENT_BYTES || $expectedSize !== $entry->getSize() || !preg_match('/^[a-f0-9]{64}$/', $expectedHash) || !hash_equals($expectedHash, hash_file('sha256', $entry->getPathname()) ?: '')) {
+                    throw new HttpError(422, 'Größe oder Prüfsumme einer Projektdatei im Vollbackup stimmt nicht.');
+                }
+            }
+        }
+        $itemIds = array_fill_keys(array_map(static fn(array $item): string => (string) $item['id'], $tables['inventory_items']), true);
+        $seenItemImages = [];
+        $itemImages = $manifest['inventoryItemImages'] ?? [];
+        if (!is_array($itemImages) || count($itemImages) > count($itemIds)) throw new HttpError(422, 'Die Artikelbilder im Vollbackup sind ungültig.');
+        foreach ($itemImages as $image) {
+            if (!is_array($image)) throw new HttpError(422, 'Ein Artikelbild im Vollbackup ist ungültig.');
+            $itemId = (string) ($image['itemId'] ?? '');
+            $path = 'inventory-items/' . $itemId . '/image.bin';
+            $mimeType = (string) ($image['mimeType'] ?? '');
+            $expectedSize = (int) ($image['size'] ?? 0);
+            $expectedHash = strtolower((string) ($image['sha256'] ?? ''));
+            if (!validId($itemId) || !isset($itemIds[$itemId]) || isset($seenItemImages[$itemId]) || !isset($archive[$path]) || !in_array($mimeType, ['image/jpeg', 'image/png', 'image/webp', 'image/gif'], true)) throw new HttpError(422, 'Ein Artikelbild im Vollbackup fehlt oder ist ungültig.');
+            $seenItemImages[$itemId] = true;
+            $entry = $archive[$path];
+            if ($entry->getSize() < 1 || $entry->getSize() > InventoryItemStore::MAX_IMAGE_BYTES || $expectedSize !== $entry->getSize() || !preg_match('/^[a-f0-9]{64}$/', $expectedHash) || !hash_equals($expectedHash, hash_file('sha256', $entry->getPathname()) ?: '')) throw new HttpError(422, 'Größe oder Prüfsumme eines Artikelbilds im Vollbackup stimmt nicht.');
+        }
+    }
+
+    private function restoreFullBackup(array $actor, array $manifest, \PharData $archive): array
+    {
+        $tables = $manifest['tables'];
+        $tables['inventory_item_notes'] ??= [];
+        $projects = $manifest['projects'];
+        $itemImages = (array) ($manifest['inventoryItemImages'] ?? []);
+        $projectsRoot = $this->storagePath . '/projects';
+        $stagedRoot = $this->storagePath . '/tmp/full-restore-old-' . bin2hex(random_bytes(8));
+        if (!is_dir($projectsRoot) || !rename($projectsRoot, $stagedRoot)) throw new HttpError(507, 'Die bestehende Projektablage konnte nicht für die Wiederherstellung gesichert werden.');
+        if (!mkdir($projectsRoot, 0770, true) && !is_dir($projectsRoot)) {
+            @rename($stagedRoot, $projectsRoot);
+            throw new HttpError(507, 'Die neue Projektablage konnte nicht angelegt werden.');
+        }
+        $imagesRoot = $this->storagePath . '/inventory-items';
+        if (!is_dir($imagesRoot) && !mkdir($imagesRoot, 0770, true) && !is_dir($imagesRoot)) {
+            removeTree($projectsRoot);
+            @rename($stagedRoot, $projectsRoot);
+            throw new HttpError(507, 'Die Artikelbildablage konnte nicht vorbereitet werden.');
+        }
+        $stagedImagesRoot = $this->storagePath . '/tmp/full-restore-images-old-' . bin2hex(random_bytes(8));
+        if (!rename($imagesRoot, $stagedImagesRoot) || (!mkdir($imagesRoot, 0770, true) && !is_dir($imagesRoot))) {
+            if (is_dir($stagedImagesRoot)) @rename($stagedImagesRoot, $imagesRoot);
+            removeTree($projectsRoot);
+            @rename($stagedRoot, $projectsRoot);
+            throw new HttpError(507, 'Die neue Artikelbildablage konnte nicht angelegt werden.');
+        }
+
+        $transactionActive = false;
+        try {
+            $this->db->exec('BEGIN IMMEDIATE');
+            $transactionActive = true;
+            $this->clearFullBackupTables();
+
+            $this->insertFullBackupRows('users', $tables['users']);
+            $this->insertFullBackupRows('tags', $tables['tags']);
+            $this->insertFullBackupRows('settings', $tables['settings']);
+            $this->insertFullBackupSelfRows('folders', $tables['folders']);
+            $this->insertFullBackupSelfRows('todos', $tables['todos']);
+            $this->insertFullBackupSelfRows('storage_locations', $tables['storage_locations']);
+            $this->insertFullBackupSelfRows('inventory_categories', $tables['inventory_categories']);
+            $this->insertFullBackupRows('inventory_items', $tables['inventory_items']);
+            $this->insertFullBackupRows('inventory_item_notes', $tables['inventory_item_notes']);
+            $this->insertFullBackupRows('inventory_item_categories', $tables['inventory_item_categories']);
+            $this->insertFullBackupRows('stock_entries', $tables['stock_entries']);
+            $this->insertFullBackupRows('reservations', $tables['reservations']);
+            $this->insertFullBackupSelfRows('stock_transactions', $tables['stock_transactions'], 'reversal_of_transaction_id');
+            $this->insertFullBackupRows('user_projects', $tables['user_projects']);
+            $this->insertFullBackupRows('audit', $tables['audit']);
+
+            $filesImported = 0;
+            foreach ($projects as $project) {
+                $this->projects->saveImported($project, true);
+                $projectId = (string) $project['id'];
+                foreach ((array) ($project['files'] ?? []) as $file) {
+                    $path = 'projects/' . $projectId . '/attachments/' . $file['id'] . '/original.bin';
+                    $this->projects->importAttachmentFromPath($projectId, $archive[$path]->getPathname(), $file, $actor['id']);
+                    ++$filesImported;
+                }
+            }
+            foreach ($itemImages as $image) {
+                $path = 'inventory-items/' . $image['itemId'] . '/image.bin';
+                $this->inventoryItems->importImageFromPath((string) $image['itemId'], $archive[$path]->getPathname(), $image);
+            }
+            $this->audit($actor['id'], 'data.full_backup_restored', (string) count($projects), 'files=' . $filesImported . ';itemImages=' . count($itemImages));
+            $this->db->exec('COMMIT');
+            $transactionActive = false;
+        } catch (\Throwable $error) {
+            if ($transactionActive) {
+                try { $this->db->exec('ROLLBACK'); } catch (\Throwable) {}
+            }
+            try { removeTree($projectsRoot); } catch (\Throwable $cleanupError) { error_log((string) $cleanupError); }
+            if (is_dir($stagedRoot) && !@rename($stagedRoot, $projectsRoot)) error_log('Die alte Projektablage konnte nach einem fehlgeschlagenen Vollbackup-Import nicht zurückverschoben werden.');
+            try { removeTree($imagesRoot); } catch (\Throwable $cleanupError) { error_log((string) $cleanupError); }
+            if (is_dir($stagedImagesRoot) && !@rename($stagedImagesRoot, $imagesRoot)) error_log('Die alte Artikelbildablage konnte nach einem fehlgeschlagenen Vollbackup-Import nicht zurückverschoben werden.');
+            if ($error instanceof HttpError) throw $error;
+            if ($error instanceof \PDOException) throw new HttpError(422, 'Das Vollbackup enthält inkonsistente Daten.');
+            throw $error;
+        }
+        try { removeTree($stagedRoot); } catch (\Throwable $cleanupError) { error_log((string) $cleanupError); }
+        try { removeTree($stagedImagesRoot); } catch (\Throwable $cleanupError) { error_log((string) $cleanupError); }
+
+        return [
+            'restored' => true,
+            'signedOut' => true,
+            'projects' => count($projects),
+            'users' => count($tables['users']),
+            'reminders' => count($tables['todos']),
+            'storageLocations' => count($tables['storage_locations']),
+            'items' => count($tables['inventory_items']),
+            'categories' => count($tables['inventory_categories']),
+            'stockTransactions' => count($tables['stock_transactions']),
+        ];
+    }
+
+    private function clearFullBackupTables(): void
+    {
+        $this->db->exec('DELETE FROM stock_transactions');
+        $this->db->exec('DELETE FROM reservations');
+        $this->db->exec('DELETE FROM stock_entries');
+        $this->db->exec('DELETE FROM inventory_item_notes');
+        $this->db->exec('DELETE FROM inventory_item_categories');
+        $this->db->exec('DELETE FROM inventory_items');
+        $this->db->exec('UPDATE inventory_categories SET parent_id = NULL WHERE parent_id IS NOT NULL');
+        $this->db->exec('DELETE FROM inventory_categories');
+        $this->db->exec('UPDATE storage_locations SET parent_id = NULL WHERE parent_id IS NOT NULL');
+        $this->db->exec('DELETE FROM storage_locations');
+        $this->db->exec('DELETE FROM todos');
+        $this->db->exec('DELETE FROM user_projects');
+        $this->db->exec('DELETE FROM sessions');
+        $this->db->exec('DELETE FROM login_attempts');
+        $this->db->exec('DELETE FROM audit');
+        $this->db->exec('UPDATE folders SET parent_id = NULL WHERE parent_id IS NOT NULL');
+        $this->db->exec('DELETE FROM folders');
+        $this->db->exec('DELETE FROM tags');
+        $this->db->exec('DELETE FROM settings');
+        $this->db->exec('DELETE FROM users');
+    }
+
+    private function insertFullBackupRows(string $table, array $rows): void
+    {
+        $columns = self::FULL_BACKUP_TABLES[$table] ?? throw new \LogicException('Unbekannte Vollbackup-Tabelle.');
+        if (!$rows) return;
+        $quoted = implode(', ', array_map(static fn(string $column): string => '"' . $column . '"', $columns));
+        $placeholders = implode(', ', array_fill(0, count($columns), '?'));
+        $statement = $this->db->prepare('INSERT INTO "' . $table . '" (' . $quoted . ') VALUES (' . $placeholders . ')');
+        foreach ($rows as $row) $statement->execute(array_map(static fn(string $column): mixed => $row[$column], $columns));
+    }
+
+    private function insertFullBackupSelfRows(string $table, array $rows, string $parentColumn = 'parent_id'): void
+    {
+        $parents = [];
+        $flatRows = [];
+        foreach ($rows as $row) {
+            $parents[(string) $row['id']] = $row[$parentColumn];
+            $row[$parentColumn] = null;
+            $flatRows[] = $row;
+        }
+        $this->insertFullBackupRows($table, $flatRows);
+        if (!$rows) return;
+        $statement = $this->db->prepare('UPDATE "' . $table . '" SET "' . $parentColumn . '" = :parent WHERE id = :id');
+        foreach ($parents as $id => $parent) if ($parent !== null && $parent !== '') $statement->execute(['parent' => $parent, 'id' => $id]);
+    }
+
     private function importedPreferences(mixed $input): array
     {
         $defaults = $this->auth->defaultPreferences();
@@ -1723,7 +2271,7 @@ final class Application
     {
         $path = dirname(__DIR__) . '/public/demo-data.json';
         $demo = readJsonFile($path);
-        if (($demo['format'] ?? '') !== 'logbuch-demo' || ($demo['version'] ?? null) !== 1 || !is_array($demo['tags'] ?? null) || !is_array($demo['folders'] ?? null) || !is_array($demo['projects'] ?? null) || !is_array($demo['storageLocations'] ?? null) || !is_array($demo['inventoryItems'] ?? null) || !is_array($demo['stockEntries'] ?? null) || !is_array($demo['reservations'] ?? null) || !is_array($demo['stockTransactions'] ?? null)) {
+        if (($demo['format'] ?? '') !== 'logbuch-demo' || ($demo['version'] ?? null) !== 1 || !is_array($demo['tags'] ?? null) || !is_array($demo['folders'] ?? null) || !is_array($demo['projects'] ?? null) || !is_array($demo['storageLocations'] ?? null) || !is_array($demo['inventoryCategories'] ?? null) || !is_array($demo['inventoryItems'] ?? null) || !is_array($demo['stockEntries'] ?? null) || !is_array($demo['reservations'] ?? null) || !is_array($demo['stockTransactions'] ?? null)) {
             throw new \RuntimeException('Der mitgelieferte Beispieldatensatz ist ungültig.');
         }
         $folderIds = [];
@@ -1770,11 +2318,19 @@ final class Application
             $locationIds[$id] = true;
         }
         $itemIds = [];
+        $categoryIds = [];
+        foreach ($demo['inventoryCategories'] as $category) {
+            $id = is_array($category) ? (string) ($category['id'] ?? '') : '';
+            $parentId = is_array($category) ? ($category['parentId'] ?? null) : null;
+            if (!str_starts_with($id, 'demo-category-') || !validId($id) || isset($categoryIds[$id]) || ($parentId !== null && !isset($categoryIds[$parentId]))) throw new \RuntimeException('Der mitgelieferte Beispieldatensatz enthält ungültige Kategorien.');
+            $categoryIds[$id] = true;
+        }
         foreach ($demo['inventoryItems'] as $item) {
             $id = is_array($item) ? (string) ($item['id'] ?? '') : '';
             if (!str_starts_with($id, 'demo-item-') || !validId($id) || isset($itemIds[$id])) {
                 throw new \RuntimeException('Der mitgelieferte Beispieldatensatz enthält ungültige Artikel.');
             }
+            foreach ((array) ($item['categoryIds'] ?? []) as $categoryId) if (!isset($categoryIds[$categoryId])) throw new \RuntimeException('Der mitgelieferte Beispieldatensatz verweist auf eine unbekannte Kategorie.');
             $itemIds[$id] = true;
         }
         $stockIds = [];
@@ -1803,7 +2359,7 @@ final class Application
             }
             $transactionIds[$id] = true;
         }
-        if (count($locationIds) !== 15 || count($itemIds) !== 13 || count($stockIds) !== 15 || count($reservationIds) !== 3 || count($transactionIds) !== 15) {
+        if (count($locationIds) !== 15 || count($categoryIds) !== 10 || count($itemIds) !== 13 || count($stockIds) !== 15 || count($reservationIds) !== 3 || count($transactionIds) !== 15) {
             throw new \RuntimeException('Der mitgelieferte Lager-Beispieldatensatz hat einen unerwarteten Umfang.');
         }
         return $demo;
@@ -1882,12 +2438,16 @@ final class Application
         foreach ($demo['storageLocations'] as $location) {
             $saveLocation->execute(['id' => $location['id'], 'parent' => $location['parentId'] ?? null, 'name' => $location['name'], 'icon' => $location['icon'] ?? 'archive', 'description' => $location['description'] ?? '', 'status' => $location['status'] ?? 'ACTIVE', 'sort' => $location['sortOrder'] ?? 0, 'created' => $location['createdAt'] ?? nowIso()]);
         }
+        $saveCategory = $this->db->prepare('INSERT INTO inventory_categories (id, parent_id, name, description, icon, sort_order, created_at, updated_at) VALUES (:id, :parent, :name, :description, :icon, :sort, :created, \'\') ON CONFLICT(id) DO UPDATE SET parent_id = excluded.parent_id, name = excluded.name, description = excluded.description, icon = excluded.icon, sort_order = excluded.sort_order');
+        foreach ($demo['inventoryCategories'] as $category) $saveCategory->execute(['id' => $category['id'], 'parent' => $category['parentId'] ?? null, 'name' => $category['name'], 'description' => $category['description'] ?? '', 'icon' => $category['icon'] ?? 'folder', 'sort' => $category['sortOrder'] ?? 0, 'created' => $category['createdAt'] ?? nowIso()]);
         $saveItem = $this->db->prepare(<<<'SQL'
             INSERT INTO inventory_items (id, name, description, stock_unit, manufacturer, article_number, barcode, merchant_url, default_minimum_quantity, status, created_at, updated_at)
             VALUES (:id, :name, :description, :unit, :manufacturer, :article, :barcode, :merchant, :minimum, :status, :created, '')
         SQL);
+        $saveItemCategory = $this->db->prepare('INSERT INTO inventory_item_categories (item_id, category_id, created_at) VALUES (:item, :category, :created)');
         foreach ($demo['inventoryItems'] as $item) {
             $saveItem->execute(['id' => $item['id'], 'name' => $item['name'], 'description' => $item['description'] ?? '', 'unit' => $item['stockUnit'], 'manufacturer' => $item['manufacturer'] ?? '', 'article' => $item['articleNumber'] ?? '', 'barcode' => $item['barcode'] ?? '', 'merchant' => $item['merchantUrl'] ?? '', 'minimum' => $item['defaultMinimumQuantity'] ?? null, 'status' => $item['status'] ?? 'ACTIVE', 'created' => $item['createdAt'] ?? nowIso()]);
+            foreach ((array) ($item['categoryIds'] ?? []) as $categoryId) $saveItemCategory->execute(['item' => $item['id'], 'category' => $categoryId, 'created' => $item['createdAt'] ?? nowIso()]);
         }
         $saveEntry = $this->db->prepare(<<<'SQL'
             INSERT INTO stock_entries (id, item_id, storage_location_id, quantity, minimum_quantity, note, status, created_at, updated_at)
@@ -1910,7 +2470,7 @@ final class Application
         foreach ($demo['stockTransactions'] as $transaction) {
             $saveTransaction->execute(['id' => $transaction['id'], 'item' => $transaction['itemId'], 'type' => $transaction['type'], 'quantity' => $transaction['quantity'], 'source' => $transaction['sourceStorageLocationId'] ?? null, 'destination' => $transaction['destinationStorageLocationId'] ?? null, 'note' => $transaction['note'] ?? '', 'actor' => $actorId, 'occurred' => $transaction['occurredAt'], 'created' => $transaction['createdAt'] ?? $transaction['occurredAt']]);
         }
-        return ['storageLocations' => count($demo['storageLocations']), 'inventoryItems' => count($demo['inventoryItems'])];
+        return ['storageLocations' => count($demo['storageLocations']), 'inventoryCategories' => count($demo['inventoryCategories']), 'inventoryItems' => count($demo['inventoryItems'])];
     }
 
     private function removeDemoInventory(array $demo): array
@@ -1925,7 +2485,11 @@ final class Application
             $deleteItems = $this->db->prepare("DELETE FROM inventory_items WHERE id IN ($placeholders)");
             $deleteItems->execute($itemIds);
             $removedItems = $deleteItems->rowCount();
+            foreach ($itemIds as $itemId) $this->inventoryItems->deleteImageFiles((string) $itemId);
         }
+        $categoryIds = array_column($demo['inventoryCategories'], 'id');
+        $deleteCategory = $this->db->prepare('DELETE FROM inventory_categories WHERE id = :id AND NOT EXISTS (SELECT 1 FROM inventory_categories child WHERE child.parent_id = inventory_categories.id) AND NOT EXISTS (SELECT 1 FROM inventory_item_categories link WHERE link.category_id = inventory_categories.id)');
+        foreach (array_reverse($categoryIds) as $categoryId) $deleteCategory->execute(['id' => $categoryId]);
         $locationIds = array_column($demo['storageLocations'], 'id');
         $locationPlaceholders = implode(',', array_fill(0, count($locationIds), '?'));
         $existingLocationCount = 0;

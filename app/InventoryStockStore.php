@@ -84,6 +84,38 @@ final class InventoryStockStore
         ];
     }
 
+    public function overview(array $itemIds): array
+    {
+        $ids = array_values(array_unique($itemIds));
+        if (count($ids) > 10000) throw new HttpError(422, 'Zu viele Artikel für die Bestandsübersicht.');
+        foreach ($ids as $id) $this->assertId((string) $id, 'Artikel');
+        if (!$ids) return [];
+
+        $placeholders = implode(',', array_fill(0, count($ids), '?'));
+        $physical = [];
+        $statement = $this->db->prepare("SELECT item_id, COALESCE(SUM(quantity), 0) AS quantity FROM stock_entries WHERE status = 'ACTIVE' AND item_id IN ({$placeholders}) GROUP BY item_id");
+        $statement->execute($ids);
+        foreach ($statement->fetchAll() as $row) $physical[(string) $row['item_id']] = round((float) $row['quantity'], 6);
+
+        $reserved = [];
+        $statement = $this->db->prepare("SELECT item_id, COALESCE(SUM(requested_quantity - fulfilled_quantity), 0) AS quantity FROM reservations WHERE status = 'ACTIVE' AND item_id IN ({$placeholders}) GROUP BY item_id");
+        $statement->execute($ids);
+        foreach ($statement->fetchAll() as $row) $reserved[(string) $row['item_id']] = round((float) $row['quantity'], 6);
+
+        $overview = [];
+        foreach ($ids as $id) {
+            $itemId = (string) $id;
+            $physicalQuantity = $physical[$itemId] ?? 0.0;
+            $reservedQuantity = $reserved[$itemId] ?? 0.0;
+            $overview[$itemId] = [
+                'physicalQuantity' => $physicalQuantity,
+                'reservedQuantity' => $reservedQuantity,
+                'availableQuantity' => round($physicalQuantity - $reservedQuantity, 6),
+            ];
+        }
+        return $overview;
+    }
+
     public function replenishment(string $query = '', bool $includeSatisfied = false, string $sort = 'urgency'): array
     {
         $query = trim($query);
