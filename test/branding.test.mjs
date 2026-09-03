@@ -94,7 +94,6 @@ test('Weiße Seitenköpfe verwenden ein gemeinsames Höhen- und Ausrichtungsrast
   const css = await readFile(join(root, 'public', 'styles.css'), 'utf8');
   assert.match(ui, /function standardPageHeader/);
   assert.match(ui, /project-page-head standard-page-head standard-plain-page-head/);
-  assert.match(ui, /head\.innerHTML = `<div class="standard-page-breadcrumbs empty"><\/div><span class="project-hero-icon"/);
   assert.match(ui, /standardPageHeader\(\{ title:'Übersicht'/);
   assert.match(ui, /standardPageHeader\(\{ title:'Erinnerungen'/);
   assert.match(ui, /standardPageHeader\(\{ title, description:currentFolder/);
@@ -103,11 +102,11 @@ test('Weiße Seitenköpfe verwenden ein gemeinsames Höhen- und Ausrichtungsrast
   assert.match(ui, /standardPageHeader\(\{ title:'Artikel'[^\n]+icon:'tag'/);
   assert.match(ui, /standardPageHeader\(\{ title:'Nachbestellen'[^\n]+icon:'shopping-cart'/);
   assert.match(ui, /standardPageHeader\(\{ title:'Lager'[^\n]+icon:'warehouse'/);
-  assert.match(ui, /standardPageHeader\(\{ title:'Archiviert'[^\n]+icon:'archive'/);
+  assert.match(ui, /standardPageHeader\(\{ title:'Archiv'[^\n]+icon:'archive'/);
   assert.doesNotMatch(ui, /function normalizePlainPageHeader/);
-  assert.match(ui, /normalizeCommonPageHeader\('\.search-page-head'\)/);
-  assert.match(ui, /normalizeCommonPageHeader\('\.settings-page-head'\)/);
-  assert.match(ui, /head\.classList\.remove\('standalone-page-head'\)/);
+  assert.match(ui, /standardPageHeader\(\{ title:'Suche'/);
+  assert.match(ui, /standardPageHeader\(\{ title, description, icon:'settings'/);
+  assert.doesNotMatch(ui, /normalizeCommonPageHeader/);
   assert.match(css, /\.standard-page-head \{[^}]+height:154px;[^}]+min-height:154px;/);
   assert.match(css, /\.standard-page-breadcrumbs \{[^}]+height:20px;/);
   assert.match(css, /\.standard-page-head \.project-heading-row \{[^}]+height:88px;[^}]+align-items:center;/);
@@ -134,7 +133,7 @@ test('Projekt- und Ordnergruppen sind in der Alle-Ansicht einklappbar', async ()
   assert.doesNotMatch(ui, /data-new-project-status/);
   assert.doesNotMatch(ui, /project-divider-add/);
   assert.match(ui, /data-open-project-create/);
-  assert.match(ui, /project-content-toolbar project-browser-create-toolbar/);
+  assert.match(ui, /actions:`\$\{projectListControls\(false, projects\)\}\$\{addButton\}`/);
   assert.match(ui, /Projekt oder Ordner hinzufügen/);
   assert.match(html, /id="project-create-dialog"[\s\S]+data-project-create-choice="project"[\s\S]+data-project-create-choice="folder"/);
   assert.match(ui, /openProjectDialog\(null, \{ status \}\)/);
@@ -190,8 +189,8 @@ test('Projektseiten besitzen eine eigenständige kompakte Smartphone-Bedienung',
   assert.match(ui, /mobile-workstep-menu/);
   assert.match(ui, /mobile-overview-config/);
   assert.match(ui, /standardPageHeader\(\{ title:'Übersicht'/);
-  assert.match(ui, /normalizeCommonPageHeader\('\.settings-page-head'\)/);
-  assert.match(ui, /project-hero common-page-hero/);
+  assert.match(ui, /standardPageHeader\(\{ title, description, icon:'settings'/);
+  assert.match(ui, /className:'settings-page-head'/);
   assert.match(ui, /project-add-button/);
   assert.match(ui, /aria-label="Projektinhalt hinzufügen"/);
   assert.match(css, /@media \(max-width:780px\)[\s\S]+workstep-card-status\.mobile-collapsed \.workstep-status-content \{ display:none; \}/);
@@ -216,7 +215,7 @@ test('Globale Suche ist im Hauptmenü erreichbar und filterbar', async () => {
   assert.match(html, /class="sidebar-bottom"[\s\S]+id="global-search-form"/);
   assert.doesNotMatch(html, /device-state|device-host|Logbuch online/);
   assert.match(ui, /async function renderGlobalSearch/);
-  assert.match(ui, /normalizeCommonPageHeader\('\.search-page-head'\)/);
+  assert.match(ui, /standardPageHeader\(\{ title:'Suche'/);
   assert.match(ui, /project-page-content search-page-content/);
   assert.match(ui, /data-clear-global-search/);
   assert.match(ui, /searchInput\.value = '';/);
@@ -298,7 +297,7 @@ test('Persönliche Erinnerungen besitzen einen eigenständigen kompakten Bereich
   assert.match(ui, /todoProjectControl[^\n]+defaultProjectIconName\(\)/);
   assert.match(ui, /Erinnerung in Projekt umwandeln/);
   assert.match(ui, /\/convert-to-project/);
-  assert.match(ui, /confirm\(`Erinnerung „\$\{todo\.title\}“ in ein neues Projekt umwandeln\?/);
+  assert.match(ui, /confirmAction\(`Erinnerung „\$\{todo\.title\}“ in ein neues Projekt umwandeln\?/);
   assert.match(ui, /untergeordnete Erinnerung[^\n]+als anstehende Einträge übernommen/);
   assert.doesNotMatch(ui, /Wartet \(\$\{waitingCount\}\)/);
   assert.match(ui, /repeatDueAt/);
@@ -453,7 +452,7 @@ test('Dateien können bereits beim Anlegen von Projektinhalten ausgewählt werde
   const ui = await readFile(join(root, 'public', 'app.js'), 'utf8');
   const css = await readFile(join(root, 'public', 'styles.css'), 'utf8');
   assert.ok((html.match(/name="attachments" type="file" multiple/g) || []).length >= 2);
-  assert.match(html, /Optional · jeweils maximal 50 MB/);
+  assert.match(html, /optional · jeweils maximal 50 MB/);
   assert.match(ui, /function uploadDialogAttachments/);
   assert.match(ui, /uploadDialogAttachments\(form\.projectId, 'entries', saved\.id, files\)/);
   assert.match(ui, /uploadDialogAttachments\(form\.projectId, form\.collection, saved\.id, files\)/);

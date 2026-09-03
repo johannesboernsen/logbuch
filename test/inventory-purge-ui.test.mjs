@@ -12,7 +12,7 @@ test('Das Lagerarchiv bietet Wiederherstellen und endgültiges Löschen getrennt
 });
 test('Vor dem Löschen zeigt die Oberfläche die betroffenen Lagerdaten an', () => {
   assert.match(script, /purge-preview/);
-  assert.match(script, /Lagerplätze.*Buchungen.*Reservierungen.*Kategoriezuordnungen/s);
+  assert.match(script, /Bestandseinträge.*Buchungen.*Reservierungen.*Kategoriezuordnungen/s);
   assert.match(script, /Lagerorte.*Bestandseinträge.*Buchungen.*Artikeln/s);
   assert.match(script, /unwiderruflich gelöscht/);
 });

@@ -48,7 +48,7 @@ test('Artikel besitzen mehrere bearbeitbare Notizen in Artikel- und Lageransicht
 
 test('Artikelliste unterstützt Suche und Detaildarstellung; Archive liegen im Lagermenü', () => {
   assert.match(script, /inventory-item-search/);
-  assert.match(html, /href="\/#\/inventory\/archive" data-inventory-route="archive"><span>Archiviert<\/span>/);
+  assert.match(html, /href="\/#\/inventory\/archive" data-inventory-route="archive"><span>Archiv<\/span>/);
   assert.match(script, /renderInventoryArchive/);
   assert.match(script, /inventoryItemDetail/);
   assert.match(styles, /\.inventory-item-shell \{/);
@@ -156,6 +156,30 @@ test('Geöffnete Artikeldetails lassen sich über X und die freie Seitenfläche 
   assert.match(styles, /\.inventory-item-detail-close \{[^}]*width:36px;[^}]*height:36px;/);
   assert.match(script, /main\.onclick = state\.inventoryStockItem \? event => \{/);
   assert.match(script, /if \(event\.target === main && location\.hash\.startsWith\('#\/inventory\/item\/'\)\) location\.href = inventoryItemHref\('', state\.inventoryItemsIncludeArchived, state\.inventoryItemQuery, state\.inventoryItemCategoryFilter, state\.inventoryItemSort, state\.inventoryItemSortDirection\);/);
+});
+
+test('Artikel-Inspektoren führen per Lupe zur Vollansicht und werden vollständig eingeblendet', () => {
+  assert.match(script, /function inventoryItemDetailsButton/);
+  assert.match(script, /inventory-item-details-link[\s\S]*iconSvg\('search'\)/);
+  assert.match(script, /data-finder-item-inspector/);
+  assert.match(script, /function revealFinderItemInspector/);
+  assert.match(script, /inspectorBounds\.right - shellBounds\.right/);
+  assert.match(script, /behavior:'smooth'/);
+  assert.match(script, /if \(!revealFinderItemInspector\(\) && shell && currentColumn/);
+});
+
+test('Die vollständige Artikelansicht bietet Bearbeiten direkt im Kopf an', () => {
+  const detail = script.match(/function inventoryItemDetail[\s\S]*?(?=\nasync function ensureActiveStorageLocations)/)?.[0] || '';
+  assert.match(script, /function inventoryItemEditButton/);
+  assert.match(detail, /inventoryItemManagementActions\(item, archived, \{ includeEdit:false \}\)/);
+  assert.match(detail, /const edit = inventoryItemEditButton\(item, archived\)/);
+  assert.match(detail, /\$\{close\}\$\{edit\}\$\{menu\}/);
+});
+
+test('Artikelliste und Detailansicht besitzen gleich hohe Kopfzeilen', () => {
+  assert.match(styles, /\.inventory-item-table th \{[^}]*height:52px;/);
+  assert.match(styles, /\.inventory-item-sort-link \{[^}]*height:52px;/);
+  assert.match(styles, /\.storage-finder-detail-header \{[^}]*min-height:52px;/);
 });
 
 test('Der Artikelrahmen reicht dynamisch bis zum unteren Browserrand', () => {

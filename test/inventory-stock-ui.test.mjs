@@ -13,7 +13,7 @@ test('Bestandseinträge werden über einen Anfangsbestand einem Lagerort zugeord
   assert.match(html, /id="stock-entry-dialog"/);
   assert.match(html, /name="initialQuantity"/);
   assert.match(script, /\/stock-entries/);
-  assert.match(html, /Eine positive Anfangsmenge wird als Zugang protokolliert/);
+  assert.match(html, /Ein positiver Anfangsbestand wird als Zugang protokolliert/);
 });
 
 test('Lagerorte werden über dieselbe kompakte Spaltenansicht wie Kategorien ausgewählt', () => {
@@ -64,9 +64,9 @@ test('Lokaler Mindestbestand zeigt nur die ortsbezogenen Einstellungen', () => {
   assert.match(styles, /\.field-label-line \{[^}]*min-height:18px;[^}]*display:flex;/);
 });
 
-test('Leere Lagerplätze werden entfernt statt archiviert', () => {
+test('Leere Lagerort-Zuordnungen werden entfernt statt archiviert', () => {
   assert.match(script, /data-stock-entry-delete/);
-  assert.match(script, />Lagerplatz entfernen</);
+  assert.match(script, />Zuordnung entfernen</);
   assert.match(script, /method:'DELETE'/);
   assert.match(script, /Die Buchungshistorie bleibt erhalten/);
   assert.doesNotMatch(script, /data-stock-entry-archive/);
@@ -98,8 +98,8 @@ test('Direkte Entnahme reduziert den Buchungsdialog auf Menge und Notiz', () => 
   assert.match(script, /document\.querySelectorAll\('\[data-stock-counted-step\]'\)/);
   assert.match(script, /function stepInventoryQuantity/);
   assert.match(script, /Math\.min\(maximum, Math\.max\(minimum, next\)\)/);
-  assert.match(styles, /\.stock-quantity-stepper button,\.stock-transfer-quantity-stepper button \{[^}]*width:46px;[^}]*min-height:46px;/);
-  assert.match(styles, /\.stock-quantity-stepper,\.stock-transfer-quantity-stepper \{[^}]*grid-template-columns:minmax\(0,1fr\) auto auto;/);
+  assert.match(styles, /\.number-stepper button,[^\n]+\{[^}]*width:46px;[^}]*min-height:46px;/);
+  assert.match(styles, /\.number-stepper,[^\n]+\{[^}]*grid-template-columns:minmax\(0,1fr\) auto auto;/);
   assert.match(styles, /\.stock-quantity-stepper input::\-webkit-inner-spin-button/);
   assert.match(html, /id="stock-movement-quantity-hint"/);
   assert.match(styles, /#stock-movement-form \[hidden\][^{]*\{ display:none; \}/);
@@ -130,7 +130,7 @@ test('Lagerortspalten zeigen lokale Artikelmengen und öffnen kontextuelle Artik
   assert.match(script, /data-stock-source="\$\{escapeHtml\(location\.id\)\}"/);
   assert.doesNotMatch(script, /storage-finder-item-actions/);
   assert.match(script, /storage-item-header-consume[\s\S]*data-stock-movement="CONSUMPTION"[\s\S]*data-stock-source="\$\{escapeHtml\(location\.id\)\}"/);
-  assert.match(script, /storage-finder-column-actions">\$\{directConsume\}\$\{menu\}/);
+  assert.match(script, /storage-finder-column-actions">\$\{directConsume\}\$\{inventoryItemDetailsButton\(item, archived\)\}\$\{menu\}/);
   assert.match(styles, /\.storage-item-header-consume \{[^}]*min-height:34px;/);
   assert.match(styles, /\.storage-item-local \{/);
   assert.match(styles, /\.storage-item-local span \{[^}]*font-size:13px;/);

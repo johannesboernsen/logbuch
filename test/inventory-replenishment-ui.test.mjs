@@ -17,7 +17,7 @@ test('Nachbestellen besitzt eine stabile Lagerroute im gemeinsamen Untermenü', 
 });
 
 test('Fehlbedarfsansicht erklärt globale, lokale und projektbezogene Gründe', () => {
-  for (const label of ['Projektbedarf fehlt', 'Globaler Mindestbestand', 'Lagerplatz-Mindestbestand']) assert.match(script, new RegExp(label));
+  for (const label of ['Projektbedarf fehlt', 'Globaler Mindestbestand', 'Lagerort-Mindestbestand']) assert.match(script, new RegExp(label));
   for (const metric of ['Physisch', 'Reserviert', 'Verfügbar', 'Globales Minimum']) assert.match(script, new RegExp(`<span>${metric}<\\/span>`));
   assert.match(script, /localShortages/);
   assert.match(script, /storageLocationHref\(shortage\.storageLocationId\)/);

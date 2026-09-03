@@ -52,6 +52,12 @@ test('Der Lagerrahmen reicht inklusive Statusleiste dynamisch bis zum unteren Br
   assert.match(script, /\['\.storage-finder-frame', '\.inventory-item-shell'\]/);
 });
 
+test('Die Desktop-Spaltenansicht nutzt den Raum zwischen Seitenkopf und Browserrand vollständig', () => {
+  assert.match(script, /storage-finder-frame storage-finder-edge-to-edge/);
+  assert.match(styles, /@media \(min-width:781px\)[\s\S]*\.storage-finder-edge-to-edge \{[^}]*margin:-22px calc\(var\(--main-gutter\) \* -1\) -70px;[^}]*border:0;[^}]*border-radius:0;[^}]*box-shadow:none;/);
+  assert.match(script, /workspace\.classList\.contains\('storage-finder-edge-to-edge'\) \? 0/);
+});
+
 test('Die Lageransicht besitzt dieselbe weiße Kopffläche wie die Hauptbereiche', () => {
   assert.match(script, /standardPageHeader\(\{ title:'Lager'[^\n]+icon:'warehouse'/);
   assert.match(styles, /\.standard-page-head \{[^}]*height:154px;[^}]*background:#fff;/);
@@ -76,7 +82,7 @@ test('Ortsaktionen stehen im Kopf der geöffneten Spalte statt an jeder Lagerort
   assert.match(script, /function storageLocationActionMenu\(location\)/);
   assert.match(script, /storage-finder-column-actions[\s\S]*\$\{headerActions\}/);
   assert.match(script, /\$\{storageLocationActionMenu\(parent\)\}/);
-  assert.match(script, /aria-label="Menü für \$\{escapeHtml\(location\.name\)\}"[\s\S]*\$\{iconSvg\('menu'\)\}/);
+  assert.match(script, /contextActionMenu\(`Aktionen für \$\{location\.name\}`/);
   assert.doesNotMatch(script, /storage-finder-row-actions|storage-finder-menu/);
   assert.match(styles, /\.storage-finder-column-menu summary/);
 });
@@ -207,6 +213,13 @@ test('Artikel im Lager besitzen einen eindeutigen Lagerort-Kontext und eine rech
   assert.match(styles, /\.storage-finder-detail-header \{/);
   assert.match(styles, /\.storage-finder-detail dl \{[^}]*border:0;/);
   assert.match(styles, /\.storage-finder-detail dl > div \{[^}]*min-height:30px;[^}]*border:0;/);
+});
+
+test('Spalten und Artikeldetail besitzen exakt gleich hohe Kopfzeilen', () => {
+  assert.match(styles, /\.storage-finder-column \{[^}]*grid-template-rows:52px minmax\(0,1fr\);/);
+  assert.match(styles, /\.storage-finder-column > header \{[^}]*height:52px;[^}]*min-height:52px;/);
+  assert.match(styles, /\.storage-finder-detail \{[^}]*grid-template-rows:52px minmax\(0,1fr\);/);
+  assert.match(styles, /\.storage-finder-detail-header \{[^}]*height:52px;[^}]*min-height:52px;/);
 });
 
 test('Kleine Displays zeigen eine Drill-down-Ebene mit Zurücknavigation', () => {

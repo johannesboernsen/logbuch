@@ -8,6 +8,18 @@ Hier werden die wichtigen Änderungen des Logbuchs festgehalten. Die Einträge s
 
 - Noch keine Einträge.
 
+## [0.7.4] - 2026-09-03
+
+Die Bedienoberfläche folgt nun durchgängigeren Regeln; besonders die Lager- und Kategorienansichten nutzen den verfügbaren Arbeitsraum klarer und direkter.
+
+### Wichtigste Änderungen
+
+- Die Spaltenansichten für Lagerorte und Kategorien reichen auf großen Bildschirmen vom Seitenkopf bis an die verbleibenden Browserränder; einheitliche Kopfzeilen und die erhaltene Pfadleiste strukturieren den randlosen Arbeitsbereich.
+- Beim Öffnen eines Artikels scrollt die Spaltenansicht dessen Vorschau vollständig ins Bild. Eine Lupe führt zur vollständigen Artikelansicht, in der „Bearbeiten“ nun direkt erreichbar ist.
+- Aktionsmenüs, Filterzustände, Seitenköpfe, Archivbezeichnungen und optionale Feldhinweise wurden über vergleichbare Ansichten hinweg vereinheitlicht.
+- Kritische Aktionen verwenden einen gemeinsamen Logbuch-Bestätigungsdialog statt uneinheitlicher Browserabfragen.
+- Zahlenfelder verwenden konsistente große Minus-/Plus-Schaltflächen, unter anderem bei Beständen, Reservierungsentnahmen und wiederkehrenden Erinnerungen.
+
 ## [0.7.3] - 2026-09-03
 
 Artikel lassen sich schneller im passenden Lager- oder Kategorienkontext erfassen; kompakte Spaltenauswahlen vereinheitlichen dabei die Navigation durch hierarchische Strukturen.
@@ -161,7 +173,9 @@ Die Projektübersicht erhielt zusätzliche Struktur- und Bedienmöglichkeiten.
 
 - Der Release-Prozess toleriert auf privaten Repositories nicht verfügbare Attestierungen.
 
-[Unveröffentlicht]: https://github.com/johannesboernsen/logbuch/compare/v0.7.2...HEAD
+[Unveröffentlicht]: https://github.com/johannesboernsen/logbuch/compare/v0.7.4...HEAD
+[0.7.4]: https://github.com/johannesboernsen/logbuch/releases/tag/v0.7.4
+[0.7.3]: https://github.com/johannesboernsen/logbuch/releases/tag/v0.7.3
 [0.7.2]: https://github.com/johannesboernsen/logbuch/releases/tag/v0.7.2
 [0.7.1]: https://github.com/johannesboernsen/logbuch/releases/tag/v0.7.1
 [0.7.0]: https://github.com/johannesboernsen/logbuch/releases/tag/v0.7.0
