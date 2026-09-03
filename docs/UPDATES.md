@@ -9,9 +9,10 @@ Der öffentliche Schlüssel liegt in `config/update-public-key.pem` und zusätzl
 ## Release erstellen
 
 1. `VERSION` auf die gewünschte semantische Version setzen.
-2. Bei einer Schemaänderung `SCHEMA_VERSION` erhöhen und für jede neue Zahl eine Datei wie `database/migrations/007.sql` hinzufügen. Migrationen dürfen keine eigenen Transaktionsbefehle, `ATTACH`, `DETACH` oder `VACUUM` enthalten.
-3. Änderungen committen und einen passenden Tag pushen, beispielsweise `v0.3.0`.
-4. `.github/workflows/release.yml` führt Tests aus, baut das Web-TAR und die Multi-Arch-Images `logbuch` und `logbuch-updater`, erzeugt das gemeinsame Manifest, signiert es und veröffentlicht alles im selben GitHub Release.
+2. In `CHANGELOG.md` den Abschnitt `[Unveröffentlicht]` in die neue Version mit Datum umbenennen und einen neuen leeren Abschnitt `[Unveröffentlicht]` darüber anlegen. Der Versionsabschnitt benötigt einen Kurztext und die Überschrift `Wichtigste Änderungen` mit einer Stichpunktliste.
+3. Bei einer Schemaänderung `SCHEMA_VERSION` erhöhen und für jede neue Zahl eine Datei wie `database/migrations/007.sql` hinzufügen. Migrationen dürfen keine eigenen Transaktionsbefehle, `ATTACH`, `DETACH` oder `VACUUM` enthalten.
+4. Änderungen committen und einen passenden Tag pushen, beispielsweise `v0.3.0`.
+5. `.github/workflows/release.yml` führt Tests aus, baut das Web-TAR und die Multi-Arch-Images `logbuch` und `logbuch-updater`, übernimmt den passenden Changelog-Abschnitt in Update-Manifest und GitHub Release, signiert das Manifest und veröffentlicht alle Dateien gemeinsam.
 
 Benötigt wird nur das Actions-Secret `UPDATE_SIGNING_PRIVATE_KEY`. Für Releases und GHCR werden die auf dieses Repository beschränkten Rechte des `GITHUB_TOKEN` verwendet; ein persönliches Zugriffstoken und ein zweites Repository sind nicht nötig.
 

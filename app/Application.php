@@ -21,7 +21,7 @@ final class Application
         'todos' => ['id', 'user_id', 'title', 'parent_id', 'completed_at', 'cleared_at', 'repeat_interval', 'repeat_unit', 'repeat_due_at', 'repeat_waiting_at', 'sort_order', 'created_at', 'updated_at'],
         'storage_locations' => ['id', 'parent_id', 'name', 'description', 'status', 'created_at', 'updated_at', 'sort_order', 'icon'],
         'inventory_categories' => ['id', 'parent_id', 'name', 'description', 'icon', 'sort_order', 'created_at', 'updated_at'],
-        'inventory_items' => ['id', 'name', 'description', 'stock_unit', 'manufacturer', 'article_number', 'barcode', 'merchant_url', 'default_minimum_quantity', 'status', 'created_at', 'updated_at'],
+        'inventory_items' => ['id', 'name', 'description', 'stock_unit', 'tracking_mode', 'manufacturer', 'article_number', 'barcode', 'merchant_url', 'default_minimum_quantity', 'status', 'created_at', 'updated_at'],
         'inventory_item_notes' => ['id', 'item_id', 'content', 'created_by', 'created_at', 'updated_at'],
         'inventory_item_categories' => ['item_id', 'category_id', 'created_at'],
         'stock_entries' => ['id', 'item_id', 'storage_location_id', 'quantity', 'minimum_quantity', 'note', 'status', 'created_at', 'updated_at'],
@@ -1968,7 +1968,10 @@ final class Application
             if (!is_array($rows) || count($rows) > 500000) throw new HttpError(422, 'Die Tabelle „' . $table . '“ im Vollbackup ist ungültig.');
             foreach ($rows as $row) {
                 if (!is_array($row)) throw new HttpError(422, 'Die Tabelle „' . $table . '“ im Vollbackup ist ungültig.');
-                foreach ($columns as $column) if (!array_key_exists($column, $row)) throw new HttpError(422, 'In der Tabelle „' . $table . '“ fehlt „' . $column . '“.');
+                foreach ($columns as $column) {
+                    if ($schemaVersion < 19 && $table === 'inventory_items' && $column === 'tracking_mode') continue;
+                    if (!array_key_exists($column, $row)) throw new HttpError(422, 'In der Tabelle „' . $table . '“ fehlt „' . $column . '“.');
+                }
             }
         }
         $users = $tables['users'];
@@ -2024,6 +2027,9 @@ final class Application
     {
         $tables = $manifest['tables'];
         $tables['inventory_item_notes'] ??= [];
+        if ((int) ($manifest['schemaVersion'] ?? 0) < 19) {
+            $tables['inventory_items'] = array_map(static fn(array $row): array => ['tracking_mode' => 'QUANTITY', ...$row], $tables['inventory_items']);
+        }
         $projects = $manifest['projects'];
         $itemImages = (array) ($manifest['inventoryItemImages'] ?? []);
         $projectsRoot = $this->storagePath . '/projects';
@@ -2441,12 +2447,13 @@ final class Application
         $saveCategory = $this->db->prepare('INSERT INTO inventory_categories (id, parent_id, name, description, icon, sort_order, created_at, updated_at) VALUES (:id, :parent, :name, :description, :icon, :sort, :created, \'\') ON CONFLICT(id) DO UPDATE SET parent_id = excluded.parent_id, name = excluded.name, description = excluded.description, icon = excluded.icon, sort_order = excluded.sort_order');
         foreach ($demo['inventoryCategories'] as $category) $saveCategory->execute(['id' => $category['id'], 'parent' => $category['parentId'] ?? null, 'name' => $category['name'], 'description' => $category['description'] ?? '', 'icon' => $category['icon'] ?? 'folder', 'sort' => $category['sortOrder'] ?? 0, 'created' => $category['createdAt'] ?? nowIso()]);
         $saveItem = $this->db->prepare(<<<'SQL'
-            INSERT INTO inventory_items (id, name, description, stock_unit, manufacturer, article_number, barcode, merchant_url, default_minimum_quantity, status, created_at, updated_at)
-            VALUES (:id, :name, :description, :unit, :manufacturer, :article, :barcode, :merchant, :minimum, :status, :created, '')
+            INSERT INTO inventory_items (id, name, description, stock_unit, tracking_mode, manufacturer, article_number, barcode, merchant_url, default_minimum_quantity, status, created_at, updated_at)
+            VALUES (:id, :name, :description, :unit, :tracking, :manufacturer, :article, :barcode, :merchant, :minimum, :status, :created, '')
         SQL);
         $saveItemCategory = $this->db->prepare('INSERT INTO inventory_item_categories (item_id, category_id, created_at) VALUES (:item, :category, :created)');
         foreach ($demo['inventoryItems'] as $item) {
-            $saveItem->execute(['id' => $item['id'], 'name' => $item['name'], 'description' => $item['description'] ?? '', 'unit' => $item['stockUnit'], 'manufacturer' => $item['manufacturer'] ?? '', 'article' => $item['articleNumber'] ?? '', 'barcode' => $item['barcode'] ?? '', 'merchant' => $item['merchantUrl'] ?? '', 'minimum' => $item['defaultMinimumQuantity'] ?? null, 'status' => $item['status'] ?? 'ACTIVE', 'created' => $item['createdAt'] ?? nowIso()]);
+            $trackingMode = (string) ($item['trackingMode'] ?? 'QUANTITY');
+            $saveItem->execute(['id' => $item['id'], 'name' => $item['name'], 'description' => $item['description'] ?? '', 'unit' => $trackingMode === 'COLLECTION' ? 'Sammlung' : $item['stockUnit'], 'tracking' => $trackingMode, 'manufacturer' => $item['manufacturer'] ?? '', 'article' => $item['articleNumber'] ?? '', 'barcode' => $item['barcode'] ?? '', 'merchant' => $item['merchantUrl'] ?? '', 'minimum' => $trackingMode === 'COLLECTION' ? null : ($item['defaultMinimumQuantity'] ?? null), 'status' => $item['status'] ?? 'ACTIVE', 'created' => $item['createdAt'] ?? nowIso()]);
             foreach ((array) ($item['categoryIds'] ?? []) as $categoryId) $saveItemCategory->execute(['item' => $item['id'], 'category' => $categoryId, 'created' => $item['createdAt'] ?? nowIso()]);
         }
         $saveEntry = $this->db->prepare(<<<'SQL'

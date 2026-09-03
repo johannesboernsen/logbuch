@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { cp, mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { basename, dirname, join, relative, resolve } from 'node:path';
+import { changelogRelease } from './changelog.mjs';
 
 const [version, image, digest, updaterImage, updaterDigest, output = 'dist'] = process.argv.slice(2);
 if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(version || '')) throw new Error('Version fehlt oder ist ungültig.');
@@ -41,6 +42,7 @@ execFileSync('tar', ['-cf', archivePath, '-C', stage, ...releasePaths, 'RELEASE_
 const archiveHash = createHash('sha256').update(await readFile(archivePath)).digest('hex');
 const repository = process.env.LOGBUCH_RELEASE_REPOSITORY || 'johannesboernsen/logbuch';
 const tag = `v${version}`;
+const release = changelogRelease(await readFile(join(root, 'CHANGELOG.md'), 'utf8'), version);
 const manifest = {
   format:'logbuch-update',
   manifestVersion:1,
@@ -48,8 +50,10 @@ const manifest = {
   channel:version.includes('-') ? 'beta' : 'stable',
   publishedAt:new Date().toISOString(),
   minimumPhp:'8.2.0',
-  summary:`Logbuch-Version ${version} ist verfügbar. Details stehen in den GitHub Release Notes.`,
+  summary:release.summary,
+  highlights:release.highlights,
   releaseNotesUrl:`https://github.com/${repository}/releases/tag/${tag}`,
+  changelogUrl:`https://github.com/${repository}/releases/tag/${tag}`,
   database:{ schemaVersion:Number((await readFile(join(root, 'SCHEMA_VERSION'), 'utf8')).trim()) },
   web:{
     url:`https://github.com/${repository}/releases/download/${tag}/${archiveName}`,
@@ -59,5 +63,6 @@ const manifest = {
   docker:{ image, digest, updater:{ image:updaterImage, digest:updaterDigest } },
 };
 await writeFile(join(outputPath, 'update-manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
+await writeFile(join(outputPath, 'release-notes.md'), release.markdown);
 await writeFile(join(outputPath, 'checksums.txt'), `${archiveHash}  ${basename(archivePath)}\n`);
 await rm(stage, { recursive:true, force:true });

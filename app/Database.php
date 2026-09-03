@@ -228,6 +228,12 @@ final class Database
                 $statements[] = 'CREATE INDEX IF NOT EXISTS todos_user_repeat_waiting ON todos(user_id, repeat_waiting_at)';
                 $sql = implode(";\n", $statements);
             }
+            if ($version === 19) {
+                $itemColumns = array_column($this->pdo->query('PRAGMA table_info(inventory_items)')->fetchAll(), 'name');
+                if (in_array('tracking_mode', $itemColumns, true)) {
+                    $sql = 'CREATE INDEX IF NOT EXISTS inventory_items_tracking_status_name ON inventory_items(tracking_mode, status, name)';
+                }
+            }
             $this->pdo->beginTransaction();
             try {
                 $this->pdo->exec($sql);

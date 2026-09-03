@@ -90,3 +90,52 @@ test('Reservierungs-API verbindet Projektbedarf, Verfügbarkeit und verknüpfte 
   assert.equal(finalSummary.data.summary.reservedQuantity, 0);
   assert.equal(finalSummary.data.summary.physicalQuantity, 2);
 });
+
+test('Lose Sammlung besitzt Lagerort und unabhängige Projektbuchungen ohne Menge', async () => {
+  const projectA = await request('/api/projects', { method:'POST', body:JSON.stringify({ title:'Werkbank', createdAt:'2026-09-03', status:'active' }) });
+  const projectB = await request('/api/projects', { method:'POST', body:JSON.stringify({ title:'Kamera-Rig', createdAt:'2026-09-03', status:'active' }) });
+  const item = await request('/api/inventory-items', { method:'POST', body:JSON.stringify({ name:'Lose selbstschneidende Schrauben', trackingMode:'COLLECTION', defaultMinimumQuantity:99 }) });
+  const shelf = await request('/api/storage-locations', { method:'POST', body:JSON.stringify({ name:'Kleinteileregal' }) });
+  const box = await request('/api/storage-locations', { method:'POST', body:JSON.stringify({ name:'Sortierbox' }) });
+  for (const result of [projectA, projectB, item, shelf, box]) assert.equal(result.response.status, 201, JSON.stringify(result.data));
+  assert.equal(item.data.trackingMode, 'COLLECTION');
+  assert.equal(item.data.defaultMinimumQuantity, null);
+
+  const placed = await request('/api/stock-entries', { method:'POST', body:JSON.stringify({ itemId:item.data.id, storageLocationId:shelf.data.id, note:'Blaue Kiste' }) });
+  assert.equal(placed.response.status, 201, JSON.stringify(placed.data));
+  assert.equal(placed.data.trackingMode, 'COLLECTION');
+  assert.equal(placed.data.quantity, null);
+
+  const bookingA = await request('/api/reservations', { method:'POST', body:JSON.stringify({ itemId:item.data.id, projectId:projectA.data.id, note:'Für Prototypen' }) });
+  const bookingB = await request('/api/reservations', { method:'POST', body:JSON.stringify({ itemId:item.data.id, projectId:projectB.data.id }) });
+  assert.equal(bookingA.response.status, 201, JSON.stringify(bookingA.data));
+  assert.equal(bookingB.response.status, 201, JSON.stringify(bookingB.data));
+  assert.equal(bookingA.data.trackingMode, 'COLLECTION');
+  assert.equal(bookingA.data.requestedQuantity, null);
+  assert.equal(bookingB.data.remainingQuantity, null);
+  const edited = await request(`/api/reservations/${bookingA.data.id}`, { method:'PATCH', body:JSON.stringify({ note:'Für erste Prototypen' }) });
+  assert.equal(edited.response.status, 200, JSON.stringify(edited.data));
+  assert.equal(edited.data.note, 'Für erste Prototypen');
+
+  const duplicate = await request('/api/reservations', { method:'POST', body:JSON.stringify({ itemId:item.data.id, projectId:projectA.data.id }) });
+  assert.equal(duplicate.response.status, 409);
+
+  const summary = await request(`/api/stock-entries?itemId=${item.data.id}`);
+  assert.deepEqual({ trackingMode:summary.data.summary.trackingMode, physical:summary.data.summary.physicalQuantity, reserved:summary.data.summary.reservedQuantity, bookings:summary.data.summary.bookingCount }, { trackingMode:'COLLECTION', physical:null, reserved:null, bookings:2 });
+  const overview = await request('/api/inventory-items?withOverview=1');
+  const overviewItem = overview.data.items.find(candidate => candidate.id === item.data.id);
+  assert.deepEqual({ physical:overviewItem.physicalQuantity, reserved:overviewItem.reservedQuantity, available:overviewItem.availableQuantity, bookings:overviewItem.bookingCount }, { physical:null, reserved:null, available:null, bookings:2 });
+
+  const movement = await request('/api/stock-movements', { method:'POST', body:JSON.stringify({ type:'RECEIPT', itemId:item.data.id, destinationStorageLocationId:shelf.data.id, quantity:1 }) });
+  assert.equal(movement.response.status, 409);
+  const fulfillment = await request(`/api/reservations/${bookingA.data.id}/fulfill`, { method:'POST', body:JSON.stringify({ sourceStorageLocationId:shelf.data.id, quantity:1 }) });
+  assert.equal(fulfillment.response.status, 409);
+
+  const moved = await request(`/api/stock-entries/${placed.data.id}`, { method:'PATCH', body:JSON.stringify({ storageLocationId:box.data.id }) });
+  assert.equal(moved.response.status, 200, JSON.stringify(moved.data));
+  assert.equal(moved.data.storageLocationId, box.data.id);
+
+  const replenishment = await request('/api/inventory-replenishment?includeSatisfied=1');
+  assert.equal(replenishment.response.status, 200);
+  assert.ok(!replenishment.data.items.some(candidate => candidate.itemId === item.data.id));
+});

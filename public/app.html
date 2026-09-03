@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#f6f7f9">
   <title>Logbuch</title>
   <link rel="icon" href="/favicon.svg?v=20260824-1" type="image/svg+xml">
-  <link rel="stylesheet" href="/styles.css?v=20260830-111">
+  <link rel="stylesheet" href="/styles.css?v=20260903-002">
 </head>
 <body>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
@@ -354,11 +354,12 @@
     <form id="inventory-item-form" method="dialog" novalidate>
       <input type="hidden" name="itemId">
       <div class="dialog-head"><div><h2 id="inventory-item-dialog-title">Artikel anlegen</h2><p class="dialog-copy">Der Artikel beschreibt den Gegenstand unabhängig von Lagerort und Bestand.</p></div><button class="icon-button" type="button" value="cancel" aria-label="Schließen">×</button></div>
-      <div class="inventory-item-core-fields"><label>Name<input name="name" minlength="1" maxlength="200" placeholder="z. B. Schraube M4 × 30" required></label><label>Bestandseinheit<input name="stockUnit" list="inventory-stock-units" minlength="1" maxlength="40" placeholder="z. B. Stück" required></label></div>
+      <fieldset class="inventory-tracking-mode"><legend>Bestandsführung</legend><label><input type="radio" name="trackingMode" value="QUANTITY" checked><span><strong>Artikel mit Mengenerfassung</strong><small>Bestände zählen, reservieren und nachbestellen</small></span></label><label><input type="radio" name="trackingMode" value="COLLECTION"><span><strong>Lose Sammlung ohne Mengenerfassung</strong><small>Nur Lagerorte und Projektbuchungen festhalten</small></span></label></fieldset>
+      <div class="inventory-item-core-fields"><label>Name<input name="name" minlength="1" maxlength="200" placeholder="z. B. Schraube M4 × 30" required></label><label data-inventory-quantity-field>Bestandseinheit<input name="stockUnit" list="inventory-stock-units" minlength="1" maxlength="40" placeholder="z. B. Stück" required></label></div>
       <datalist id="inventory-stock-units"><option value="Stück"><option value="Meter"><option value="Zentimeter"><option value="Kilogramm"><option value="Gramm"><option value="Liter"><option value="Milliliter"><option value="Rolle"><option value="Packung"></datalist>
       <section class="inventory-item-image-editor"><div class="inventory-item-image-editor-preview"><img id="inventory-item-image-preview" alt="" hidden><span id="inventory-item-image-placeholder">Kein Bild</span></div><div><label class="button secondary compact" for="inventory-item-image-input">Bild auswählen</label><input id="inventory-item-image-input" name="image" type="file" accept="image/jpeg,image/png,image/webp,image/gif"><button id="inventory-item-image-remove" class="button secondary compact danger" type="button" hidden>Bild entfernen</button><small>JPEG, PNG, WebP oder GIF · maximal 15 MB</small></div></section>
       <label>Beschreibung <span class="optional">optional</span><textarea name="description" maxlength="4000" rows="4" placeholder="Ausführung, Material oder Verwendungszweck"></textarea></label>
-      <div class="inventory-item-meta-fields"><label>Hersteller <span class="optional">optional</span><input name="manufacturer" maxlength="160"></label><label>Artikelnummer <span class="optional">optional</span><input name="articleNumber" maxlength="120"></label><label>Barcode / EAN <span class="optional">optional</span><input name="barcode" maxlength="120" inputmode="numeric"></label><label>Globaler Mindestbestand <span class="optional">optional</span><input name="defaultMinimumQuantity" type="number" min="0" max="1000000000000" step="any"></label></div>
+      <div class="inventory-item-meta-fields"><label>Hersteller <span class="optional">optional</span><input name="manufacturer" maxlength="160"></label><label>Artikelnummer <span class="optional">optional</span><input name="articleNumber" maxlength="120"></label><label>Barcode / EAN <span class="optional">optional</span><input name="barcode" maxlength="120" inputmode="numeric"></label><label data-inventory-quantity-field>Globaler Mindestbestand <span class="optional">optional</span><input name="defaultMinimumQuantity" type="number" min="0" max="1000000000000" step="any"></label></div>
       <label>Händlerlink <span class="optional">optional</span><input name="merchantUrl" type="url" maxlength="2000" placeholder="https://…"></label>
       <fieldset class="inventory-category-picker"><legend>Kategorien <span class="optional">optional</span></legend><p class="field-hint">Ein Artikel kann mehreren Kategorien zugeordnet werden.</p><div id="inventory-item-category-options"></div></fieldset>
       <p id="inventory-item-error" class="form-error"></p>
@@ -381,7 +382,7 @@
       <input type="hidden" name="entryId"><input type="hidden" name="itemId">
       <div class="dialog-head"><div><h2 id="stock-entry-dialog-title">Lagerplatz zuordnen</h2><p id="stock-entry-dialog-copy" class="dialog-copy"></p></div><button class="icon-button" type="button" value="cancel" aria-label="Schließen">×</button></div>
       <label data-stock-entry-location-field>Lagerort<select name="storageLocationId" required></select></label>
-      <div class="inventory-item-meta-fields"><label data-stock-entry-initial-field><span class="field-label-line">Anfangsmenge</span><div class="stock-entry-quantity-stepper"><input name="initialQuantity" type="number" min="0" max="1000000000000" step="any" value="0" required><button type="button" data-stock-entry-initial-step="-1" aria-label="Anfangsmenge um eins verringern">−</button><button type="button" data-stock-entry-initial-step="1" aria-label="Anfangsmenge um eins erhöhen">+</button></div><small class="field-hint">Eine positive Anfangsmenge wird als Zugang protokolliert.</small></label><label><span class="field-label-line">Lokaler Mindestbestand <span class="optional">optional</span></span><div class="stock-entry-quantity-stepper"><input name="minimumQuantity" type="number" min="0" max="1000000000000" step="any"><button type="button" data-stock-entry-minimum-step="-1" aria-label="Mindestbestand um eins verringern">−</button><button type="button" data-stock-entry-minimum-step="1" aria-label="Mindestbestand um eins erhöhen">+</button></div></label></div>
+      <div class="inventory-item-meta-fields"><label data-stock-entry-initial-field><span class="field-label-line">Anfangsmenge</span><div class="stock-entry-quantity-stepper"><input name="initialQuantity" type="number" min="0" max="1000000000000" step="any" value="0" required><button type="button" data-stock-entry-initial-step="-1" aria-label="Anfangsmenge um eins verringern">−</button><button type="button" data-stock-entry-initial-step="1" aria-label="Anfangsmenge um eins erhöhen">+</button></div><small class="field-hint">Eine positive Anfangsmenge wird als Zugang protokolliert.</small></label><label data-stock-entry-minimum-field><span class="field-label-line">Lokaler Mindestbestand <span class="optional">optional</span></span><div class="stock-entry-quantity-stepper"><input name="minimumQuantity" type="number" min="0" max="1000000000000" step="any"><button type="button" data-stock-entry-minimum-step="-1" aria-label="Mindestbestand um eins verringern">−</button><button type="button" data-stock-entry-minimum-step="1" aria-label="Mindestbestand um eins erhöhen">+</button></div></label></div>
       <label>Notiz <span class="optional">optional</span><textarea name="note" maxlength="2000" rows="3" placeholder="Hinweise zu diesem Lagerplatz"></textarea></label>
       <p id="stock-entry-error" class="form-error"></p>
       <div class="dialog-actions"><button class="button secondary" type="button" value="cancel">Abbrechen</button><button class="button primary" type="submit">Speichern</button></div>
@@ -406,16 +407,16 @@
 
   <dialog id="stock-transfer-dialog" class="inventory-stock-dialog stock-transfer-dialog">
     <form id="stock-transfer-form" method="dialog" novalidate>
-      <input type="hidden" name="itemId"><input type="hidden" name="sourceStorageLocationId"><input type="hidden" name="maximumQuantity"><input type="hidden" name="stockUnit">
+      <input type="hidden" name="entryId"><input type="hidden" name="itemId"><input type="hidden" name="trackingMode"><input type="hidden" name="sourceStorageLocationId"><input type="hidden" name="maximumQuantity"><input type="hidden" name="stockUnit">
       <div class="dialog-head"><div><h2>Artikel umlagern</h2><p id="stock-transfer-copy" class="dialog-copy"></p></div><button class="icon-button" type="button" value="cancel" aria-label="Schließen">×</button></div>
       <label data-stock-transfer-destination-field>Ziellagerort<select name="destinationStorageLocationId" required></select></label>
-      <fieldset class="stock-transfer-choices">
+      <fieldset class="stock-transfer-choices" data-stock-transfer-quantity-choices>
         <legend>Menge auswählen</legend>
         <label><input type="radio" name="quantityMode" value="all" checked><span><strong>Alle verschieben</strong><small id="stock-transfer-all-copy"></small></span></label>
         <label><input type="radio" name="quantityMode" value="custom"><span><strong>Teilmenge</strong><small>Die übrige Menge bleibt am bisherigen Lagerort.</small></span></label>
       </fieldset>
       <label id="stock-transfer-quantity-field" hidden>Menge<div class="stock-transfer-quantity-stepper"><input name="quantity" type="number" min="0.000001" step="any"><button type="button" data-stock-transfer-quantity-step="-1" aria-label="Menge um eins verringern" hidden>−</button><button type="button" data-stock-transfer-quantity-step="1" aria-label="Menge um eins erhöhen" hidden>+</button></div><small id="stock-transfer-limit" class="field-hint"></small></label>
-      <p class="stock-transfer-note">Bei „Alle verschieben“ verschwindet der Artikel am bisherigen Lagerort. Verlauf und lokale Einstellungen bleiben historisch erhalten.</p>
+      <p class="stock-transfer-note" data-stock-transfer-note>Bei „Alle verschieben“ verschwindet der Artikel am bisherigen Lagerort. Verlauf und lokale Einstellungen bleiben historisch erhalten.</p>
       <label>Notiz <span class="optional">optional</span><textarea name="note" maxlength="2000" rows="3" placeholder="Grund oder Hinweis zur Umlagerung"></textarea></label>
       <p id="stock-transfer-error" class="form-error"></p>
       <div class="dialog-actions"><button class="button secondary" type="button" value="cancel">Abbrechen</button><button class="button primary" type="submit">Umlagern</button></div>
@@ -425,14 +426,14 @@
   <dialog id="reservation-dialog" class="inventory-stock-dialog">
     <form id="reservation-form" method="dialog" novalidate>
       <input type="hidden" name="reservationId">
-      <div class="dialog-head"><div><h2 id="reservation-dialog-title">Für Projekt reservieren</h2><p class="dialog-copy">Die Reservierung plant Bedarf, ohne den physischen Bestand zu verändern.</p></div><button class="icon-button" type="button" value="cancel" aria-label="Schließen">×</button></div>
+      <div class="dialog-head"><div><h2 id="reservation-dialog-title">Für Projekt reservieren</h2><p id="reservation-dialog-copy" class="dialog-copy">Die Reservierung plant Bedarf, ohne den physischen Bestand zu verändern.</p></div><button class="icon-button" type="button" value="cancel" aria-label="Schließen">×</button></div>
       <label data-reservation-item-field>Artikel<select name="itemId" required></select></label>
       <label data-reservation-project-field>Projekt<select name="projectId" required></select></label>
       <label>Arbeitsschritt <span class="optional">optional</span><select name="projectEntryId"><option value="">Gesamtes Projekt</option></select></label>
-      <label>Benötigte Menge<div class="stock-entry-quantity-stepper reservation-quantity-stepper"><input name="requestedQuantity" type="number" min="0.000001" max="1000000000000" step="any" required><button type="button" data-reservation-quantity-step="-1" aria-label="Menge um eins verringern" hidden>−</button><button type="button" data-reservation-quantity-step="1" aria-label="Menge um eins erhöhen" hidden>+</button></div><small id="reservation-availability-hint" class="field-hint"></small></label>
+      <label data-reservation-quantity-field>Benötigte Menge<div class="stock-entry-quantity-stepper reservation-quantity-stepper"><input name="requestedQuantity" type="number" min="0.000001" max="1000000000000" step="any" required><button type="button" data-reservation-quantity-step="-1" aria-label="Menge um eins verringern" hidden>−</button><button type="button" data-reservation-quantity-step="1" aria-label="Menge um eins erhöhen" hidden>+</button></div><small id="reservation-availability-hint" class="field-hint"></small></label>
       <label>Notiz <span class="optional">optional</span><textarea name="note" maxlength="2000" rows="3" placeholder="Verwendungszweck oder Hinweis"></textarea></label>
       <p id="reservation-error" class="form-error"></p>
-      <div class="dialog-actions"><button class="button secondary" type="button" value="cancel">Abbrechen</button><button class="button primary" type="submit">Reservieren</button></div>
+      <div class="dialog-actions"><button class="button secondary" type="button" value="cancel">Abbrechen</button><button class="button primary" id="reservation-submit" type="submit">Reservieren</button></div>
     </form>
   </dialog>
 
@@ -451,6 +452,6 @@
   <script src="/backup-format.js?v=20260823-142" defer></script>
   <script src="/ai-project-format.js?v=20260830-005" defer></script>
   <script src="/update-monitor.js?v=20260822-001" defer></script>
-  <script src="/app.js?v=20260830-113" defer></script>
+  <script src="/app.js?v=20260903-002" defer></script>
 </body>
 </html>

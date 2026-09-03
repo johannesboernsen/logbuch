@@ -106,7 +106,9 @@ final class UpdateService
             'channel' => (string) ($manifest['channel'] ?? 'stable'),
             'publishedAt' => (string) ($manifest['publishedAt'] ?? ''),
             'releaseNotesUrl' => (string) ($manifest['releaseNotesUrl'] ?? ''),
+            'changelogUrl' => (string) ($manifest['changelogUrl'] ?? ($manifest['releaseNotesUrl'] ?? '')),
             'summary' => (string) ($manifest['summary'] ?? ''),
+            'highlights' => array_values((array) ($manifest['highlights'] ?? [])),
             'checkedAt' => $checkedAt,
             'platform' => $this->platform,
             'installSupported' => $supported,
@@ -165,6 +167,17 @@ final class UpdateService
         }
         if (version_compare(PHP_VERSION, $minimumPhp, '<')) {
             throw new HttpError(409, 'Das Update benötigt mindestens PHP ' . $minimumPhp . '.');
+        }
+        $summary = $manifest['summary'] ?? '';
+        $highlights = $manifest['highlights'] ?? [];
+        $releaseNotesUrl = $manifest['releaseNotesUrl'] ?? '';
+        $changelogUrl = $manifest['changelogUrl'] ?? $releaseNotesUrl;
+        if (!is_string($summary) || mb_strlen($summary) > 1000
+            || !is_array($highlights) || !array_is_list($highlights) || count($highlights) > 10
+            || array_filter($highlights, static fn(mixed $highlight): bool => !is_string($highlight) || trim($highlight) === '' || mb_strlen($highlight) > 300)
+            || ($releaseNotesUrl !== '' && (!is_string($releaseNotesUrl) || !filter_var($releaseNotesUrl, FILTER_VALIDATE_URL)))
+            || ($changelogUrl !== '' && (!is_string($changelogUrl) || !filter_var($changelogUrl, FILTER_VALIDATE_URL)))) {
+            throw new HttpError(502, 'Das Update-Manifest enthält ungültige Änderungsinformationen.');
         }
         $web = $manifest['web'] ?? null;
         $docker = $manifest['docker'] ?? null;

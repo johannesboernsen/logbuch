@@ -20,7 +20,7 @@ test('Lokaler Mindestbestand zeigt nur die ortsbezogenen Einstellungen', () => {
   assert.match(script, /form\.classList\.toggle\('stock-entry-editing', Boolean\(entry\)\)/);
   assert.match(script, /\$\('\[data-stock-entry-location-field\]'\)\.hidden = Boolean\(entry\)/);
   assert.match(script, /\$\('\[data-stock-entry-initial-field\]'\)\.hidden = Boolean\(entry\)/);
-  assert.match(script, /entry \? 'Lokaler Mindestbestand' : 'Weiteren Lagerort hinzufügen'/);
+  assert.match(script, /entry \? \(collection \? 'Lagerortnotiz bearbeiten' : 'Lokaler Mindestbestand'\) : 'Weiteren Lagerort hinzufügen'/);
   assert.match(script, /entry \? `\$\{item\.name\} · \$\{stockLocationPath\(entry\)\}`/);
   assert.match(styles, /#stock-entry-form \[hidden\][^{]*\{ display:none; \}/);
   assert.match(styles, /#stock-entry-form\.stock-entry-editing \.inventory-item-meta-fields \{ grid-template-columns:1fr; \}/);

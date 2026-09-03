@@ -21,7 +21,7 @@ test('signierte Updates werden geprüft und für Docker sicher angefordert', asy
   await writeFile(publicKeyPath, publicKey);
   const hash = '0'.repeat(64);
   const manifest = `${JSON.stringify({
-    format:'logbuch-update', manifestVersion:1, version:'9.9.9', channel:'stable', publishedAt:'2026-08-21T12:00:00Z', minimumPhp:'8.2.0', summary:'Testupdate', releaseNotesUrl:'https://github.com/johannesboernsen/logbuch/releases/tag/v9.9.9',
+    format:'logbuch-update', manifestVersion:1, version:'9.9.9', channel:'stable', publishedAt:'2026-08-21T12:00:00Z', minimumPhp:'8.2.0', summary:'Testupdate', highlights:['Neue Übersicht', 'Behobener Fehler'], releaseNotesUrl:'https://github.com/johannesboernsen/logbuch/releases/tag/v9.9.9', changelogUrl:'https://github.com/johannesboernsen/logbuch/releases/tag/v9.9.9',
     database:{ schemaVersion:6 },
     web:{ url:'http://127.0.0.1/package.tar', sha256:hash, files:{ 'app/bootstrap.php':hash, 'app/Application.php':hash, 'public/index.php':hash, VERSION:hash, SCHEMA_VERSION:hash } },
     docker:{ image:'ghcr.io/johannesboernsen/logbuch', digest:`sha256:${'a'.repeat(64)}`, updater:{ image:'ghcr.io/johannesboernsen/logbuch-updater', digest:`sha256:${'c'.repeat(64)}` } },
@@ -61,6 +61,8 @@ test('signierte Updates werden geprüft und für Docker sicher angefordert', asy
     assert.equal(status.available, true);
     assert.equal(status.latestVersion, '9.9.9');
     assert.equal(status.platform, 'docker');
+    assert.deepEqual(status.highlights, ['Neue Übersicht', 'Behobener Fehler']);
+    assert.equal(status.changelogUrl, 'https://github.com/johannesboernsen/logbuch/releases/tag/v9.9.9');
 
     const validSignature = signature;
     signature = Buffer.from('keine gültige Signatur').toString('base64');

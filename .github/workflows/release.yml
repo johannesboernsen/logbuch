@@ -88,6 +88,7 @@ jobs:
             dist/logbuch-web-${{ steps.meta.outputs.version }}.tar
             dist/update-manifest.json
             dist/update-manifest.sig
+            dist/release-notes.md
             dist/checksums.txt
           if-no-files-found: error
       - name: GitHub Release veröffentlichen
@@ -97,6 +98,6 @@ jobs:
           gh release create "$GITHUB_REF_NAME" \
             --repo "$GITHUB_REPOSITORY" \
             --title "Logbuch ${{ steps.meta.outputs.version }}" \
-            --notes "Signiertes Update für Version ${{ steps.meta.outputs.version }} des Logbuchs." \
+            --notes-file dist/release-notes.md \
             "dist/logbuch-web-${{ steps.meta.outputs.version }}.tar" \
             dist/update-manifest.json dist/update-manifest.sig dist/checksums.txt

@@ -38,7 +38,17 @@ test('Projekt- und Artikelansicht verwenden dieselbe Reservierung', () => {
   assert.match(script, /data-reservation-item/);
   assert.match(script, /api\(`\/reservations\?projectId=/);
   assert.match(script, /api\(`\/reservations\?itemId=/);
-  assert.match(script, /Reserviertes Lagermaterial/);
+  assert.match(script, /inventoryMaterials:'Lagermaterial'/);
+});
+
+test('Lose Sammlungen werden ohne Menge auf mehrere Projekte gebucht', () => {
+  assert.match(html, /Lose Sammlung ohne Mengenerfassung/);
+  assert.match(html, /name="trackingMode" value="COLLECTION"/);
+  assert.match(script, /Die Sammlung kann ohne Menge gleichzeitig mehreren Projekten zugeordnet werden/);
+  assert.match(script, /input\.disabled = collection/);
+  assert.match(script, /Lose Sammlung auf Projekt buchen/);
+  assert.match(script, /Projektbuchung aufheben/);
+  assert.match(script, /Lagermaterial zuordnen/);
 });
 
 test('Teilerfüllung wird als verknüpfte Entnahme angeboten', () => {
@@ -61,7 +71,7 @@ test('Die zurückhaltende Reservierungsaktion steht bei den Reservierungen', () 
   assert.match(script, /inventory-reservation-list">\$\{activeReservations\.map[\s\S]*\$\{reservationActions\}<\/div>/);
   assert.doesNotMatch(script, /button primary compact"[^>]*data-reservation-create data-reservation-item/);
   assert.match(styles, /\.inventory-section-create \{[^}]*justify-content:flex-end;/);
-  assert.match(script, /inventory-stock-empty inventory-reservation-empty">Keine aktive Projektreservierung/);
+  assert.match(script, /Keine aktive Projektreservierung/);
   assert.match(styles, /\.inventory-reservation-empty \{[^}]*text-align:left;/);
   assert.match(styles, /\.inventory-reservation-empty \.inventory-section-create \{[^}]*justify-content:flex-start;/);
 });

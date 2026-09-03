@@ -31,7 +31,7 @@ final class InventoryStockStore
         $statement = $this->db->prepare(<<<SQL
             SELECT entry.id, entry.item_id, entry.storage_location_id, entry.quantity,
                    entry.minimum_quantity, entry.note, entry.status, entry.created_at, entry.updated_at,
-                   item.name AS item_name, item.stock_unit, item.status AS item_status,
+                   item.name AS item_name, item.stock_unit, item.tracking_mode, item.status AS item_status,
                    location.name AS location_name, location.status AS location_status
             FROM stock_entries AS entry
             JOIN inventory_items AS item ON item.id = entry.item_id
@@ -47,6 +47,27 @@ final class InventoryStockStore
     {
         $item = $this->activeOrHistoricalItem($itemId);
         $entries = $this->list($itemId);
+        if ($item['tracking_mode'] === 'COLLECTION') {
+            $statement = $this->db->prepare("SELECT COUNT(*) FROM reservations WHERE item_id = :item AND status = 'ACTIVE'");
+            $statement->execute(['item' => $itemId]);
+            return [
+                'itemId' => $itemId,
+                'trackingMode' => 'COLLECTION',
+                'stockUnit' => $item['stock_unit'],
+                'physicalQuantity' => null,
+                'reservedQuantity' => null,
+                'availableQuantity' => null,
+                'minimumQuantity' => null,
+                'projectShortageQuantity' => 0.0,
+                'globalReorderQuantity' => 0.0,
+                'localReorderQuantity' => 0.0,
+                'reorderQuantity' => 0.0,
+                'bookingCount' => (int) $statement->fetchColumn(),
+                'locationCount' => count(array_filter($entries, static fn(array $entry): bool => $entry['status'] === 'ACTIVE')),
+                'localShortages' => [],
+                'entries' => $entries,
+            ];
+        }
         $physical = round(array_sum(array_column($entries, 'quantity')), 6);
         $statement = $this->db->prepare("SELECT COALESCE(SUM(requested_quantity - fulfilled_quantity), 0) FROM reservations WHERE item_id = :item AND status = 'ACTIVE'");
         $statement->execute(['item' => $itemId]);
@@ -70,6 +91,7 @@ final class InventoryStockStore
         $localReorder = round(array_sum(array_column($localShortages, 'shortageQuantity')), 6);
         return [
             'itemId' => $itemId,
+            'trackingMode' => 'QUANTITY',
             'stockUnit' => $item['stock_unit'],
             'physicalQuantity' => $physical,
             'reservedQuantity' => $reserved,
@@ -102,9 +124,23 @@ final class InventoryStockStore
         $statement->execute($ids);
         foreach ($statement->fetchAll() as $row) $reserved[(string) $row['item_id']] = round((float) $row['quantity'], 6);
 
+        $modes = [];
+        $statement = $this->db->prepare("SELECT id, tracking_mode FROM inventory_items WHERE id IN ({$placeholders})");
+        $statement->execute($ids);
+        foreach ($statement->fetchAll() as $row) $modes[(string) $row['id']] = (string) $row['tracking_mode'];
+
+        $bookings = [];
+        $statement = $this->db->prepare("SELECT item_id, COUNT(*) AS quantity FROM reservations WHERE status = 'ACTIVE' AND item_id IN ({$placeholders}) GROUP BY item_id");
+        $statement->execute($ids);
+        foreach ($statement->fetchAll() as $row) $bookings[(string) $row['item_id']] = (int) $row['quantity'];
+
         $overview = [];
         foreach ($ids as $id) {
             $itemId = (string) $id;
+            if (($modes[$itemId] ?? 'QUANTITY') === 'COLLECTION') {
+                $overview[$itemId] = ['physicalQuantity' => null, 'reservedQuantity' => null, 'availableQuantity' => null, 'bookingCount' => $bookings[$itemId] ?? 0];
+                continue;
+            }
             $physicalQuantity = $physical[$itemId] ?? 0.0;
             $reservedQuantity = $reserved[$itemId] ?? 0.0;
             $overview[$itemId] = [
@@ -121,7 +157,7 @@ final class InventoryStockStore
         $query = trim($query);
         if (mb_strlen($query) > 200) throw new HttpError(422, 'Der Suchbegriff ist zu lang.');
         if (!in_array($sort, ['urgency', 'name', 'available', 'reorder'], true)) throw new HttpError(422, 'Ungültige Sortierung.');
-        $conditions = ["status = 'ACTIVE'"];
+        $conditions = ["status = 'ACTIVE'", "tracking_mode = 'QUANTITY'"];
         $parameters = [];
         if ($query !== '') {
             $conditions[] = '(name LIKE :query ESCAPE \'\\\' OR description LIKE :query ESCAPE \'\\\' OR manufacturer LIKE :query ESCAPE \'\\\' OR article_number LIKE :query ESCAPE \'\\\' OR barcode LIKE :query ESCAPE \'\\\')';
@@ -183,8 +219,11 @@ final class InventoryStockStore
             $item = $this->activeItem($itemId);
             $this->activeLocation($locationId);
             if ($this->findEntry($itemId, $locationId) !== null) throw new HttpError(409, 'Für diesen Artikel und Lagerort gibt es bereits einen Bestandseintrag.');
-            $initial = $this->quantity($input['initialQuantity'] ?? 0, (string) $item['stock_unit'], true, 'Die Anfangsmenge');
-            $minimum = $this->nullableQuantity($input['minimumQuantity'] ?? null, (string) $item['stock_unit'], 'Der lokale Mindestbestand');
+            $isCollection = $item['tracking_mode'] === 'COLLECTION';
+            if ($isCollection && (float) ($input['initialQuantity'] ?? 0) !== 0.0) throw new HttpError(422, 'Lose Sammlungen werden ohne Anfangsmenge angelegt.');
+            if ($isCollection && ($input['minimumQuantity'] ?? null) !== null && ($input['minimumQuantity'] ?? '') !== '') throw new HttpError(422, 'Lose Sammlungen besitzen keinen Mindestbestand.');
+            $initial = $isCollection ? 0.0 : $this->quantity($input['initialQuantity'] ?? 0, (string) $item['stock_unit'], true, 'Die Anfangsmenge');
+            $minimum = $isCollection ? null : $this->nullableQuantity($input['minimumQuantity'] ?? null, (string) $item['stock_unit'], 'Der lokale Mindestbestand');
             $note = $this->text($input['note'] ?? '', 2000, 'Die Notiz');
             $entryId = randomId('stock-');
             $createdAt = nowIso();
@@ -204,12 +243,21 @@ final class InventoryStockStore
             $entry = $this->getEntry($id);
             if ($entry['status'] !== 'ACTIVE') throw new HttpError(409, 'Archivierte Bestandseinträge können nicht bearbeitet werden.');
             $item = $this->activeItem($entry['itemId']);
-            $minimum = array_key_exists('minimumQuantity', $input)
+            $isCollection = $item['tracking_mode'] === 'COLLECTION';
+            $minimum = !$isCollection && array_key_exists('minimumQuantity', $input)
                 ? $this->nullableQuantity($input['minimumQuantity'], (string) $item['stock_unit'], 'Der lokale Mindestbestand')
-                : $entry['minimumQuantity'];
+                : ($isCollection ? null : $entry['minimumQuantity']);
             $note = array_key_exists('note', $input) ? $this->text($input['note'], 2000, 'Die Notiz') : $entry['note'];
-            $statement = $this->db->prepare('UPDATE stock_entries SET minimum_quantity = :minimum, note = :note, updated_at = :updated WHERE id = :id AND status = \'ACTIVE\'');
-            $statement->execute(['minimum' => $minimum, 'note' => $note, 'updated' => nowIso(), 'id' => $id]);
+            $locationId = $entry['storageLocationId'];
+            if (array_key_exists('storageLocationId', $input)) {
+                if (!$isCollection) throw new HttpError(422, 'Artikel mit Mengenerfassung werden über eine Bestandsbewegung umgelagert.');
+                $locationId = $this->requiredId($input['storageLocationId'], 'Ziellagerort');
+                $this->activeLocation($locationId);
+                $existing = $this->findEntry($entry['itemId'], $locationId);
+                if ($existing !== null && $existing['id'] !== $id) throw new HttpError(409, 'Diese lose Sammlung ist dem Ziellagerort bereits zugeordnet.');
+            }
+            $statement = $this->db->prepare('UPDATE stock_entries SET storage_location_id = :location, minimum_quantity = :minimum, note = :note, updated_at = :updated WHERE id = :id AND status = \'ACTIVE\'');
+            $statement->execute(['location' => $locationId, 'minimum' => $minimum, 'note' => $note, 'updated' => nowIso(), 'id' => $id]);
             return $this->getEntry($id);
         });
     }
@@ -230,6 +278,7 @@ final class InventoryStockStore
             $type = strtoupper(trim((string) ($input['type'] ?? '')));
             $itemId = $this->requiredId($input['itemId'] ?? null, 'Artikel');
             $item = $this->activeItem($itemId);
+            if ($item['tracking_mode'] === 'COLLECTION') throw new HttpError(409, 'Lose Sammlungen werden ohne Mengenbuchungen geführt.');
             $unit = (string) $item['stock_unit'];
             $note = $this->text($input['note'] ?? '', 2000, 'Die Buchungsnotiz');
 
@@ -393,7 +442,7 @@ final class InventoryStockStore
         $statement = $this->db->prepare(<<<'SQL'
             SELECT entry.id, entry.item_id, entry.storage_location_id, entry.quantity,
                    entry.minimum_quantity, entry.note, entry.status, entry.created_at, entry.updated_at,
-                   item.name AS item_name, item.stock_unit, item.status AS item_status,
+                   item.name AS item_name, item.stock_unit, item.tracking_mode, item.status AS item_status,
                    location.name AS location_name, location.status AS location_status
             FROM stock_entries AS entry
             JOIN inventory_items AS item ON item.id = entry.item_id
@@ -408,13 +457,15 @@ final class InventoryStockStore
 
     private function publicEntry(array $row): array
     {
+        $collection = ($row['tracking_mode'] ?? 'QUANTITY') === 'COLLECTION';
         return [
             'id' => (string) $row['id'], 'itemId' => (string) $row['item_id'],
             'storageLocationId' => (string) $row['storage_location_id'],
-            'quantity' => (float) $row['quantity'],
-            'minimumQuantity' => $row['minimum_quantity'] === null ? null : (float) $row['minimum_quantity'],
+            'quantity' => $collection ? null : (float) $row['quantity'],
+            'minimumQuantity' => $collection || $row['minimum_quantity'] === null ? null : (float) $row['minimum_quantity'],
             'note' => (string) $row['note'], 'status' => (string) $row['status'],
             'itemName' => (string) $row['item_name'], 'stockUnit' => (string) $row['stock_unit'],
+            'trackingMode' => (string) ($row['tracking_mode'] ?? 'QUANTITY'),
             'itemStatus' => (string) $row['item_status'], 'locationName' => (string) $row['location_name'],
             'locationStatus' => (string) $row['location_status'],
             'locationPath' => $this->locationPath((string) $row['storage_location_id']),
@@ -466,7 +517,7 @@ final class InventoryStockStore
     private function activeOrHistoricalItem(string $id): array
     {
         $this->assertId($id, 'Artikel');
-        $statement = $this->db->prepare('SELECT id, stock_unit, status, default_minimum_quantity FROM inventory_items WHERE id = :id');
+        $statement = $this->db->prepare('SELECT id, stock_unit, tracking_mode, status, default_minimum_quantity FROM inventory_items WHERE id = :id');
         $statement->execute(['id' => $id]);
         $item = $statement->fetch();
         if (!$item) throw new HttpError(404, 'Artikel nicht gefunden.');

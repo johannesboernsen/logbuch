@@ -2,6 +2,8 @@
 
 Das Logbuch hält Fortschritte, anstehende und erledigte Arbeitsschritte, Materialien, Kontakte, Links und Ideen zu DIY-Projekten fest. Ein eigener persönlicher Erinnerungsbereich nimmt kurze Notizen ohne Projektbezug auf; diese lassen sich per Drag-and-drop sortieren, eine Ebene tief gruppieren und in frei wählbaren Tages-, Wochen-, Monats- oder Jahresabständen wiederholen. Die responsive Weboberfläche läuft mit einem gemeinsamen PHP-Kern sowohl auf normalem Webhosting als auch in einem Docker-Container.
 
+Die Änderungen aller veröffentlichten Versionen stehen im [Changelog](CHANGELOG.md).
+
 Projekte bleiben als Markdown- und JSON-Dateien lesbar. SQLite speichert Benutzer, persönliche Erinnerungen, Sitzungen, Rollen, Freigaben, Tags, Einstellungen und das Änderungsprotokoll.
 
 ## Voraussetzungen

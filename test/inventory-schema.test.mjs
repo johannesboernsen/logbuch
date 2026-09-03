@@ -34,7 +34,8 @@ test('Inventarmigration legt Kernmodell, Foreign Keys und Indizes an', async () 
     $tables = $pdo->query("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name")->fetchAll(PDO::FETCH_COLUMN);
     $indexes = $pdo->query("SELECT name FROM sqlite_master WHERE type = 'index' ORDER BY name")->fetchAll(PDO::FETCH_COLUMN);
     $storageColumns = $pdo->query('PRAGMA table_info(storage_locations)')->fetchAll(PDO::FETCH_COLUMN, 1);
-    echo json_encode(['tables' => $tables, 'indexes' => $indexes, 'storageColumns' => $storageColumns, 'foreignKeys' => $pdo->query('PRAGMA foreign_keys')->fetchColumn()]);
+    $itemColumns = $pdo->query('PRAGMA table_info(inventory_items)')->fetchAll(PDO::FETCH_COLUMN, 1);
+    echo json_encode(['tables' => $tables, 'indexes' => $indexes, 'storageColumns' => $storageColumns, 'itemColumns' => $itemColumns, 'foreignKeys' => $pdo->query('PRAGMA foreign_keys')->fetchColumn()]);
   `);
   assert.equal(stderr, '');
   const schema = JSON.parse(stdout);
@@ -44,10 +45,12 @@ test('Inventarmigration legt Kernmodell, Foreign Keys und Indizes an', async () 
   assert.equal(schema.foreignKeys, 1);
   assert.ok(schema.storageColumns.includes('icon'));
   assert.ok(!schema.storageColumns.includes('type'));
+  assert.ok(schema.itemColumns.includes('tracking_mode'));
   assert.ok(schema.indexes.includes('stock_entries_item_status'));
   assert.ok(schema.indexes.includes('reservations_project_entry'));
   assert.ok(schema.indexes.includes('stock_transactions_item_occurred'));
   assert.ok(schema.indexes.includes('inventory_item_notes_item_created'));
+  assert.ok(schema.indexes.includes('inventory_items_tracking_status_name'));
 });
 
 test('DB verhindert negative und doppelte physische Bestände', async () => {

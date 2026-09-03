@@ -16,7 +16,7 @@ final class InventoryReservationStore
     {
         $this->assertId($id, 'Reservierung');
         $statement = $this->db->prepare(<<<'SQL'
-            SELECT reservation.*, item.name AS item_name, item.stock_unit, item.status AS item_status
+            SELECT reservation.*, item.name AS item_name, item.stock_unit, item.tracking_mode, item.status AS item_status
             FROM reservations AS reservation
             JOIN inventory_items AS item ON item.id = reservation.item_id
             WHERE reservation.id = :id
@@ -55,7 +55,7 @@ final class InventoryReservationStore
         }
         $where = implode(' AND ', $conditions);
         $statement = $this->db->prepare(<<<SQL
-            SELECT reservation.*, item.name AS item_name, item.stock_unit, item.status AS item_status
+            SELECT reservation.*, item.name AS item_name, item.stock_unit, item.tracking_mode, item.status AS item_status
             FROM reservations AS reservation
             JOIN inventory_items AS item ON item.id = reservation.item_id
             WHERE {$where}
@@ -77,7 +77,13 @@ final class InventoryReservationStore
             if (in_array($target['project']['status'], ['completed', 'archived', 'trashed'], true)) {
                 throw new HttpError(409, 'Für abgeschlossene, archivierte oder gelöschte Projekte können keine neuen Reservierungen angelegt werden.');
             }
-            $quantity = $this->quantity($input['requestedQuantity'] ?? null, (string) $item['stock_unit'], 'Die reservierte Menge');
+            $isCollection = $item['tracking_mode'] === 'COLLECTION';
+            if ($isCollection) {
+                $duplicate = $this->db->prepare("SELECT 1 FROM reservations WHERE item_id = :item AND project_id = :project AND status = 'ACTIVE' LIMIT 1");
+                $duplicate->execute(['item' => $itemId, 'project' => $projectId]);
+                if ($duplicate->fetchColumn()) throw new HttpError(409, 'Diese lose Sammlung ist bereits auf dieses Projekt gebucht.');
+            }
+            $quantity = $isCollection ? 1.0 : $this->quantity($input['requestedQuantity'] ?? null, (string) $item['stock_unit'], 'Die reservierte Menge');
             $now = nowIso();
             $id = randomId('reservation-');
             $statement = $this->db->prepare(<<<'SQL'
@@ -106,10 +112,13 @@ final class InventoryReservationStore
             $reservation = $this->detail($id);
             if ($reservation['status'] !== 'ACTIVE') throw new HttpError(409, 'Nur aktive Reservierungen können bearbeitet werden.');
             $item = $this->item($reservation['itemId']);
-            $requested = array_key_exists('requestedQuantity', $input)
-                ? $this->quantity($input['requestedQuantity'], (string) $item['stock_unit'], 'Die reservierte Menge')
-                : $reservation['requestedQuantity'];
-            if ($requested <= $reservation['fulfilledQuantity']) {
+            $isCollection = $item['tracking_mode'] === 'COLLECTION';
+            $requested = $isCollection
+                ? 1.0
+                : (array_key_exists('requestedQuantity', $input)
+                    ? $this->quantity($input['requestedQuantity'], (string) $item['stock_unit'], 'Die reservierte Menge')
+                    : $reservation['requestedQuantity']);
+            if (!$isCollection && $requested <= $reservation['fulfilledQuantity']) {
                 throw new HttpError(422, 'Die reservierte Menge muss größer als die bereits erfüllte Menge sein.');
             }
             $targetInput = array_key_exists('projectEntryCollection', $input) || array_key_exists('projectEntryId', $input)
@@ -144,6 +153,7 @@ final class InventoryReservationStore
             $reservation = $this->detail($id);
             if ($reservation['status'] !== 'ACTIVE') throw new HttpError(409, 'Die Reservierung ist nicht mehr aktiv.');
             $item = $this->item($reservation['itemId'], true);
+            if ($item['tracking_mode'] === 'COLLECTION') throw new HttpError(409, 'Lose Sammlungen werden ohne Mengenentnahme auf Projekte gebucht.');
             $sourceId = $this->requiredId($input['sourceStorageLocationId'] ?? null, 'Quelllagerort');
             $this->activeLocation($sourceId);
             $quantity = $this->quantity($input['quantity'] ?? null, (string) $item['stock_unit'], 'Die erfüllte Menge');
@@ -190,11 +200,13 @@ final class InventoryReservationStore
         } catch (HttpError $error) {
             if ($error->status !== 404) throw $error;
         }
-        $requested = (float) $row['requested_quantity'];
-        $fulfilled = (float) $row['fulfilled_quantity'];
+        $collection = ($row['tracking_mode'] ?? 'QUANTITY') === 'COLLECTION';
+        $requested = $collection ? null : (float) $row['requested_quantity'];
+        $fulfilled = $collection ? null : (float) $row['fulfilled_quantity'];
         return [
             'id' => (string) $row['id'], 'itemId' => (string) $row['item_id'],
             'itemName' => (string) $row['item_name'], 'stockUnit' => (string) $row['stock_unit'],
+            'trackingMode' => (string) ($row['tracking_mode'] ?? 'QUANTITY'),
             'itemStatus' => (string) $row['item_status'], 'projectId' => (string) $row['project_id'],
             'projectTitle' => (string) ($target['project']['title'] ?? 'Historisches Projekt'),
             'projectStatus' => $target['project']['status'] ?? null,
@@ -203,7 +215,7 @@ final class InventoryReservationStore
             'projectEntryTitle' => $target['entry']['title'] ?? null,
             'targetResolved' => $target !== null,
             'requestedQuantity' => $requested, 'fulfilledQuantity' => $fulfilled,
-            'remainingQuantity' => round($requested - $fulfilled, 6),
+            'remainingQuantity' => $collection ? null : round($requested - $fulfilled, 6),
             'status' => (string) $row['status'], 'note' => (string) $row['note'],
             'createdBy' => (string) $row['created_by'], 'createdAt' => (string) $row['created_at'],
             'updatedAt' => (string) $row['updated_at'], 'closedAt' => $row['closed_at'] ?: null,
@@ -223,7 +235,7 @@ final class InventoryReservationStore
     private function item(string $id, bool $active = false): array
     {
         $this->assertId($id, 'Artikel');
-        $statement = $this->db->prepare('SELECT id, stock_unit, status FROM inventory_items WHERE id = :id');
+        $statement = $this->db->prepare('SELECT id, stock_unit, tracking_mode, status FROM inventory_items WHERE id = :id');
         $statement->execute(['id' => $id]);
         $item = $statement->fetch();
         if (!$item) throw new HttpError(404, 'Artikel nicht gefunden.');

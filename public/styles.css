@@ -695,7 +695,16 @@ a.tag-chip:hover { color:var(--red); background:var(--red-soft); }
 .inventory-archive-list i { flex:none; color:var(--muted); font-size:18px; font-style:normal; }
 .inventory-archive-empty { min-height:150px; padding:25px 12px; display:grid; place-items:center; color:var(--muted); text-align:center; font-size:11px; }
 .inventory-stock-warning { margin:0 0 20px!important; color:var(--red)!important; font-size:12px!important; font-weight:700; }
-#storage-location-form [hidden],#stock-entry-form [hidden],#stock-movement-form [hidden],#stock-transfer-form [hidden],#reservation-form [hidden] { display:none; }
+#inventory-item-form [hidden],#storage-location-form [hidden],#stock-entry-form [hidden],#stock-movement-form [hidden],#stock-transfer-form [hidden],#reservation-form [hidden] { display:none; }
+.inventory-tracking-mode { margin:0; padding:0; border:0; display:grid; grid-template-columns:1fr 1fr; gap:9px; }
+.inventory-tracking-mode legend { margin-bottom:7px; color:var(--muted); font-size:10px; font-weight:700; }
+.inventory-tracking-mode label { min-height:72px; margin:0; padding:11px 12px; border:1px solid var(--line); border-radius:12px; display:flex; align-items:flex-start; gap:9px; background:#fff; cursor:pointer; }
+.inventory-tracking-mode label:has(input:checked) { border-color:var(--red); background:var(--red-soft); box-shadow:0 0 0 1px var(--red); }
+.inventory-tracking-mode input { width:auto; margin:3px 0 0; accent-color:var(--red); }
+.inventory-tracking-mode span { min-width:0; display:grid; gap:4px; }
+.inventory-tracking-mode strong { color:var(--ink); font-size:11px; }
+.inventory-tracking-mode small { color:var(--muted); font-size:9px; line-height:1.4; }
+@media (max-width:560px) { .inventory-tracking-mode { grid-template-columns:1fr; } }
 #stock-entry-form.stock-entry-editing .inventory-item-meta-fields { grid-template-columns:1fr; }
 .stock-entry-quantity-stepper,.stock-quantity-stepper,.stock-transfer-quantity-stepper { display:grid; grid-template-columns:minmax(0,1fr) auto auto; align-items:stretch; gap:8px; }
 .stock-entry-quantity-stepper button,.stock-quantity-stepper button,.stock-transfer-quantity-stepper button { width:46px; min-height:46px; padding:0; border:1px solid var(--line); border-radius:11px; color:var(--red); background:#fff; cursor:pointer; font-size:24px; line-height:1; }
@@ -1141,6 +1150,9 @@ a.tag-chip:hover { color:var(--red); background:var(--red-soft); }
 .update-card-title { display:flex; align-items:center; flex-wrap:wrap; gap:10px; }
 .update-card-title h2 { font-size:17px; }
 .update-card p { max-width:720px; margin:8px 0 0; color:var(--muted); font-size:13px; line-height:1.55; }
+.update-highlights { max-width:760px; margin-top:16px; padding:13px 15px; border:1px solid var(--line); border-radius:11px; background:#fff; }
+.update-highlights h3 { margin:0 0 8px; font-size:12px; }
+.update-highlights ul { margin:0; padding-left:18px; display:grid; gap:5px; color:#555d66; font-size:12px; line-height:1.45; }
 .update-card-meta { margin-top:11px; display:flex; flex-wrap:wrap; gap:12px; color:var(--muted); font-size:12px; }
 .update-card-meta a { color:var(--red); font-weight:700; }
 .update-card-copy > small { margin-top:9px; display:block; color:#8c4a4d; font-size:12px; }

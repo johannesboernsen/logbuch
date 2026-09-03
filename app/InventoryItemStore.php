@@ -37,7 +37,7 @@ final class InventoryItemStore
         }
         $where = $conditions ? 'WHERE ' . implode(' AND ', $conditions) : '';
         $statement = $this->db->prepare(<<<SQL
-            SELECT id, name, description, stock_unit, manufacturer, article_number,
+            SELECT id, name, description, stock_unit, tracking_mode, manufacturer, article_number,
                    barcode, merchant_url, default_minimum_quantity, status, created_at, updated_at
             FROM inventory_items
             {$where}
@@ -61,10 +61,10 @@ final class InventoryItemStore
         $item['updatedAt'] = '';
         $statement = $this->db->prepare(<<<'SQL'
             INSERT INTO inventory_items (
-                id, name, description, stock_unit, manufacturer, article_number,
+                id, name, description, stock_unit, tracking_mode, manufacturer, article_number,
                 barcode, merchant_url, default_minimum_quantity, status, created_at, updated_at
             ) VALUES (
-                :id, :name, :description, :unit, :manufacturer, :article_number,
+                :id, :name, :description, :unit, :tracking_mode, :manufacturer, :article_number,
                 :barcode, :merchant_url, :minimum, 'ACTIVE', :created, :updated
             )
         SQL);
@@ -77,10 +77,11 @@ final class InventoryItemStore
         $existing = $this->get($id);
         if ($existing['status'] !== 'ACTIVE') throw new HttpError(409, 'Archivierte Artikel können nicht bearbeitet werden.');
         $item = $this->validated([...$existing, ...$input]);
+        if ($item['trackingMode'] !== $existing['trackingMode']) $this->assertTrackingModeChangeAllowed($id);
         $item = [...$existing, ...$item, 'updatedAt' => nowIso()];
         $statement = $this->db->prepare(<<<'SQL'
             UPDATE inventory_items
-            SET name = :name, description = :description, stock_unit = :unit,
+            SET name = :name, description = :description, stock_unit = :unit, tracking_mode = :tracking_mode,
                 manufacturer = :manufacturer, article_number = :article_number,
                 barcode = :barcode, merchant_url = :merchant_url,
                 default_minimum_quantity = :minimum, created_at = :created, updated_at = :updated
@@ -278,7 +279,7 @@ final class InventoryItemStore
     {
         if (!validId($id)) throw new HttpError(404, 'Artikel nicht gefunden.');
         $statement = $this->db->prepare(<<<'SQL'
-            SELECT id, name, description, stock_unit, manufacturer, article_number,
+            SELECT id, name, description, stock_unit, tracking_mode, manufacturer, article_number,
                    barcode, merchant_url, default_minimum_quantity, status, created_at, updated_at
             FROM inventory_items WHERE id = :id
         SQL);
@@ -292,7 +293,9 @@ final class InventoryItemStore
     {
         $name = trim((string) ($input['name'] ?? ''));
         if (mb_strlen($name) < 1 || mb_strlen($name) > 200) throw new HttpError(422, 'Der Artikelname muss 1–200 Zeichen lang sein.');
-        $unit = trim((string) ($input['stockUnit'] ?? ''));
+        $trackingMode = strtoupper(trim((string) ($input['trackingMode'] ?? 'QUANTITY')));
+        if (!in_array($trackingMode, ['QUANTITY', 'COLLECTION'], true)) throw new HttpError(422, 'Die Bestandsführung ist ungültig.');
+        $unit = $trackingMode === 'COLLECTION' ? 'Sammlung' : trim((string) ($input['stockUnit'] ?? ''));
         if (mb_strlen($unit) < 1 || mb_strlen($unit) > 40) throw new HttpError(422, 'Die Bestandseinheit muss 1–40 Zeichen lang sein.');
         $description = $this->text($input['description'] ?? '', 4000, 'Die Beschreibung');
         $manufacturer = $this->text($input['manufacturer'] ?? '', 160, 'Der Hersteller');
@@ -302,11 +305,12 @@ final class InventoryItemStore
         if ($merchantUrl !== '' && (!filter_var($merchantUrl, FILTER_VALIDATE_URL) || !in_array(strtolower((string) parse_url($merchantUrl, PHP_URL_SCHEME)), ['http', 'https'], true))) {
             throw new HttpError(422, 'Der Händlerlink muss eine gültige HTTP- oder HTTPS-Adresse sein.');
         }
-        $minimum = $this->quantity($input['defaultMinimumQuantity'] ?? null, $unit);
+        $minimum = $trackingMode === 'COLLECTION' ? null : $this->quantity($input['defaultMinimumQuantity'] ?? null, $unit);
         return [
             'name' => $name,
             'description' => $description,
             'stockUnit' => $unit,
+            'trackingMode' => $trackingMode,
             'manufacturer' => $manufacturer,
             'articleNumber' => $articleNumber,
             'barcode' => $barcode,
@@ -335,6 +339,20 @@ final class InventoryItemStore
         return $quantity;
     }
 
+    private function assertTrackingModeChangeAllowed(string $id): void
+    {
+        $statement = $this->db->prepare(<<<'SQL'
+            SELECT
+                EXISTS(SELECT 1 FROM stock_entries WHERE item_id = :stock_item AND (quantity > 0 OR minimum_quantity IS NOT NULL))
+                OR EXISTS(SELECT 1 FROM stock_transactions WHERE item_id = :transaction_item)
+                OR EXISTS(SELECT 1 FROM reservations WHERE item_id = :reservation_item AND status = 'ACTIVE')
+        SQL);
+        $statement->execute(['stock_item' => $id, 'transaction_item' => $id, 'reservation_item' => $id]);
+        if ((int) $statement->fetchColumn() === 1) {
+            throw new HttpError(409, 'Die Bestandsführung kann erst geändert werden, wenn keine Mengen, Mindestbestände, Buchungen oder aktiven Projektzuordnungen vorhanden sind.');
+        }
+    }
+
     private function parameters(array $item): array
     {
         return [
@@ -342,6 +360,7 @@ final class InventoryItemStore
             'name' => $item['name'],
             'description' => $item['description'],
             'unit' => $item['stockUnit'],
+            'tracking_mode' => $item['trackingMode'],
             'manufacturer' => $item['manufacturer'],
             'article_number' => $item['articleNumber'],
             'barcode' => $item['barcode'],
@@ -360,6 +379,7 @@ final class InventoryItemStore
             'name' => (string) $row['name'],
             'description' => (string) $row['description'],
             'stockUnit' => (string) $row['stock_unit'],
+            'trackingMode' => (string) ($row['tracking_mode'] ?? 'QUANTITY'),
             'manufacturer' => (string) $row['manufacturer'],
             'articleNumber' => (string) $row['article_number'],
             'barcode' => (string) $row['barcode'],
