@@ -65,6 +65,9 @@ test('Die Plus-Schaltfläche öffnet zuerst die Auswahl der Anlageart', () => {
   assert.match(script, /data-storage-create-series="\$\{escapeHtml\(parentId\)\}"/);
   assert.match(script, /data-storage-create-matrix="\$\{escapeHtml\(parentId\)\}"/);
   assert.match(script, /<strong>Lagermatrix<\/strong>/);
+  assert.match(script, /data-storage-create-item="\$\{escapeHtml\(parentId\)\}"/);
+  assert.match(script, /<strong>Neuer Artikel<\/strong>/);
+  assert.match(script, /openInventoryItemDialog\('', button\.dataset\.storageCreateItem\)/);
   assert.doesNotMatch(script, /data-storage-create="/);
   assert.match(styles, /\.storage-finder-create-menu \.action-menu-panel \{ width:248px; \}/);
 });

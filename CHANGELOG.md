@@ -6,7 +6,18 @@ Hier werden die wichtigen Änderungen des Logbuchs festgehalten. Die Einträge s
 
 ### Wichtigste Änderungen
 
-Noch keine Einträge.
+- Noch keine Einträge.
+
+## [0.7.3] - 2026-09-03
+
+Artikel lassen sich schneller im passenden Lager- oder Kategorienkontext erfassen; kompakte Spaltenauswahlen vereinheitlichen dabei die Navigation durch hierarchische Strukturen.
+
+### Wichtigste Änderungen
+
+- In den Spaltenansichten kann über das Plus eines Lagerorts oder einer Kategorie direkt ein neuer Artikel angelegt und dem jeweiligen Ort oder Kategorienzweig zugeordnet werden; am Lagerort lässt sich dabei auch der Anfangsbestand erfassen.
+- Kategorien und Lagerorte werden in Zuordnungsdialogen über dieselbe kompakte Spaltenansicht ausgewählt; Navigation, Hervorhebung und Leerflächen-Verhalten bleiben dadurch an allen Einsatzorten einheitlich.
+- Der Artikeldialog ordnet optionale Angaben konsistent an und bietet große Minus-/Plus-Schaltflächen für Anfangs- und Mindestbestände.
+- Die große Kategorienansicht unterstützt nun wie die Lageransicht das Aufheben einer Auswahl über freie Spaltenflächen sowie die Navigation mit den Pfeiltasten.
 
 ## [0.7.2] - 2026-09-03
 

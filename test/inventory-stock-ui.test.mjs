@@ -16,6 +16,37 @@ test('Bestandseinträge werden über einen Anfangsbestand einem Lagerort zugeord
   assert.match(html, /Eine positive Anfangsmenge wird als Zugang protokolliert/);
 });
 
+test('Lagerorte werden über dieselbe kompakte Spaltenansicht wie Kategorien ausgewählt', () => {
+  assert.match(html, /id="stock-entry-location-options"/);
+  assert.match(html, /type="hidden" name="storageLocationId"/);
+  assert.match(script, /function renderStockLocationPicker\(form, locations, usedIds, requestedPath = null\)/);
+  assert.match(script, /renderCompactColumnPicker\(\{/);
+  assert.match(script, /selectionMode:'single'/);
+  assert.match(script, /inputName:'storageLocationChoice'/);
+  assert.match(script, /disabledIds:usedIds/);
+  assert.match(script, /Bitte einen Lagerort auswählen\./);
+});
+
+test('Ein neuer Artikel kann direkt für einen Lagerort angelegt werden', () => {
+  assert.match(html, /id="inventory-item-dialog-copy"/);
+  assert.match(html, /data-inventory-initial-field hidden>[\s\S]*Anfangsbestand[\s\S]*name="initialQuantity"/);
+  assert.match(script, /async function openInventoryItemDialog\(itemId = '', storageLocationId = '', categoryId = ''\)/);
+  assert.match(script, /form\.dataset\.storageLocationId = storageLocation\?\.id \|\| ''/);
+  assert.match(script, /initialQuantity:payload\.trackingMode === 'COLLECTION' \? 0 : form\.elements\.initialQuantity\.value \|\| 0/);
+  assert.match(script, /form\.elements\.initialQuantity\.required = !collection && directStorageCreation/);
+  assert.match(script, /data-inventory-initial-step/);
+  assert.match(script, /storageContextItemHref\(storageLocationId, saved\.id, false\)/);
+  assert.match(styles, /\.inventory-tracking-mode legend \{[^}]*color:var\(--ink\);[^}]*font-size:13px;[^}]*font-weight:600;/);
+  assert.match(styles, /#inventory-item-form input\[type="number"\][^{]*\{[^}]*appearance:textfield/);
+  assert.match(styles, /#inventory-item-form input\[type="number"\]::\-webkit-inner-spin-button/);
+  assert.match(html, /Globaler Mindestbestand[\s\S]*data-inventory-minimum-step="-1"[\s\S]*data-inventory-minimum-step="1"/);
+  assert.match(html, /field-label-line">Hersteller <span class="optional">optional<\/span>[\s\S]*field-label-line">Artikelnummer <span class="optional">optional<\/span>[\s\S]*field-label-line">Barcode \/ EAN <span class="optional">optional<\/span>/);
+  assert.match(html, /field-label-line">Beschreibung <span class="optional">optional<\/span>/);
+  assert.match(html, /field-label-line">Händlerlink <span class="optional">optional<\/span>/);
+  assert.match(script, /document\.querySelectorAll\('\[data-inventory-minimum-step\]'\)/);
+  assert.match(script, /input\.value === '' \? \(direction > 0 \? 1 : 0\)/);
+});
+
 test('Lokaler Mindestbestand zeigt nur die ortsbezogenen Einstellungen', () => {
   assert.match(script, /form\.classList\.toggle\('stock-entry-editing', Boolean\(entry\)\)/);
   assert.match(script, /\$\('\[data-stock-entry-location-field\]'\)\.hidden = Boolean\(entry\)/);

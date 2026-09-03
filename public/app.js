@@ -1744,13 +1744,108 @@ async function loadInventoryCategories() {
   return state.inventoryCategories;
 }
 
-async function openInventoryItemDialog(itemId = '') {
+function initialCompactColumnPath(items, selectedIds) {
+  const byId = new Map(items.map(item => [item.id, item]));
+  const target = items.find(item => selectedIds.has(item.id));
+  if (!target) return [];
+  const path = [];
+  for (let current = target.parentId ? byId.get(target.parentId) : null; current; current = current.parentId ? byId.get(current.parentId) : null) path.unshift(current.id);
+  if (items.some(item => item.parentId === target.id)) path.push(target.id);
+  return path;
+}
+
+function renderCompactColumnPicker({ container, items, selectedIds, path = [], selectionMode = 'multiple', inputName, rootLabel, fallbackIcon, disabledIds = new Set(), onSelectionChange, onPathChange }) {
+  const compare = (left, right) => Number(left.sortOrder || 0) - Number(right.sortOrder || 0) || left.name.localeCompare(right.name, 'de', { sensitivity:'base', numeric:true });
+  const childrenOf = parentId => items.filter(item => item.parentId === parentId).sort(compare);
+  const validPath = [];
+  let parentId = null;
+  for (const id of path) {
+    const item = childrenOf(parentId).find(candidate => candidate.id === id);
+    if (!item || !childrenOf(item.id).length) break;
+    validPath.push(item.id);
+    parentId = item.id;
+  }
+  onPathChange(validPath);
+  const columns = [];
+  parentId = null;
+  for (let depth = 0; ; depth += 1) {
+    const parent = parentId ? items.find(item => item.id === parentId) : null;
+    const children = childrenOf(parentId);
+    const activeId = validPath[depth] || '';
+    const rows = children.map(item => {
+      const hasChildren = childrenOf(item.id).length > 0;
+      const disabled = disabledIds.has(item.id);
+      const type = selectionMode === 'single' ? 'radio' : 'checkbox';
+      const title = `<span aria-hidden="true">${iconSvg(entityIconName(item, fallbackIcon))}</span><strong>${escapeHtml(item.name)}</strong>${hasChildren ? '<i aria-hidden="true">›</i>' : ''}`;
+      return `<div class="compact-column-picker-row${item.id === activeId ? ' active' : ''}${selectedIds.has(item.id) ? ' selected' : ''}${disabled ? ' disabled' : ''}"><label class="compact-column-picker-check"><input type="${type}" name="${escapeHtml(inputName)}" value="${escapeHtml(item.id)}" aria-label="${escapeHtml(item.name)} auswählen"${selectedIds.has(item.id) ? ' checked' : ''}${disabled ? ' disabled' : ''}></label>${hasChildren ? `<button class="compact-column-picker-title" type="button" data-compact-column-open="${escapeHtml(item.id)}" data-compact-column-depth="${depth}" aria-label="Unterelemente von ${escapeHtml(item.name)} öffnen">${title}</button>` : `<span class="compact-column-picker-title">${title}</span>`}</div>`;
+    }).join('') || '<p class="compact-column-picker-empty">Keine Unterelemente</p>';
+    columns.push(`<section class="compact-column-picker-column"><header>${escapeHtml(parent?.name || rootLabel)}</header><div data-compact-column-clear="${depth}">${rows}</div></section>`);
+    if (!activeId) break;
+    parentId = activeId;
+  }
+  container.innerHTML = items.length ? `<div class="compact-column-picker">${columns.join('')}</div>` : `<p class="field-hint">Noch keine ${escapeHtml(rootLabel)} angelegt.</p>`;
+  container.querySelectorAll(`input[name="${inputName}"]`).forEach(input => input.onchange = () => {
+    if (selectionMode === 'single') {
+      selectedIds.clear();
+      container.querySelectorAll('.compact-column-picker-row.selected').forEach(row => row.classList.remove('selected'));
+    }
+    if (input.checked) selectedIds.add(input.value);
+    else selectedIds.delete(input.value);
+    input.closest('.compact-column-picker-row')?.classList.toggle('selected', input.checked);
+    onSelectionChange(selectedIds);
+  });
+  const rerender = nextPath => renderCompactColumnPicker({ container, items, selectedIds, path:nextPath, selectionMode, inputName, rootLabel, fallbackIcon, disabledIds, onSelectionChange, onPathChange });
+  container.querySelectorAll('[data-compact-column-open]').forEach(button => button.onclick = () => {
+    const nextPath = validPath.slice(0, Number(button.dataset.compactColumnDepth));
+    nextPath.push(button.dataset.compactColumnOpen);
+    rerender(nextPath);
+  });
+  container.querySelectorAll('[data-compact-column-clear]').forEach(column => column.onclick = event => {
+    if (event.target.closest('.compact-column-picker-row')) return;
+    rerender(validPath.slice(0, Number(column.dataset.compactColumnClear)));
+  });
+  container.querySelectorAll('.compact-column-picker-title:is(button)').forEach(title => title.onkeydown = event => {
+    if (!['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(event.key)) return;
+    event.preventDefault();
+    const titles = [...title.closest('.compact-column-picker-column').querySelectorAll('.compact-column-picker-title:is(button)')];
+    const index = titles.indexOf(title);
+    if (event.key === 'ArrowUp') titles[Math.max(0, index - 1)]?.focus();
+    if (event.key === 'ArrowDown') titles[Math.min(titles.length - 1, index + 1)]?.focus();
+    if (event.key === 'ArrowLeft') rerender(validPath.slice(0, Math.max(0, Number(title.dataset.compactColumnDepth))));
+    if (event.key === 'ArrowRight') title.click();
+  });
+}
+
+function renderInventoryCategoryPicker(form, requestedPath = null) {
+  const selectedIds = new Set(JSON.parse(form.dataset.categoryIds || '[]'));
+  renderCompactColumnPicker({
+    container:$('#inventory-item-category-options'),
+    items:state.inventoryCategories,
+    selectedIds,
+    path:requestedPath || JSON.parse(form.dataset.categoryPath || '[]'),
+    selectionMode:'multiple',
+    inputName:'categoryIds',
+    rootLabel:'Kategorien',
+    fallbackIcon:'folder',
+    onSelectionChange:next => { form.dataset.categoryIds = JSON.stringify([...next]); },
+    onPathChange:next => { form.dataset.categoryPath = JSON.stringify(next); },
+  });
+}
+
+async function openInventoryItemDialog(itemId = '', storageLocationId = '', categoryId = '') {
   const dialog = $('#inventory-item-dialog');
   const form = $('#inventory-item-form');
   const item = itemId ? state.inventoryItems.find(candidate => candidate.id === itemId) : null;
+  const storageLocation = !item && storageLocationId ? state.storageLocations.find(candidate => candidate.id === storageLocationId) : null;
   if (itemId && !item) return toast('Artikel nicht gefunden.');
+  if (storageLocationId && !storageLocation) return toast('Lagerort nicht gefunden.');
   if (!state.inventoryCategories.length) await loadInventoryCategories();
+  const category = !item && categoryId ? state.inventoryCategories.find(candidate => candidate.id === categoryId) : null;
+  if (categoryId && !category) return toast('Kategorie nicht gefunden.');
   form.reset();
+  form.dataset.storageLocationId = storageLocation?.id || '';
+  form.dataset.storageLocationAssigned = '0';
+  form.dataset.categoryContextId = category?.id || '';
   form.elements.itemId.value = item?.id || '';
   form.elements.name.value = item?.name || '';
   form.elements.trackingMode.value = item?.trackingMode || 'QUANTITY';
@@ -1760,14 +1855,21 @@ async function openInventoryItemDialog(itemId = '') {
   form.elements.articleNumber.value = item?.articleNumber || '';
   form.elements.barcode.value = item?.barcode || '';
   form.elements.defaultMinimumQuantity.value = item?.defaultMinimumQuantity ?? '';
+  form.elements.initialQuantity.value = '0';
   form.elements.merchantUrl.value = item?.merchantUrl || '';
   form.elements.image.value = '';
   form.dataset.removeImage = '0';
   setInventoryItemImagePreview(item?.hasImage ? inventoryItemImageUrl(item) : '');
   $('#inventory-item-image-remove').hidden = !item?.hasImage;
-  const selected = new Set(item?.categoryIds || []);
-  $('#inventory-item-category-options').innerHTML = inventoryCategoryTree(state.inventoryCategories).map(({ category, depth }) => `<label class="inventory-category-option" style="--category-depth:${depth}"><input type="checkbox" name="categoryIds" value="${escapeHtml(category.id)}"${selected.has(category.id) ? ' checked' : ''}><span>${iconSvg(entityIconName(category, 'folder'))}</span>${escapeHtml(category.name)}</label>`).join('') || '<p class="field-hint">Noch keine Kategorien angelegt.</p>';
-  $('#inventory-item-dialog-title').textContent = item ? 'Artikel bearbeiten' : 'Artikel anlegen';
+  const selected = new Set(item?.categoryIds || (category ? [category.id] : []));
+  form.dataset.categoryIds = JSON.stringify([...selected]);
+  renderInventoryCategoryPicker(form, initialCompactColumnPath(state.inventoryCategories, selected));
+  $('#inventory-item-dialog-title').textContent = item ? 'Artikel bearbeiten' : storageLocation ? `Artikel in ${storageLocation.name} anlegen` : category ? `Artikel in ${category.name} anlegen` : 'Artikel anlegen';
+  $('#inventory-item-dialog-copy').textContent = storageLocation
+    ? `Der neue Artikel wird nach dem Speichern automatisch dem Lagerort „${storageLocation.name}“ zugeordnet.`
+    : category
+      ? `Die Kategorie „${category.name}“ ist vorausgewählt; weitere Kategorien können ergänzt werden.`
+      : 'Der Artikel beschreibt den Gegenstand unabhängig von Lagerort und Bestand.';
   $('#inventory-item-error').textContent = '';
   syncInventoryItemTrackingMode();
   dialog.showModal();
@@ -1781,11 +1883,18 @@ const inventoryItemImageUrl = item => `/api/inventory-items/${encodeURIComponent
 function syncInventoryItemTrackingMode() {
   const form = $('#inventory-item-form');
   const collection = form.elements.trackingMode.value === 'COLLECTION';
+  const directStorageCreation = Boolean(form.dataset.storageLocationId) && !form.elements.itemId.value;
   form.querySelectorAll('[data-inventory-quantity-field]').forEach(field => { field.hidden = collection; });
+  $('[data-inventory-initial-field]', form).hidden = collection || !directStorageCreation;
   form.elements.stockUnit.disabled = collection;
   form.elements.stockUnit.required = !collection;
   form.elements.defaultMinimumQuantity.disabled = collection;
-  if (collection) form.elements.defaultMinimumQuantity.value = '';
+  form.elements.initialQuantity.disabled = collection || !directStorageCreation;
+  form.elements.initialQuantity.required = !collection && directStorageCreation;
+  if (collection) {
+    form.elements.defaultMinimumQuantity.value = '';
+    form.elements.initialQuantity.value = '0';
+  }
 }
 
 function setInventoryItemImagePreview(source = '') {
@@ -1978,6 +2087,23 @@ async function ensureActiveStorageLocations() {
 
 const storageLocationOptionLabel = location => storageLocationPath(location).map(part => part.name).join(' › ');
 
+function renderStockLocationPicker(form, locations, usedIds, requestedPath = null) {
+  const selectedIds = new Set(form.elements.storageLocationId.value ? [form.elements.storageLocationId.value] : []);
+  renderCompactColumnPicker({
+    container:$('#stock-entry-location-options'),
+    items:locations,
+    selectedIds,
+    path:requestedPath || JSON.parse(form.dataset.storageLocationPath || '[]'),
+    selectionMode:'single',
+    inputName:'storageLocationChoice',
+    rootLabel:'Lagerorte',
+    fallbackIcon:'archive',
+    disabledIds:usedIds,
+    onSelectionChange:next => { form.elements.storageLocationId.value = [...next][0] || ''; },
+    onPathChange:next => { form.dataset.storageLocationPath = JSON.stringify(next); },
+  });
+}
+
 async function openStockEntryDialog(itemId, entryId = '') {
   const item = state.inventoryItems.find(candidate => candidate.id === itemId) || state.inventoryStockItem;
   if (!item) return toast('Artikel nicht gefunden.');
@@ -1989,6 +2115,8 @@ async function openStockEntryDialog(itemId, entryId = '') {
   form.classList.toggle('stock-entry-editing', Boolean(entry));
   form.elements.entryId.value = entry?.id || '';
   form.elements.itemId.value = item.id;
+  form.elements.storageLocationId.value = entry?.storageLocationId || '';
+  form.dataset.storageLocationPath = '[]';
   form.elements.minimumQuantity.value = entry?.minimumQuantity ?? '';
   const wholeUnits = item.stockUnit.toLocaleLowerCase('de-DE') === 'stück';
   form.elements.initialQuantity.step = wholeUnits ? '1' : 'any';
@@ -1999,11 +2127,11 @@ async function openStockEntryDialog(itemId, entryId = '') {
   const used = new Set(state.inventoryStockEntries.filter(candidate => candidate.status === 'ACTIVE').map(candidate => candidate.storageLocationId));
   const available = entry ? locations.filter(location => location.id === entry.storageLocationId) : locations.filter(location => !used.has(location.id));
   if (!entry && !available.length) return toast('Alle aktiven Lagerorte sind bereits zugeordnet.');
-  form.elements.storageLocationId.innerHTML = available.map(location => `<option value="${escapeHtml(location.id)}">${escapeHtml(storageLocationOptionLabel(location))}</option>`).join('');
+  if (entry) $('#stock-entry-location-options').innerHTML = '';
+  else renderStockLocationPicker(form, locations, used);
   $('[data-stock-entry-location-field]').hidden = Boolean(entry);
   $('[data-stock-entry-initial-field]').hidden = Boolean(entry) || collection;
   $('[data-stock-entry-minimum-field]').hidden = collection;
-  form.elements.storageLocationId.required = !entry;
   form.elements.initialQuantity.required = !entry && !collection;
   form.elements.initialQuantity.disabled = collection;
   form.elements.minimumQuantity.disabled = collection;
@@ -2700,19 +2828,24 @@ function inventoryCategoryActionMenu(category) {
   return `<details class="action-menu storage-finder-column-menu"><summary aria-label="Menü für ${escapeHtml(category.name)}">${iconSvg('menu')}</summary><div class="action-menu-panel"><button class="menu-item" type="button" data-category-edit="${escapeHtml(category.id)}">Bearbeiten oder verschieben</button><button class="menu-item" type="button" data-category-copy-link="${escapeHtml(category.id)}">Link kopieren</button></div></details>`;
 }
 
+function inventoryCategoryCreateControl(parent) {
+  if (!parent) return '<button class="storage-finder-column-add" type="button" data-category-create="" aria-label="Hauptkategorie anlegen">+</button>';
+  return `<details class="action-menu storage-finder-create-menu"><summary aria-label="In ${escapeHtml(parent.name)} hinzufügen" title="Hinzufügen">+</summary><div class="action-menu-panel"><button class="menu-item" type="button" data-category-create-item="${escapeHtml(parent.id)}"><strong>Neuer Artikel</strong><small>Artikel anlegen und dieser Kategorie zuordnen</small></button><button class="menu-item" type="button" data-category-create="${escapeHtml(parent.id)}"><strong>Unterkategorie</strong><small>Eine Kategorie in ${escapeHtml(parent.name)} anlegen</small></button></div></details>`;
+}
+
 function inventoryCategoryRow(category, selectedId = '') {
   const selected = category.id === selectedId;
-  return `<article class="storage-finder-row${selected ? ' selected' : ''}" draggable="${mayEditProjects() ? 'true' : 'false'}" data-category-row="${escapeHtml(category.id)}" data-category-drop="${escapeHtml(category.id)}" data-category-drag="${escapeHtml(category.id)}"><a class="storage-finder-link" href="${inventoryCategoryHref(category.id)}"${selected ? ' aria-current="page"' : ''}><span class="storage-finder-icon storage-finder-location-icon" aria-hidden="true">${iconSvg(entityIconName(category, 'folder'))}</span><span class="storage-finder-copy"><strong>${escapeHtml(category.name)}</strong><small>${category.childCount ? `${category.childCount} Unterkategorie${category.childCount === 1 ? '' : 'n'}` : ''}${category.childCount && category.directItemCount ? ' · ' : ''}${category.directItemCount ? `${category.directItemCount} Artikel` : ''}</small></span></a></article>`;
+  return `<article class="storage-finder-row${selected ? ' selected' : ''}" draggable="${mayEditProjects() ? 'true' : 'false'}" data-category-row="${escapeHtml(category.id)}" data-category-drop="${escapeHtml(category.id)}" data-category-drag="${escapeHtml(category.id)}"><a class="storage-finder-link" href="${inventoryCategoryHref(category.id)}" data-storage-parent-href="${inventoryCategoryHref(category.parentId || '')}"${selected ? ' aria-current="page"' : ''}><span class="storage-finder-icon storage-finder-location-icon" aria-hidden="true">${iconSvg(entityIconName(category, 'folder'))}</span><span class="storage-finder-copy"><strong>${escapeHtml(category.name)}</strong><small>${category.childCount ? `${category.childCount} Unterkategorie${category.childCount === 1 ? '' : 'n'}` : ''}${category.childCount && category.directItemCount ? ' · ' : ''}${category.directItemCount ? `${category.directItemCount} Artikel` : ''}</small></span></a></article>`;
 }
 
 function inventoryCategoryItemRow(item, categoryId, selectedId = '') {
-  return `<article class="storage-finder-row storage-finder-item-row${item.id === selectedId ? ' selected' : ''}" draggable="${mayEditProjects() ? 'true' : 'false'}" data-category-item-drag="${escapeHtml(item.id)}"><a class="storage-finder-link" href="${inventoryCategoryHref(categoryId, item.id)}"${item.id === selectedId ? ' aria-current="page"' : ''}><span class="storage-finder-icon storage-finder-item-icon" aria-hidden="true">${iconSvg('tag')}</span><span class="storage-finder-copy"><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(item.stockUnit)}</small></span></a></article>`;
+  return `<article class="storage-finder-row storage-finder-item-row${item.id === selectedId ? ' selected' : ''}" draggable="${mayEditProjects() ? 'true' : 'false'}" data-category-item-drag="${escapeHtml(item.id)}"><a class="storage-finder-link" href="${inventoryCategoryHref(categoryId, item.id)}" data-storage-parent-href="${inventoryCategoryHref(categoryId)}"${item.id === selectedId ? ' aria-current="page"' : ''}><span class="storage-finder-icon storage-finder-item-icon" aria-hidden="true">${iconSvg('tag')}</span><span class="storage-finder-copy"><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(item.stockUnit)}</small></span></a></article>`;
 }
 
 function inventoryCategoryColumn(parent, children, items, selectedCategoryId = '', selectedItemId = '', current = false) {
   const parentId = parent?.id || '';
   const rows = children.map(category => inventoryCategoryRow(category, selectedCategoryId)).join('') + (parent ? items.map(item => inventoryCategoryItemRow(item, parent.id, selectedItemId)).join('') : '');
-  return `<section class="storage-finder-column" data-category-column="${escapeHtml(parentId)}"${current ? ' data-finder-current-column' : ''}><header><strong>${escapeHtml(parent?.name || 'Kategorien')}</strong><div class="storage-finder-column-actions">${mayEditProjects() ? `<button class="storage-finder-column-add" type="button" data-category-create="${escapeHtml(parentId)}" aria-label="Kategorie anlegen">+</button>` : ''}${inventoryCategoryActionMenu(parent)}</div></header><div class="storage-finder-list">${rows || `<div class="storage-finder-empty"><span>${parent ? 'Noch keine Unterkategorien oder Artikel' : 'Noch keine Kategorien'}</span></div>`}</div></section>`;
+  return `<section class="storage-finder-column" data-category-column="${escapeHtml(parentId)}"${current ? ' data-finder-current-column' : ''}><header><strong>${escapeHtml(parent?.name || 'Kategorien')}</strong><div class="storage-finder-column-actions">${mayEditProjects() ? inventoryCategoryCreateControl(parent) : ''}${inventoryCategoryActionMenu(parent)}</div></header><div class="storage-finder-list" data-category-clear-selection="${escapeHtml(parentId)}">${rows || `<div class="storage-finder-empty"><span>${parent ? 'Noch keine Unterkategorien oder Artikel' : 'Noch keine Kategorien'}</span></div>`}</div></section>`;
 }
 
 function inventoryCategoryItemInspector(category, item, stockData) {
@@ -2723,9 +2856,17 @@ function inventoryCategoryItemInspector(category, item, stockData) {
 
 function bindInventoryCategoryActions() {
   document.querySelectorAll('[data-category-create]').forEach(button => button.onclick = () => openInventoryCategoryDialog('', button.dataset.categoryCreate || null));
+  document.querySelectorAll('[data-category-create-item]').forEach(button => button.onclick = () => {
+    button.closest('details')?.removeAttribute('open');
+    openInventoryItemDialog('', '', button.dataset.categoryCreateItem);
+  });
   document.querySelectorAll('[data-category-edit]').forEach(button => button.onclick = () => openInventoryCategoryDialog(button.dataset.categoryEdit));
   document.querySelectorAll('[data-category-copy-link]').forEach(button => button.onclick = async () => { await navigator.clipboard.writeText(new URL(inventoryCategoryHref(button.dataset.categoryCopyLink), location.origin).href); toast('Kategorie-Link kopiert.'); });
   document.querySelectorAll('[data-category-item-remove]').forEach(button => button.onclick = async () => { if (!confirm('Artikel aus dieser Kategorie entfernen?')) return; await api(`/inventory-categories/${encodeURIComponent(button.dataset.categoryId)}/items/${encodeURIComponent(button.dataset.categoryItemRemove)}`, { method:'DELETE', body:'{}' }); await route(); });
+  document.querySelectorAll('[data-category-clear-selection]').forEach(list => list.onclick = event => {
+    if (event.target.closest('.storage-finder-row') || inventoryCategoryDrag || inventoryCategoryItemDrag) return;
+    location.href = inventoryCategoryHref(list.dataset.categoryClearSelection || '');
+  });
   document.querySelectorAll('[data-category-drag]').forEach(row => {
     row.ondragstart = event => { inventoryCategoryDrag = row.dataset.categoryDrag; inventoryCategoryItemDrag = null; event.dataTransfer.effectAllowed = 'move'; };
     row.ondragend = () => { inventoryCategoryDrag = null; };
@@ -2751,6 +2892,7 @@ function bindInventoryCategoryActions() {
       } catch (error) { toast(error.message); }
     };
   });
+  bindStorageFinderKeyboard();
 }
 
 async function renderInventoryCategories(categoryId = '', itemId = '') {
@@ -2887,8 +3029,8 @@ function storageLocationActionMenu(location) {
 
 function storageLocationCreateMenu(parent) {
   const parentId = parent?.id || '';
-  const context = parent ? ` in ${parent.name}` : '';
-  return `<details class="action-menu storage-finder-create-menu"><summary aria-label="Lagerort${context ? escapeHtml(context) : ''} anlegen" title="Lagerort anlegen">+</summary><div class="action-menu-panel"><button class="menu-item" type="button" data-storage-create-single="${escapeHtml(parentId)}"><strong>Einzelner Lagerort</strong><small>Einen frei benannten Lagerort anlegen</small></button><button class="menu-item" type="button" data-storage-create-series="${escapeHtml(parentId)}"><strong>Mehrere Lagerorte</strong><small>Eine fortlaufend nummerierte Reihe anlegen</small></button><button class="menu-item" type="button" data-storage-create-matrix="${escapeHtml(parentId)}"><strong>Lagermatrix</strong><small>Ein Raster wie A1, A2, B1 … anlegen</small></button></div></details>`;
+  const itemAction = parent ? `<button class="menu-item" type="button" data-storage-create-item="${escapeHtml(parentId)}"><strong>Neuer Artikel</strong><small>Artikel anlegen und diesem Lagerort zuordnen</small></button>` : '';
+  return `<details class="action-menu storage-finder-create-menu"><summary aria-label="${parent ? `In ${escapeHtml(parent.name)} hinzufügen` : 'Lagerort anlegen'}" title="${parent ? 'Hinzufügen' : 'Lagerort anlegen'}">+</summary><div class="action-menu-panel">${itemAction}<button class="menu-item" type="button" data-storage-create-single="${escapeHtml(parentId)}"><strong>Einzelner Lagerort</strong><small>Einen frei benannten Lagerort anlegen</small></button><button class="menu-item" type="button" data-storage-create-series="${escapeHtml(parentId)}"><strong>Mehrere Lagerorte</strong><small>Eine fortlaufend nummerierte Reihe anlegen</small></button><button class="menu-item" type="button" data-storage-create-matrix="${escapeHtml(parentId)}"><strong>Lagermatrix</strong><small>Ein Raster wie A1, A2, B1 … anlegen</small></button></div></details>`;
 }
 
 function storageLocationViewControls() {
@@ -3038,6 +3180,10 @@ function bindStorageFinderBlankNavigation(includeArchived = false) {
 }
 
 function bindStorageLocationActions() {
+  document.querySelectorAll('[data-storage-create-item]').forEach(button => button.onclick = () => {
+    button.closest('details')?.removeAttribute('open');
+    openInventoryItemDialog('', button.dataset.storageCreateItem);
+  });
   document.querySelectorAll('[data-storage-create-single],[data-storage-create-series],[data-storage-create-matrix]').forEach(button => button.onclick = () => {
     button.closest('details')?.removeAttribute('open');
     const mode = button.hasAttribute('data-storage-create-series') ? 'series' : button.hasAttribute('data-storage-create-matrix') ? 'matrix' : 'single';
@@ -6180,6 +6326,8 @@ $('#inventory-item-form').onsubmit = async event => {
   const form = event.currentTarget;
   if (!form.reportValidity()) return;
   const id = form.elements.itemId.value;
+  const storageLocationId = form.dataset.storageLocationId || '';
+  const categoryContextId = form.dataset.categoryContextId || '';
   const payload = {
     name:form.elements.name.value,
     trackingMode:form.elements.trackingMode.value,
@@ -6190,11 +6338,15 @@ $('#inventory-item-form').onsubmit = async event => {
     barcode:form.elements.barcode.value,
     defaultMinimumQuantity:form.elements.defaultMinimumQuantity.value || null,
     merchantUrl:form.elements.merchantUrl.value,
-    categoryIds:[...form.querySelectorAll('input[name="categoryIds"]:checked')].map(input => input.value),
+    categoryIds:JSON.parse(form.dataset.categoryIds || '[]'),
   };
   try {
     const saved = await api(id ? `/inventory-items/${encodeURIComponent(id)}` : '/inventory-items', { method:id ? 'PATCH' : 'POST', body:JSON.stringify(payload) });
     form.elements.itemId.value = saved.id;
+    if (storageLocationId && form.dataset.storageLocationAssigned !== '1') {
+      await api('/stock-entries', { method:'POST', body:JSON.stringify({ itemId:saved.id, storageLocationId, initialQuantity:payload.trackingMode === 'COLLECTION' ? 0 : form.elements.initialQuantity.value || 0, minimumQuantity:null, note:'' }) });
+      form.dataset.storageLocationAssigned = '1';
+    }
     const image = form.elements.image.files?.[0];
     if (image) {
       const imagePayload = new FormData();
@@ -6205,12 +6357,25 @@ $('#inventory-item-form').onsubmit = async event => {
     }
     $('#inventory-item-dialog').close();
     form.reset();
-    toast(id ? 'Artikel aktualisiert.' : 'Artikel angelegt.');
+    const storageLocation = storageLocationId ? state.storageLocations.find(candidate => candidate.id === storageLocationId) : null;
+    const category = categoryContextId ? state.inventoryCategories.find(candidate => candidate.id === categoryContextId) : null;
+    toast(storageLocation ? `Artikel angelegt und „${storageLocation.name}“ zugeordnet.` : category ? `Artikel angelegt und „${category.name}“ zugeordnet.` : id ? 'Artikel aktualisiert.' : 'Artikel angelegt.');
     if (id && location.hash.includes(`/item/${encodeURIComponent(id)}`)) await route();
-    else location.href = inventoryItemHref(saved.id, false, '');
+    else location.href = storageLocationId ? storageContextItemHref(storageLocationId, saved.id, false) : categoryContextId ? inventoryCategoryHref(categoryContextId, saved.id) : inventoryItemHref(saved.id, false, '');
   } catch (error) { $('#inventory-item-error').textContent = error.message; }
 };
 [...$('#inventory-item-form').elements.trackingMode].forEach(input => input.onchange = syncInventoryItemTrackingMode);
+document.querySelectorAll('[data-inventory-initial-step]').forEach(button => button.onclick = () => stepInventoryQuantity(
+  $('#inventory-item-form').elements.initialQuantity,
+  Number(button.dataset.inventoryInitialStep),
+));
+document.querySelectorAll('[data-inventory-minimum-step]').forEach(button => button.onclick = () => {
+  const input = $('#inventory-item-form').elements.defaultMinimumQuantity;
+  const direction = Number(button.dataset.inventoryMinimumStep);
+  const next = input.value === '' ? (direction > 0 ? 1 : 0) : Number(input.value) + direction;
+  input.value = String(Math.min(Number(input.max), Math.max(0, next)));
+  input.dispatchEvent(new Event('input', { bubbles:true }));
+});
 $('#inventory-item-note-form').onsubmit = async event => {
   event.preventDefault();
   const form = event.currentTarget;
@@ -6249,6 +6414,10 @@ $('#stock-entry-form').onsubmit = async event => {
   const form = event.currentTarget;
   if (!form.reportValidity()) return;
   const entryId = form.elements.entryId.value;
+  if (!entryId && !form.elements.storageLocationId.value) {
+    $('#stock-entry-error').textContent = 'Bitte einen Lagerort auswählen.';
+    return;
+  }
   const item = state.inventoryItems.find(candidate => candidate.id === form.elements.itemId.value) || state.inventoryStockItem;
   const collection = isLooseCollection(item);
   const payload = {
