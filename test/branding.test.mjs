@@ -168,8 +168,8 @@ test('Projektstatus-Anzeigen enthalten das Startdatum mit kurzer Beschriftung', 
   assert.match(ui, /desktop-status-label">Projektdaten[\s\S]+?mobileStatusToggle\('Statusdetails'\)[\s\S]+?project-hero-actions[\s\S]+?<small>Status<\/small>\$\{projectStatusControl\(p\)\}/);
   assert.match(ui, /project\.createdAt \? formatDate\(project\.createdAt\) : 'ohne'/);
   assert.match(ui, /p\.createdAt \? formatDate\(p\.createdAt\) : 'ohne'/);
-  assert.match(css, /\.project-status,\.project-priority \{[^}]+color:#626973; background:#e9ecef;/);
-  assert.match(css, /\.project-priority\.hoch \{ color:#a33d42; background:#f8e5e6; \}/);
+  assert.match(css, /\.project-status,\.project-priority \{[^}]+color:var\(--ink-soft\); background:var\(--interactive-hover\);/);
+  assert.match(css, /\.project-priority\.hoch \{ color:var\(--danger-strong\); background:var\(--danger-soft\); \}/);
   assert.match(css, /\.project-status-row > \.project-status,[^}]+\.project-hero-fact > \.project-priority \{ width:112px;/);
   assert.doesNotMatch(css, /\.project-status\.(idea|active|paused|completed|archived|trashed) \{/);
   assert.doesNotMatch(css, /\.project-priority\.(mittel|gering) \{/);
@@ -306,7 +306,7 @@ test('Persönliche Erinnerungen besitzen einen eigenständigen kompakten Bereich
   assert.doesNotMatch(css, /\.todo-waiting-list \.todo-item/);
   assert.match(css, /\.todo-list\[hidden\]\s*\{\s*display:none;/);
   assert.match(css, /\.todo-group\.todo-drop-parent > \.todo-children/);
-  assert.match(css, /\.todo-group\.has-children,\.todo-group\.todo-drop-parent\s*\{[^}]+border:1px[^}]+background:#fff/);
+  assert.match(css, /\.todo-group\.has-children,\.todo-group\.todo-drop-parent\s*\{[^}]+border:1px[^}]+background:var\(--surface\)/);
   assert.match(css, /\.todo-group\.has-children > \.todo-item,\.todo-group\.todo-drop-parent > \.todo-item\s*\{[^}]+border:0/);
   assert.match(css, /\.todo-subitem \.todo-item\s*\{[^}]+min-height:48px[^}]+border:0[^}]+background:transparent/);
   assert.doesNotMatch(css, /\.todo-subitem \.todo-item:(?:hover|focus-within)/);
@@ -369,9 +369,10 @@ test('Projekte besitzen eine vollständige DIN-A4-Druckansicht', async () => {
   assert.match(css, /@page \{ size:A4 portrait;/);
   assert.match(css, /break-inside:avoid-page/);
   assert.match(css, /project-print-header img[^}]+filter:grayscale\(1\) brightness\(0\)/);
-  assert.match(css, /project-print-facts > div[^}]+background:#fff/);
-  assert.match(css, /project-print-record[^}]+background:#fff/);
-  assert.match(css, /project-print-section-head > span[^}]+border:1px solid #202327[^}]+color:#202327[^}]+background:#fff/);
+  assert.match(css, /body\.project-print-mode \{[^}]+--surface:#fff;[^}]+color-scheme:light;/);
+  assert.match(css, /project-print-facts > div[^}]+background:var\(--surface\)/);
+  assert.match(css, /project-print-record[^}]+background:var\(--surface\)/);
+  assert.match(css, /project-print-section-head > span[^}]+border:1px solid #202327[^}]+color:#202327[^}]+background:var\(--surface\)/);
   assert.match(css, /project-print-section > \.project-print-records \{ margin-top:2\.5mm; \}/);
 });
 

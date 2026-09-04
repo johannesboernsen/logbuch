@@ -69,4 +69,6 @@ Historische Reservierungen behalten ihre IDs auch dann, wenn ein Projektelement 
 
 Attachments und die bestehenden Projekt-Notizen sind an Projektverzeichnisse und Projekt-Collections gebunden. Die Lagerkerntabellen besitzen deshalb vorerst Beschreibungs-/Notizfelder, aber noch keine unechte Wiederverwendung des Projekt-Attachment-Formats. Ein globales Attachment-/Notizmodell für Lagerorte, Artikel und Bestandseinträge wird zusammen mit den zugehörigen Schreib- und Backup-Flows ergänzt.
 
-Ebenfalls offen bleiben QR-/NFC-Identifier, Tags, benutzerdefinierte Eigenschaften, Inventur, ein tatsächlicher Einkaufs-/Bestellprozess sowie globale Lager-Anhänge und -Notizen.
+Artikel, Lagerorte und Kategorien besitzen inzwischen dauerhafte, ID-basierte Links. Sie können als Ziel für QR-Codes und NFC-Tags verwendet werden und bleiben beim Umbenennen oder Verschieben unverändert.
+
+Weiterhin offen bleiben direkt erzeugte QR-Etiketten, Tags, benutzerdefinierte Eigenschaften, Inventur, ein tatsächlicher Einkaufs-/Bestellprozess sowie globale Lager-Anhänge und -Notizen.

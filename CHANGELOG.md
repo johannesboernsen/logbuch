@@ -4,9 +4,22 @@ Hier werden die wichtigen Änderungen des Logbuchs festgehalten. Die Einträge s
 
 ## [Unveröffentlicht]
 
+Noch keine Änderungen.
+
+## [0.8.0] - 2026-09-04
+
+Das Logbuch lässt sich erstmals vollständig an die eigene Werkstatt anpassen und unterstützt den schnellen Aufbau größerer, dauerhaft verlinkbarer Lagerbestände.
+
 ### Wichtigste Änderungen
 
-- Noch keine Einträge.
+- Artikel lassen sich über das Plus-Menü eines geöffneten Lagerorts gesammelt aus einer festen CSV-Vorlage importieren; Lagerort, Anfangsbestand, Mindestbestände und Stammdaten werden dabei gemeinsam angelegt.
+- Vor dem Speichern zeigt eine validierte Vorschau alle Artikel und mögliche Dublettenhinweise. Der eigentliche Import speichert Artikel, Lagerplätze, Anfangsbuchungen und Kategoriezuordnungen atomar.
+- Für alle importierten Artikel können mehrere vorhandene Kategorien ausgewählt und direkt im Importdialog weitere Kategorien angelegt werden.
+- Jeder Artikel, Lagerort und jede Kategorie bietet nun einen dauerhaften, ID-basierten Link zum Kopieren. Die Links eignen sich für NFC-Tags und QR-Codes und bleiben auch nach Umbenennen oder Verschieben unverändert.
+- Administratoren können das sichtbare Erscheinungsbild der Instanz mit frei wählbarer Akzentfarbe, Anzeigename, Untertitel und eigenem Bildlogo gestalten. Hex-Eingabe, Farbfeld und RGB-Regler bleiben dabei synchron; passende helle Akzent- und Kontrastfarben werden automatisch berechnet.
+- Das Erscheinungsbild gilt bereits auf der Anmeldeseite für alle Benutzer. Ein eigenes Logo wird zusammen mit den übrigen Einstellungen im vollständigen Backup gesichert und wiederhergestellt, während der interne Produktname „Logbuch“ unverändert bleibt.
+- Das Erscheinungsbild bietet jetzt einen hellen, einen dunklen und einen automatischen Modus. Die Automatik folgt der Systemeinstellung des jeweiligen Geräts und reagiert auch auf Änderungen während der Nutzung.
+- Oberflächen, Eingabefelder und Dialoge verwenden gemeinsame semantische Farbvariablen. Fehler, Warnungen, Erfolge und Informationen bleiben unterscheidbar, werden aber in Helligkeit und Sättigung mit Akzentfarbe und Darstellungsmodus harmonisiert; Druck- und PDF-Ausgaben bleiben papiergerecht hell.
 
 ## [0.7.4] - 2026-09-03
 

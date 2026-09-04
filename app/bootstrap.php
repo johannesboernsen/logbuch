@@ -13,6 +13,7 @@ require_once __DIR__ . '/InventoryItemStore.php';
 require_once __DIR__ . '/InventoryCategoryStore.php';
 require_once __DIR__ . '/InventoryPurgeStore.php';
 require_once __DIR__ . '/InventoryStockStore.php';
+require_once __DIR__ . '/InventoryBatchImportStore.php';
 require_once __DIR__ . '/InventoryReservationStore.php';
 require_once __DIR__ . '/UpdateService.php';
 require_once __DIR__ . '/Application.php';

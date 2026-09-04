@@ -9,6 +9,8 @@ use PDO;
 final class Application
 {
     private const MAX_JSON_BYTES = 31_457_280;
+    private const MAX_APPEARANCE_LOGO_BYTES = 8_388_608;
+    private const APPEARANCE_LOGO_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
     private const FULL_BACKUP_VERSION = 1;
     private const FULL_BACKUP_MIN_SCHEMA = 17;
     private const FULL_BACKUP_TABLES = [
@@ -39,6 +41,7 @@ final class Application
     private readonly InventoryCategoryStore $inventoryCategories;
     private readonly InventoryPurgeStore $inventoryPurge;
     private readonly InventoryStockStore $inventoryStock;
+    private readonly InventoryBatchImportStore $inventoryBatchImport;
     private readonly InventoryReservationStore $inventoryReservations;
     private readonly UpdateService $updates;
 
@@ -55,6 +58,7 @@ final class Application
         $this->inventoryCategories = new InventoryCategoryStore($this->db);
         $this->inventoryPurge = new InventoryPurgeStore($this->db);
         $this->inventoryStock = new InventoryStockStore($this->db);
+        $this->inventoryBatchImport = new InventoryBatchImportStore($this->db);
         $this->inventoryReservations = new InventoryReservationStore($this->db, $this->projects);
         $this->updates = new UpdateService($storagePath, \logbuch_root_path(), $this->db, (string) (getenv('LOGBUCH_PLATFORM') ?: 'webhosting'));
     }
@@ -117,6 +121,12 @@ final class Application
             }
             if (!$this->installed()) {
                 throw new HttpError(503, 'Das Logbuch muss zuerst eingerichtet werden.');
+            }
+            if ($path === '/api/appearance' && $method === 'GET') {
+                $this->json(200, $this->appearanceSettings());
+            }
+            if ($path === '/api/appearance/logo' && $method === 'GET') {
+                $this->streamAppearanceLogo();
             }
             if ($path === '/api/login' && $method === 'POST') {
                 $user = $this->auth->login((string) ($input['user'] ?? ''), (string) ($input['password'] ?? ''), $this->clientIp(), (string) ($_SERVER['HTTP_USER_AGENT'] ?? ''));
@@ -239,6 +249,19 @@ final class Application
                     $items = array_map(static fn(array $item): array => [...$item, ...($overview[$item['id']] ?? ['physicalQuantity' => 0.0, 'reservedQuantity' => 0.0, 'availableQuantity' => 0.0])], $items);
                 }
                 $this->json(200, ['items' => $items]);
+            }
+            if ($path === '/api/inventory-items/import-template' && $method === 'GET') {
+                $this->csvDownload('logbuch-artikel-import.csv', $this->inventoryBatchImport->template());
+            }
+            if ($path === '/api/inventory-items/import-preview' && $method === 'POST') {
+                $this->requireEditor($user);
+                $this->json(200, $this->inventoryBatchImport->preview($input));
+            }
+            if ($path === '/api/inventory-items/import' && $method === 'POST') {
+                $this->requireEditor($user);
+                $result = $this->inventoryBatchImport->import($input, (string) $user['id']);
+                $this->audit($user['id'], 'inventory_items.batch_imported', (string) $result['storageLocationId'], 'count=' . $result['count'] . ';categories=' . count($result['categoryIds']));
+                $this->json(201, $result);
             }
             if ($path === '/api/inventory-items' && $method === 'POST') {
                 $this->requireEditor($user);
@@ -803,6 +826,22 @@ final class Application
                 $this->requireAdmin($user);
                 $this->json(200, $this->updateServerSettings($user, $input));
             }
+            if ($path === '/api/settings/appearance' && $method === 'GET') {
+                $this->requireAdmin($user);
+                $this->json(200, $this->appearanceSettings());
+            }
+            if ($path === '/api/settings/appearance' && $method === 'PATCH') {
+                $this->requireAdmin($user);
+                $this->json(200, $this->updateAppearanceSettings($user, $input));
+            }
+            if ($path === '/api/settings/appearance/logo' && $method === 'POST') {
+                $this->requireAdmin($user);
+                $this->json(201, $this->uploadAppearanceLogo($user, (array) ($_FILES['logo'] ?? [])));
+            }
+            if ($path === '/api/settings/appearance/logo' && $method === 'DELETE') {
+                $this->requireAdmin($user);
+                $this->json(200, $this->deleteAppearanceLogo($user));
+            }
             if ($path === '/api/import/backup-metadata' && $method === 'POST') {
                 $this->requireAdmin($user);
                 $this->json(200, $this->importBackupMetadata($user, $input));
@@ -949,6 +988,18 @@ final class Application
         exit;
     }
 
+    private function csvDownload(string $filename, string $content): never
+    {
+        http_response_code(200);
+        header('Content-Type: text/csv; charset=utf-8');
+        header('Content-Length: ' . strlen($content));
+        header('Content-Disposition: attachment; filename="' . $filename . '"');
+        header('X-Content-Type-Options: nosniff');
+        header('Cache-Control: private, no-store');
+        echo $content;
+        exit;
+    }
+
     private function streamAttachment(array $content, bool $download): never
     {
         $file = (array) ($content['metadata'] ?? []);
@@ -1077,6 +1128,8 @@ final class Application
             $metadata = $this->inventoryItems->imageMetadata((string) $item['id']);
             if ($metadata !== null) $inventoryItemImages[] = ['itemId' => (string) $item['id'], ...$metadata];
         }
+        $appearanceLogo = is_file($this->appearanceLogoPath()) ? readJsonFile($this->appearanceLogoMetadataPath()) : null;
+        if (!is_array($appearanceLogo) || !in_array((string) ($appearanceLogo['mimeType'] ?? ''), self::APPEARANCE_LOGO_MIME_TYPES, true)) $appearanceLogo = null;
         $manifest = [
             'format' => 'logbuch-full',
             'version' => self::FULL_BACKUP_VERSION,
@@ -1087,6 +1140,7 @@ final class Application
             'tables' => $tables,
             'projects' => $projects,
             'inventoryItemImages' => $inventoryItemImages,
+            'appearanceLogo' => $appearanceLogo,
         ];
 
         $temporaryDirectory = $this->storagePath . '/tmp';
@@ -1110,6 +1164,7 @@ final class Application
                 $content = $this->inventoryItems->imageContent((string) $image['itemId']);
                 $archive->addFile((string) $content['path'], 'inventory-items/' . $image['itemId'] . '/image.bin');
             }
+            if ($appearanceLogo !== null) $archive->addFile($this->appearanceLogoPath(), 'appearance/logo.bin');
             unset($archive);
             $filename = 'logbuch-vollbackup-' . gmdate('Y-m-d') . '.tar';
             http_response_code(200);
@@ -1770,6 +1825,112 @@ final class Application
         ];
     }
 
+    private function appearanceSettings(): array
+    {
+        $general = $this->getSetting('general', []);
+        $appearance = $this->getSetting('appearance', []);
+        $accentColor = strtolower((string) ($appearance['accentColor'] ?? '#e5322c'));
+        if (preg_match('/^#[0-9a-f]{6}$/', $accentColor) !== 1) $accentColor = '#e5322c';
+        $themeMode = (string) ($appearance['themeMode'] ?? 'light');
+        if (!in_array($themeMode, ['light', 'dark', 'auto'], true)) $themeMode = 'light';
+        $metadata = readJsonFile($this->appearanceLogoMetadataPath());
+        $hasLogo = is_file($this->appearanceLogoPath()) && in_array((string) ($metadata['mimeType'] ?? ''), self::APPEARANCE_LOGO_MIME_TYPES, true);
+        return [
+            'displayName' => (string) ($appearance['displayName'] ?? $general['siteName'] ?? 'Logbuch'),
+            'subtitle' => (string) ($appearance['subtitle'] ?? ''),
+            'accentColor' => $accentColor,
+            'themeMode' => $themeMode,
+            'hasLogo' => $hasLogo,
+            'logoUrl' => $hasLogo ? '/api/appearance/logo?v=' . rawurlencode((string) ($metadata['updatedAt'] ?? '1')) : null,
+            'logo' => $hasLogo ? $metadata : null,
+        ];
+    }
+
+    private function updateAppearanceSettings(array $actor, array $input): array
+    {
+        $current = $this->appearanceSettings();
+        $displayName = trim(preg_replace('/\s+/u', ' ', (string) ($input['displayName'] ?? $current['displayName'])) ?? '');
+        $subtitle = trim(preg_replace('/\s+/u', ' ', (string) ($input['subtitle'] ?? $current['subtitle'])) ?? '');
+        $accentColor = strtolower(trim((string) ($input['accentColor'] ?? $current['accentColor'])));
+        $themeMode = trim((string) ($input['themeMode'] ?? $current['themeMode']));
+        if (mb_strlen($displayName) < 2 || mb_strlen($displayName) > 80) throw new HttpError(422, 'Der Anzeigename muss 2–80 Zeichen lang sein.');
+        if (mb_strlen($subtitle) > 120) throw new HttpError(422, 'Der Untertitel darf höchstens 120 Zeichen lang sein.');
+        if (preg_match('/^#[0-9a-f]{6}$/', $accentColor) !== 1) throw new HttpError(422, 'Die Akzentfarbe muss als sechsstelliger Hex-Code angegeben werden.');
+        if (!in_array($themeMode, ['light', 'dark', 'auto'], true)) throw new HttpError(422, 'Der Darstellungsmodus muss hell, dunkel oder automatisch sein.');
+        $this->setSetting('appearance', ['displayName' => $displayName, 'subtitle' => $subtitle, 'accentColor' => $accentColor, 'themeMode' => $themeMode]);
+        $this->audit($actor['id'], 'appearance.settings_updated', $displayName, 'accentColor=' . $accentColor . '; themeMode=' . $themeMode);
+        return ['saved' => true, ...$this->appearanceSettings()];
+    }
+
+    private function uploadAppearanceLogo(array $actor, array $upload): array
+    {
+        $error = (int) ($upload['error'] ?? UPLOAD_ERR_NO_FILE);
+        if (in_array($error, [UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE], true)) throw new HttpError(413, 'Das Logo ist größer als 8 MB.');
+        $size = (int) ($upload['size'] ?? 0);
+        $source = (string) ($upload['tmp_name'] ?? '');
+        if ($error !== UPLOAD_ERR_OK || $size < 1 || !is_uploaded_file($source)) throw new HttpError(422, 'Das Logo konnte nicht hochgeladen werden.');
+        if ($size > self::MAX_APPEARANCE_LOGO_BYTES) throw new HttpError(413, 'Das Logo ist größer als 8 MB.');
+        $detectedMime = class_exists(\finfo::class) ? (new \finfo(FILEINFO_MIME_TYPE))->file($source) : false;
+        $mimeType = is_string($detectedMime) ? $detectedMime : '';
+        if (!in_array($mimeType, self::APPEARANCE_LOGO_MIME_TYPES, true) || @getimagesize($source) === false) throw new HttpError(415, 'Unterstützt werden JPEG-, PNG-, WebP- und GIF-Bilder.');
+
+        $directory = $this->appearanceDirectory();
+        if (!is_dir($directory) && !mkdir($directory, 0770, true) && !is_dir($directory)) throw new HttpError(507, 'Die Logoablage konnte nicht angelegt werden.');
+        $incoming = $directory . '/logo-' . bin2hex(random_bytes(6)) . '.tmp';
+        if (!move_uploaded_file($source, $incoming)) throw new HttpError(507, 'Das Logo konnte nicht gespeichert werden.');
+        try {
+            $metadata = [
+                'originalName' => mb_substr(trim(basename(str_replace('\\', '/', (string) ($upload['name'] ?? 'logo')))), 0, 240) ?: 'logo',
+                'mimeType' => $mimeType,
+                'size' => (int) filesize($incoming),
+                'sha256' => hash_file('sha256', $incoming) ?: '',
+                'updatedAt' => nowIso(),
+            ];
+            if (is_file($this->appearanceLogoPath()) && !@unlink($this->appearanceLogoPath())) throw new HttpError(507, 'Das bisherige Logo konnte nicht ersetzt werden.');
+            if (!rename($incoming, $this->appearanceLogoPath())) throw new HttpError(507, 'Das Logo konnte nicht aktiviert werden.');
+            writeJsonFile($this->appearanceLogoMetadataPath(), $metadata);
+        } finally {
+            if (is_file($incoming)) @unlink($incoming);
+        }
+        $this->audit($actor['id'], 'appearance.logo_updated', (string) $metadata['originalName']);
+        return $this->appearanceSettings();
+    }
+
+    private function deleteAppearanceLogo(array $actor): array
+    {
+        $removed = false;
+        foreach ([$this->appearanceLogoPath(), $this->appearanceLogoMetadataPath()] as $path) {
+            if (is_file($path)) {
+                if (!@unlink($path)) throw new HttpError(507, 'Das Logo konnte nicht entfernt werden.');
+                $removed = true;
+            }
+        }
+        $this->audit($actor['id'], 'appearance.logo_removed');
+        return ['removed' => $removed, ...$this->appearanceSettings()];
+    }
+
+    private function streamAppearanceLogo(): never
+    {
+        $metadata = readJsonFile($this->appearanceLogoMetadataPath());
+        if (!is_file($this->appearanceLogoPath()) || !in_array((string) ($metadata['mimeType'] ?? ''), self::APPEARANCE_LOGO_MIME_TYPES, true)) throw new HttpError(404, 'Kein eigenes Logo hinterlegt.');
+        $this->streamAttachment(['metadata' => $metadata, 'path' => $this->appearanceLogoPath()], false);
+    }
+
+    private function appearanceDirectory(): string
+    {
+        return rtrim($this->storagePath, '/') . '/appearance';
+    }
+
+    private function appearanceLogoPath(): string
+    {
+        return $this->appearanceDirectory() . '/logo.bin';
+    }
+
+    private function appearanceLogoMetadataPath(): string
+    {
+        return $this->appearanceDirectory() . '/logo.json';
+    }
+
     private function updateServerSettings(array $actor, array $input): array
     {
         $current = $this->serverSettings();
@@ -2021,6 +2182,14 @@ final class Application
             $entry = $archive[$path];
             if ($entry->getSize() < 1 || $entry->getSize() > InventoryItemStore::MAX_IMAGE_BYTES || $expectedSize !== $entry->getSize() || !preg_match('/^[a-f0-9]{64}$/', $expectedHash) || !hash_equals($expectedHash, hash_file('sha256', $entry->getPathname()) ?: '')) throw new HttpError(422, 'Größe oder Prüfsumme eines Artikelbilds im Vollbackup stimmt nicht.');
         }
+        $appearanceLogo = $manifest['appearanceLogo'] ?? null;
+        if ($appearanceLogo !== null) {
+            $entry = $archive['appearance/logo.bin'] ?? null;
+            $mimeType = is_array($appearanceLogo) ? (string) ($appearanceLogo['mimeType'] ?? '') : '';
+            $expectedSize = is_array($appearanceLogo) ? (int) ($appearanceLogo['size'] ?? 0) : 0;
+            $expectedHash = is_array($appearanceLogo) ? strtolower((string) ($appearanceLogo['sha256'] ?? '')) : '';
+            if (!is_array($appearanceLogo) || $entry === null || !in_array($mimeType, self::APPEARANCE_LOGO_MIME_TYPES, true) || $entry->getSize() < 1 || $entry->getSize() > self::MAX_APPEARANCE_LOGO_BYTES || $expectedSize !== $entry->getSize() || !preg_match('/^[a-f0-9]{64}$/', $expectedHash) || !hash_equals($expectedHash, hash_file('sha256', $entry->getPathname()) ?: '')) throw new HttpError(422, 'Das Logo im Vollbackup fehlt oder ist ungültig.');
+        }
     }
 
     private function restoreFullBackup(array $actor, array $manifest, \PharData $archive): array
@@ -2032,6 +2201,7 @@ final class Application
         }
         $projects = $manifest['projects'];
         $itemImages = (array) ($manifest['inventoryItemImages'] ?? []);
+        $appearanceLogo = $manifest['appearanceLogo'] ?? null;
         $projectsRoot = $this->storagePath . '/projects';
         $stagedRoot = $this->storagePath . '/tmp/full-restore-old-' . bin2hex(random_bytes(8));
         if (!is_dir($projectsRoot) || !rename($projectsRoot, $stagedRoot)) throw new HttpError(507, 'Die bestehende Projektablage konnte nicht für die Wiederherstellung gesichert werden.');
@@ -2051,6 +2221,23 @@ final class Application
             removeTree($projectsRoot);
             @rename($stagedRoot, $projectsRoot);
             throw new HttpError(507, 'Die neue Artikelbildablage konnte nicht angelegt werden.');
+        }
+        $appearanceRoot = $this->appearanceDirectory();
+        if (!is_dir($appearanceRoot) && !mkdir($appearanceRoot, 0770, true) && !is_dir($appearanceRoot)) {
+            removeTree($imagesRoot);
+            @rename($stagedImagesRoot, $imagesRoot);
+            removeTree($projectsRoot);
+            @rename($stagedRoot, $projectsRoot);
+            throw new HttpError(507, 'Die Logoablage konnte nicht vorbereitet werden.');
+        }
+        $stagedAppearanceRoot = $this->storagePath . '/tmp/full-restore-appearance-old-' . bin2hex(random_bytes(8));
+        if (!rename($appearanceRoot, $stagedAppearanceRoot) || (!mkdir($appearanceRoot, 0770, true) && !is_dir($appearanceRoot))) {
+            if (is_dir($stagedAppearanceRoot)) @rename($stagedAppearanceRoot, $appearanceRoot);
+            removeTree($imagesRoot);
+            @rename($stagedImagesRoot, $imagesRoot);
+            removeTree($projectsRoot);
+            @rename($stagedRoot, $projectsRoot);
+            throw new HttpError(507, 'Die neue Logoablage konnte nicht angelegt werden.');
         }
 
         $transactionActive = false;
@@ -2089,6 +2276,11 @@ final class Application
                 $path = 'inventory-items/' . $image['itemId'] . '/image.bin';
                 $this->inventoryItems->importImageFromPath((string) $image['itemId'], $archive[$path]->getPathname(), $image);
             }
+            if (is_array($appearanceLogo)) {
+                if (!copy($archive['appearance/logo.bin']->getPathname(), $this->appearanceLogoPath())) throw new HttpError(507, 'Das Logo konnte nicht aus dem Vollbackup wiederhergestellt werden.');
+                @chmod($this->appearanceLogoPath(), 0660);
+                writeJsonFile($this->appearanceLogoMetadataPath(), $appearanceLogo);
+            }
             $this->audit($actor['id'], 'data.full_backup_restored', (string) count($projects), 'files=' . $filesImported . ';itemImages=' . count($itemImages));
             $this->db->exec('COMMIT');
             $transactionActive = false;
@@ -2100,12 +2292,15 @@ final class Application
             if (is_dir($stagedRoot) && !@rename($stagedRoot, $projectsRoot)) error_log('Die alte Projektablage konnte nach einem fehlgeschlagenen Vollbackup-Import nicht zurückverschoben werden.');
             try { removeTree($imagesRoot); } catch (\Throwable $cleanupError) { error_log((string) $cleanupError); }
             if (is_dir($stagedImagesRoot) && !@rename($stagedImagesRoot, $imagesRoot)) error_log('Die alte Artikelbildablage konnte nach einem fehlgeschlagenen Vollbackup-Import nicht zurückverschoben werden.');
+            try { removeTree($appearanceRoot); } catch (\Throwable $cleanupError) { error_log((string) $cleanupError); }
+            if (is_dir($stagedAppearanceRoot) && !@rename($stagedAppearanceRoot, $appearanceRoot)) error_log('Die alte Logoablage konnte nach einem fehlgeschlagenen Vollbackup-Import nicht zurückverschoben werden.');
             if ($error instanceof HttpError) throw $error;
             if ($error instanceof \PDOException) throw new HttpError(422, 'Das Vollbackup enthält inkonsistente Daten.');
             throw $error;
         }
         try { removeTree($stagedRoot); } catch (\Throwable $cleanupError) { error_log((string) $cleanupError); }
         try { removeTree($stagedImagesRoot); } catch (\Throwable $cleanupError) { error_log((string) $cleanupError); }
+        try { removeTree($stagedAppearanceRoot); } catch (\Throwable $cleanupError) { error_log((string) $cleanupError); }
 
         return [
             'restored' => true,

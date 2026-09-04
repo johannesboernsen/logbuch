@@ -1,11 +1,13 @@
 const $ = (selector, root = document) => root.querySelector(selector);
-const state = { user: null, users: [], sessions: [], audit: [], tags: [], folders: [], storageLocations:[], storageLocationsIncludeArchived:false, storageLocationSort:'name', storageLocationSortDirection:'asc', storageLocationsShowEmpty:true, inventoryCategories:[], inventoryItems:[], inventoryItemsIncludeArchived:false, inventoryItemQuery:'', inventoryItemCategoryFilter:'', inventoryItemSort:'name', inventoryItemSortDirection:'asc', inventoryItemNotes:[], inventoryStockEntries:[], inventoryStockTransactions:[], inventoryStockItem:null, inventoryReservations:[], projectReservations:[], reservationProjects:[], todos:[], todosOpenOpen:true, todosCompletedOpen:false, collapsedTodoGroups:{}, editingTodoId:null, todoRepeatTimer:null, iconLibrary:null, currentFolderId:null, projectStatusFilter:'all', server: null, system: null, storage:null, update:null, projects: [], current: null, activeTab: 'entries', activeSettings:'general', fileViewerId:null, visibleProjectFiles:50, activityObserver:null, timelineObserver:null, overviewGridObservers:[], projectSort: { field:'status', direction:'asc' }, archiveSort: { field:'createdAt', direction:'desc' }, projectSearch: { active:'', archived:'' }, projectTagFilter:{ active:{ ids:[], mode:'all' }, archived:{ ids:[], mode:'all' } }, projectDialogTagIds:[], projectTagDraftOpen:false, projectTagSearchOpen:false, collapsedProjectFolders:false, collapsedProjectStatusGroups:{ idea:false, active:false, paused:false, completed:false }, collapsedLogSections:{ tasks:false, entries:false }, collapsedProjectSections:{} };
+const state = { user: null, users: [], sessions: [], audit: [], tags: [], folders: [], storageLocations:[], storageLocationsIncludeArchived:false, storageLocationSort:'name', storageLocationSortDirection:'asc', storageLocationsShowEmpty:true, inventoryCategories:[], inventoryItems:[], inventoryItemsIncludeArchived:false, inventoryItemQuery:'', inventoryItemCategoryFilter:'', inventoryItemSort:'name', inventoryItemSortDirection:'asc', inventoryItemNotes:[], inventoryStockEntries:[], inventoryStockTransactions:[], inventoryStockItem:null, inventoryBatchCsv:'', inventoryBatchPreview:null, inventoryReservations:[], projectReservations:[], reservationProjects:[], todos:[], todosOpenOpen:true, todosCompletedOpen:false, collapsedTodoGroups:{}, editingTodoId:null, todoRepeatTimer:null, iconLibrary:null, currentFolderId:null, projectStatusFilter:'all', appearance:{ displayName:'Logbuch', subtitle:'', accentColor:'#e5322c', themeMode:'light', hasLogo:false, logoUrl:null }, server: null, system: null, storage:null, update:null, projects: [], current: null, activeTab: 'entries', activeSettings:'general', fileViewerId:null, visibleProjectFiles:50, activityObserver:null, timelineObserver:null, overviewGridObservers:[], projectSort: { field:'status', direction:'asc' }, archiveSort: { field:'createdAt', direction:'desc' }, projectSearch: { active:'', archived:'' }, projectTagFilter:{ active:{ ids:[], mode:'all' }, archived:{ ids:[], mode:'all' } }, projectDialogTagIds:[], projectTagDraftOpen:false, projectTagSearchOpen:false, collapsedProjectFolders:false, collapsedProjectStatusGroups:{ idea:false, active:false, paused:false, completed:false }, collapsedLogSections:{ tasks:false, entries:false }, collapsedProjectSections:{} };
 let iconLibraryPromise = null;
 let storageDragEntry = null;
 let storageLocationDrag = null;
 let inventoryCategoryDrag = null;
 let inventoryCategoryItemDrag = null;
 let inventoryItemImagePreviewUrl = '';
+let appearanceLogoPreviewUrl = '';
+const systemDarkMode = window.matchMedia('(prefers-color-scheme: dark)');
 const api = async (path, options = {}) => {
   const method = (options.method || 'GET').toUpperCase();
   const csrf = !['GET','HEAD'].includes(method) && state.user?.csrfToken ? { 'X-Logbuch-CSRF': state.user.csrfToken } : {};
@@ -21,6 +23,107 @@ const api = async (path, options = {}) => {
   return data;
 };
 const escapeHtml = value => String(value ?? '').replace(/[&<>'"]/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[char]));
+const normalizeHexColor = value => {
+  const text = String(value || '').trim().toLowerCase();
+  if (/^#[0-9a-f]{6}$/.test(text)) return text;
+  if (/^#[0-9a-f]{3}$/.test(text)) return `#${[...text.slice(1)].map(character => character.repeat(2)).join('')}`;
+  return null;
+};
+const hexRgb = value => {
+  const color = normalizeHexColor(value) || '#e5322c';
+  return [1,3,5].map(index => Number.parseInt(color.slice(index, index + 2), 16));
+};
+const rgbHex = rgb => `#${rgb.map(value => Math.max(0, Math.min(255, Math.round(Number(value) || 0))).toString(16).padStart(2, '0')).join('')}`;
+const mixHex = (source, target, amount) => rgbHex(hexRgb(source).map((value, index) => value + (hexRgb(target)[index] - value) * amount));
+const colorLuminance = color => {
+  const channels = hexRgb(color).map(value => { const channel = value / 255; return channel <= .03928 ? channel / 12.92 : ((channel + .055) / 1.055) ** 2.4; });
+  return channels[0] * .2126 + channels[1] * .7152 + channels[2] * .0722;
+};
+const colorContrast = (left, right) => { const values = [colorLuminance(left), colorLuminance(right)].sort((a,b) => b - a); return (values[0] + .05) / (values[1] + .05); };
+function readableAccent(color, background = '#ffffff') {
+  if (colorContrast(color, background) >= 4.5) return color;
+  const target = colorLuminance(background) > .5 ? '#000000' : '#ffffff';
+  for (let amount = .08; amount <= 1; amount += .04) {
+    const candidate = mixHex(color, target, amount);
+    if (colorContrast(candidate, background) >= 4.5) return candidate;
+  }
+  return target;
+}
+function applyAccentColor(value, root = document.documentElement) {
+  const accent = normalizeHexColor(value) || '#e5322c';
+  const dark = document.documentElement.dataset.theme === 'dark';
+  const surface = dark ? '#171a1f' : '#ffffff';
+  const strong = readableAccent(accent, surface);
+  const [red, green, blue] = hexRgb(accent);
+  const [strongRed, strongGreen, strongBlue] = hexRgb(strong);
+  const contrast = colorContrast(accent, '#ffffff') >= colorContrast(accent, '#202327') ? '#ffffff' : '#202327';
+  const [contrastRed, contrastGreen, contrastBlue] = hexRgb(contrast);
+  const properties = {
+    '--brand-red':accent,
+    '--red':strong,
+    '--red-soft':mixHex(accent, surface, dark ? .82 : .88),
+    '--accent-soft-light':mixHex(accent, surface, dark ? .9 : .94),
+    '--accent-border':mixHex(accent, surface, dark ? .54 : .62),
+    '--accent-border-strong':mixHex(accent, surface, dark ? .34 : .38),
+    '--accent-contrast':contrast,
+    '--accent-contrast-rgb':`${contrastRed},${contrastGreen},${contrastBlue}`,
+    '--accent-rgb':`${red},${green},${blue}`,
+    '--accent-strong-rgb':`${strongRed},${strongGreen},${strongBlue}`,
+    '--accent-level-1':mixHex(accent, surface, dark ? .7 : .72),
+    '--accent-level-2':mixHex(accent, surface, dark ? .46 : .48),
+    '--accent-level-3':mixHex(accent, surface, dark ? .22 : .24),
+  };
+  const semanticAnchors = { danger:'#d64545', warning:'#b7791f', success:'#2f855a', info:'#3478c0' };
+  Object.entries(semanticAnchors).forEach(([name, anchor]) => {
+    const harmonized = mixHex(anchor, accent, .1);
+    const soft = mixHex(harmonized, surface, dark ? .82 : .88);
+    properties[`--${name}`] = harmonized;
+    properties[`--${name}-strong`] = readableAccent(harmonized, soft);
+    properties[`--${name}-soft`] = soft;
+    properties[`--${name}-border`] = mixHex(harmonized, surface, dark ? .5 : .62);
+  });
+  Object.entries(properties).forEach(([property, propertyValue]) => root.style.setProperty(property, propertyValue));
+}
+function resolvedThemeMode(mode = state.appearance.themeMode) {
+  return mode === 'dark' || (mode === 'auto' && systemDarkMode.matches) ? 'dark' : 'light';
+}
+function applyThemeMode(mode = state.appearance.themeMode) {
+  const normalized = ['light','dark','auto'].includes(mode) ? mode : 'light';
+  const resolved = resolvedThemeMode(normalized);
+  document.documentElement.dataset.theme = resolved;
+  document.documentElement.dataset.themeMode = normalized;
+  document.documentElement.style.colorScheme = resolved;
+  document.querySelector('[data-theme-color]')?.setAttribute('content', resolved === 'dark' ? '#101216' : '#f6f7f9');
+  applyAccentColor(state.appearance.accentColor);
+}
+function applyAppearance(appearance) {
+  state.appearance = { ...state.appearance, ...(appearance || {}) };
+  applyThemeMode(state.appearance.themeMode);
+  document.querySelectorAll('[data-brand]').forEach(brand => {
+    const name = brand.querySelector('[data-brand-name]');
+    const subtitle = brand.querySelector('[data-brand-subtitle]');
+    const wordmark = brand.querySelector('[data-brand-wordmark]');
+    const logo = brand.querySelector('[data-brand-logo]');
+    brand.setAttribute('aria-label', state.appearance.displayName || 'Logbuch');
+    if (name) name.textContent = state.appearance.displayName || 'Logbuch';
+    if (subtitle) { subtitle.textContent = state.appearance.subtitle || ''; subtitle.hidden = !state.appearance.subtitle; }
+    if (logo) {
+      logo.hidden = !state.appearance.hasLogo;
+      if (state.appearance.hasLogo && state.appearance.logoUrl) logo.src = state.appearance.logoUrl;
+      else logo.removeAttribute('src');
+      logo.onerror = () => { logo.hidden = true; if (wordmark) wordmark.hidden = false; };
+    }
+    if (wordmark) wordmark.hidden = Boolean(state.appearance.hasLogo);
+  });
+}
+systemDarkMode.addEventListener('change', () => {
+  if (state.appearance.themeMode === 'auto') applyThemeMode('auto');
+});
+async function loadAppearance() {
+  try { applyAppearance(await api('/appearance')); }
+  catch { applyAppearance(state.appearance); }
+  return state.appearance;
+}
 const today = () => {
   const value = new Date();
   const local = new Date(value.getTime() - value.getTimezoneOffset() * 60000);
@@ -492,6 +595,10 @@ function inventoryItemManagementActions(item, archived = item.status === 'ARCHIV
   return archived
     ? `<button class="menu-item" type="button" data-inventory-item-restore="${escapeHtml(item.id)}">Wiederherstellen</button>`
     : `${includeEdit ? `<button class="menu-item" type="button" data-inventory-item-edit="${escapeHtml(item.id)}">Artikel bearbeiten</button>` : ''}<button class="menu-item danger" type="button" data-inventory-item-archive="${escapeHtml(item.id)}" data-inventory-item-name="${escapeHtml(item.name)}">Archivieren</button>`;
+}
+
+function inventoryItemPermanentLinkAction(item) {
+  return `<button class="menu-item" type="button" data-inventory-item-copy-link="${escapeHtml(item.id)}">Dauerhaften Link kopieren</button>`;
 }
 
 function inventoryItemDetailsButton(item, includeArchived = item.status === 'ARCHIVED') {
@@ -1740,6 +1847,7 @@ const storageLocationHref = (id = '', includeArchived = state.storageLocationsIn
   const params = storageViewParams(includeArchived);
   return `/#/inventory${id ? `/location/${encodeURIComponent(id)}` : ''}${params.size ? `?${params}` : ''}`;
 };
+const permanentStorageLocationHref = id => `/#/inventory/location/${encodeURIComponent(id)}`;
 const storageContextItemHref = (locationId, itemId, includeArchived = state.storageLocationsIncludeArchived) => {
   const params = storageViewParams(includeArchived);
   return `/#/inventory/location/${encodeURIComponent(locationId)}/item/${encodeURIComponent(itemId)}${params.size ? `?${params}` : ''}`;
@@ -1753,6 +1861,7 @@ const inventoryItemHref = (id = '', includeArchived = state.inventoryItemsInclud
   if (direction === 'desc') params.set('direction', 'desc');
   return `/#/inventory/${id ? `item/${encodeURIComponent(id)}` : 'items'}${params.size ? `?${params}` : ''}`;
 };
+const permanentInventoryItemHref = id => `/#/inventory/item/${encodeURIComponent(id)}`;
 const inventoryReplenishmentHref = (query = '', includeSatisfied = false, sort = 'urgency') => {
   const params = new URLSearchParams();
   if (query) params.set('q', query);
@@ -1873,6 +1982,57 @@ function renderInventoryCategoryPicker(form, requestedPath = null) {
   });
 }
 
+function renderInventoryBatchCategoryPicker(form, requestedPath = null) {
+  const selectedIds = new Set(JSON.parse(form.dataset.categoryIds || '[]'));
+  renderCompactColumnPicker({
+    container:$('#inventory-batch-category-options'),
+    items:state.inventoryCategories,
+    selectedIds,
+    path:requestedPath || JSON.parse(form.dataset.categoryPath || '[]'),
+    selectionMode:'multiple',
+    inputName:'batchCategoryIds',
+    rootLabel:'Kategorien',
+    fallbackIcon:'folder',
+    onSelectionChange:next => { form.dataset.categoryIds = JSON.stringify([...next]); },
+    onPathChange:next => { form.dataset.categoryPath = JSON.stringify(next); },
+  });
+}
+
+function renderInventoryBatchPreview(preview = null) {
+  const container = $('#inventory-batch-preview');
+  const submit = $('#inventory-batch-import-submit');
+  state.inventoryBatchPreview = preview;
+  submit.disabled = !preview?.valid;
+  if (!preview) {
+    container.hidden = true;
+    container.innerHTML = '';
+    return;
+  }
+  const rows = preview.rows || [];
+  const warningCopy = preview.warningCount ? `${preview.warningCount} Dublettenhinweis${preview.warningCount === 1 ? '' : 'e'}` : 'Keine Dublettenhinweise';
+  container.innerHTML = `<div class="inventory-batch-preview-head"><div><strong>Vorschau: ${rows.length} ${rows.length === 1 ? 'Artikel' : 'Artikel'}</strong><small>${escapeHtml(warningCopy)} · noch nichts gespeichert</small></div><span class="setting-status ${preview.warningCount ? 'warning' : 'ok'}">${preview.warningCount ? 'Prüfen' : 'Bereit'}</span></div><div class="inventory-batch-preview-table-wrap"><table><thead><tr><th>Zeile</th><th>Artikel</th><th>Anfangsbestand</th><th>Min. lokal / global</th><th>Hinweis</th></tr></thead><tbody>${rows.map(row => `<tr${row.warnings?.length ? ' class="has-warning"' : ''}><td>${row.rowNumber}</td><td><strong>${escapeHtml(row.name)}</strong><small>${escapeHtml([row.manufacturer, row.articleNumber].filter(Boolean).join(' · ') || row.stockUnit)}</small></td><td>${escapeHtml(formatInventoryQuantity(row.initialQuantity))} ${escapeHtml(row.stockUnit)}</td><td>${row.localMinimumQuantity === null ? '–' : escapeHtml(formatInventoryQuantity(row.localMinimumQuantity))} / ${row.defaultMinimumQuantity === null ? '–' : escapeHtml(formatInventoryQuantity(row.defaultMinimumQuantity))}</td><td>${row.warnings?.length ? row.warnings.map(warning => `<span>${escapeHtml(warning)}</span>`).join('') : '–'}</td></tr>`).join('')}</tbody></table></div>`;
+  container.hidden = false;
+}
+
+async function openInventoryBatchImportDialog(storageLocationId) {
+  const locationEntry = state.storageLocations.find(location => location.id === storageLocationId);
+  if (!locationEntry) return toast('Lagerort nicht gefunden.');
+  if (!state.inventoryCategories.length) await loadInventoryCategories();
+  const form = $('#inventory-batch-import-form');
+  form.reset();
+  form.elements.storageLocationId.value = locationEntry.id;
+  form.elements.newCategoryParentId.innerHTML = inventoryCategoryParentOptions('', null);
+  form.dataset.categoryIds = '[]';
+  form.dataset.categoryPath = '[]';
+  state.inventoryBatchCsv = '';
+  renderInventoryBatchCategoryPicker(form);
+  renderInventoryBatchPreview();
+  $('#inventory-batch-import-copy').textContent = `Alle Artikel werden dem Lagerort „${locationEntry.name}“ zugeordnet.`;
+  $('#inventory-batch-import-error').textContent = '';
+  $('#inventory-batch-category-error').textContent = '';
+  $('#inventory-batch-import-dialog').showModal();
+}
+
 async function openInventoryItemDialog(itemId = '', storageLocationId = '', categoryId = '') {
   const dialog = $('#inventory-item-dialog');
   const form = $('#inventory-item-form');
@@ -1963,7 +2123,7 @@ function openInventoryItemNoteDialog(itemId, noteId = '') {
 
 function inventoryItemRow(item, selectedId = '', categoryId = '', sort = 'name', direction = 'asc') {
   const archived = item.status === 'ARCHIVED';
-  const actions = contextActionMenu(`Aktionen für ${item.name}`, inventoryItemManagementActions(item, archived), { className:'inventory-item-menu' });
+  const actions = contextActionMenu(`Aktionen für ${item.name}`, `${inventoryItemManagementActions(item, archived)}${inventoryItemPermanentLinkAction(item)}`, { className:'inventory-item-menu' });
   const href = inventoryItemHref(item.id, state.inventoryItemsIncludeArchived, state.inventoryItemQuery, categoryId, sort, direction);
   const quantity = value => `${formatInventoryQuantity(value || 0)} ${escapeHtml(item.stockUnit)}`;
   const collection = isLooseCollection(item);
@@ -2093,7 +2253,7 @@ function inventoryItemDetail(item, includeArchived, stockData = { entries:[], su
   const collection = isLooseCollection(item);
   const actions = inventoryItemManagementActions(item, archived, { includeEdit:false });
   const merchant = item.merchantUrl ? `<a class="menu-item storage-item-menu-link" href="${escapeHtml(item.merchantUrl)}" target="_blank" rel="noopener noreferrer">Händler öffnen</a>` : '';
-  const menu = contextActionMenu(`Aktionen für ${item.name}`, `${actions}${merchant}<button class="menu-item" type="button" data-inventory-item-copy-link="${escapeHtml(item.id)}">Link kopieren</button>`, { className:'storage-finder-column-menu storage-item-column-menu' });
+  const menu = contextActionMenu(`Aktionen für ${item.name}`, `${actions}${merchant}${inventoryItemPermanentLinkAction(item)}`, { className:'storage-finder-column-menu storage-item-column-menu' });
   const close = `<a class="inventory-item-detail-close" href="${inventoryItemHref('', includeArchived, state.inventoryItemQuery, categoryId, sort, direction)}" aria-label="Artikelansicht schließen" title="Artikelansicht schließen">×</a>`;
   const edit = inventoryItemEditButton(item, archived);
   const entries = stockData.entries || [];
@@ -2644,11 +2804,7 @@ function bindInventoryItemActions() {
       await route();
     } catch (error) { toast(error.message); }
   });
-  document.querySelectorAll('[data-inventory-item-copy-link]').forEach(button => button.onclick = async () => {
-    const url = new URL(inventoryItemHref(button.dataset.inventoryItemCopyLink, false, ''), location.origin).href;
-    try { await navigator.clipboard.writeText(url); toast('Artikel-Link kopiert.'); }
-    catch { toast('Der Link konnte nicht kopiert werden.'); }
-  });
+  bindInventoryPermanentLinks();
   document.querySelectorAll('[data-inventory-item-note-create]').forEach(button => button.onclick = () => openInventoryItemNoteDialog(button.dataset.inventoryItemNoteCreate));
   document.querySelectorAll('[data-inventory-item-note-edit]').forEach(button => button.onclick = () => openInventoryItemNoteDialog(button.dataset.inventoryItem, button.dataset.inventoryItemNoteEdit));
   document.querySelectorAll('[data-inventory-item-note-delete]').forEach(button => button.onclick = async () => {
@@ -2848,6 +3004,7 @@ function storageLocationPath(location, byId = new Map(state.storageLocations.map
 }
 
 const inventoryCategoryHref = (id = '', itemId = '') => `/#/inventory/${id ? `category/${encodeURIComponent(id)}${itemId ? `/item/${encodeURIComponent(itemId)}` : ''}` : 'categories'}`;
+const permanentInventoryCategoryHref = id => `/#/inventory/category/${encodeURIComponent(id)}`;
 
 function inventoryCategoryTree(categories) {
   const compare = (left, right) => Number(left.sortOrder || 0) - Number(right.sortOrder || 0) || left.name.localeCompare(right.name, 'de', { sensitivity:'base', numeric:true });
@@ -2891,8 +3048,9 @@ function openInventoryCategoryDialog(categoryId = '', parentId = null) {
 }
 
 function inventoryCategoryActionMenu(category) {
-  if (!category || !mayEditProjects()) return '';
-  const actions = `<button class="menu-item" type="button" data-category-edit="${escapeHtml(category.id)}">Bearbeiten oder verschieben</button><button class="menu-item" type="button" data-category-copy-link="${escapeHtml(category.id)}">Link kopieren</button>`;
+  if (!category) return '';
+  const management = mayEditProjects() ? `<button class="menu-item" type="button" data-category-edit="${escapeHtml(category.id)}">Bearbeiten oder verschieben</button>` : '';
+  const actions = `${management}<button class="menu-item" type="button" data-category-copy-link="${escapeHtml(category.id)}">Dauerhaften Link kopieren</button>`;
   return contextActionMenu(`Aktionen für ${category.name}`, actions, { className:'storage-finder-column-menu' });
 }
 
@@ -2918,7 +3076,7 @@ function inventoryCategoryColumn(parent, children, items, selectedCategoryId = '
 
 function inventoryCategoryItemInspector(category, item, stockData) {
   const categories = (item.categoryIds || []).map(id => state.inventoryCategories.find(candidate => candidate.id === id)).filter(Boolean);
-  const menu = `<details class="action-menu storage-finder-column-menu"><summary aria-label="Menü für ${escapeHtml(item.name)}">${iconSvg('ellipsis')}</summary><div class="action-menu-panel">${mayEditProjects() && (item.categoryIds || []).includes(category.id) ? `<button class="menu-item danger" type="button" data-category-item-remove="${escapeHtml(item.id)}" data-category-id="${escapeHtml(category.id)}">Aus dieser Kategorie entfernen</button>` : ''}<a class="menu-item" href="${inventoryItemHref(item.id)}">Vollständige Artikeldetails</a></div></details>`;
+  const menu = `<details class="action-menu storage-finder-column-menu"><summary aria-label="Menü für ${escapeHtml(item.name)}">${iconSvg('ellipsis')}</summary><div class="action-menu-panel">${mayEditProjects() && (item.categoryIds || []).includes(category.id) ? `<button class="menu-item danger" type="button" data-category-item-remove="${escapeHtml(item.id)}" data-category-id="${escapeHtml(category.id)}">Aus dieser Kategorie entfernen</button>` : ''}<a class="menu-item" href="${inventoryItemHref(item.id)}">Vollständige Artikeldetails</a>${inventoryItemPermanentLinkAction(item)}</div></details>`;
   return `<aside class="storage-finder-detail storage-item-detail" data-finder-item-inspector><header class="storage-finder-detail-header"><strong>${escapeHtml(item.name)}</strong><div class="storage-finder-column-actions">${inventoryItemDetailsButton(item)}${menu}</div></header><div class="storage-finder-detail-body">${inventoryItemOverview(item, stockData.summary || {})}<section class="category-item-memberships"><h3>Kategorien</h3><div>${categories.map(candidate => `<a class="tag-chip" href="${inventoryCategoryHref(candidate.id, item.id)}">${escapeHtml(candidate.name)}</a>`).join('') || '<span>Keine Kategorie</span>'}</div></section></div></aside>`;
 }
 
@@ -2929,7 +3087,7 @@ function bindInventoryCategoryActions() {
     openInventoryItemDialog('', '', button.dataset.categoryCreateItem);
   });
   document.querySelectorAll('[data-category-edit]').forEach(button => button.onclick = () => openInventoryCategoryDialog(button.dataset.categoryEdit));
-  document.querySelectorAll('[data-category-copy-link]').forEach(button => button.onclick = async () => { await navigator.clipboard.writeText(new URL(inventoryCategoryHref(button.dataset.categoryCopyLink), location.origin).href); toast('Kategorie-Link kopiert.'); });
+  bindInventoryPermanentLinks();
   document.querySelectorAll('[data-category-item-remove]').forEach(button => button.onclick = async () => { if (!await confirmAction('Artikel aus dieser Kategorie entfernen?', { title:'Zuordnung entfernen', confirmLabel:'Entfernen' })) return; await api(`/inventory-categories/${encodeURIComponent(button.dataset.categoryId)}/items/${encodeURIComponent(button.dataset.categoryItemRemove)}`, { method:'DELETE', body:'{}' }); await route(); });
   document.querySelectorAll('[data-category-clear-selection]').forEach(list => list.onclick = event => {
     if (event.target.closest('.storage-finder-row') || inventoryCategoryDrag || inventoryCategoryItemDrag) return;
@@ -3094,17 +3252,18 @@ function openStorageLocationDialog(locationId = '', parentId = null, creationMod
 }
 
 function storageLocationActionMenu(location) {
-  if (!location || !mayEditProjects()) return '';
+  if (!location) return '';
   const archived = location.status === 'ARCHIVED';
-  const actions = archived
+  const management = !mayEditProjects() ? '' : archived
     ? `<button class="menu-item" type="button" data-storage-restore="${escapeHtml(location.id)}">Wiederherstellen</button>`
     : `<button class="menu-item" type="button" data-storage-edit="${escapeHtml(location.id)}">Bearbeiten oder umplatzieren</button><button class="menu-item danger" type="button" data-storage-archive="${escapeHtml(location.id)}" data-storage-name="${escapeHtml(location.name)}">Unterbaum archivieren</button>`;
+  const actions = `${management}<button class="menu-item" type="button" data-storage-copy-link="${escapeHtml(location.id)}">Dauerhaften Link kopieren</button>`;
   return contextActionMenu(`Aktionen für ${location.name}`, actions, { className:'storage-finder-column-menu' });
 }
 
 function storageLocationCreateMenu(parent) {
   const parentId = parent?.id || '';
-  const itemAction = parent ? `<button class="menu-item" type="button" data-storage-create-item="${escapeHtml(parentId)}"><strong>Neuer Artikel</strong><small>Artikel anlegen und diesem Lagerort zuordnen</small></button>` : '';
+  const itemAction = parent ? `<button class="menu-item" type="button" data-storage-create-item="${escapeHtml(parentId)}"><strong>Neuer Artikel</strong><small>Artikel anlegen und diesem Lagerort zuordnen</small></button><button class="menu-item" type="button" data-storage-import-items="${escapeHtml(parentId)}"><strong>Artikel stapelweise importieren</strong><small>CSV-Datei diesem Lagerort zuordnen</small></button>` : '';
   return `<details class="action-menu storage-finder-create-menu"><summary aria-label="${parent ? `In ${escapeHtml(parent.name)} hinzufügen` : 'Lagerort anlegen'}" title="${parent ? 'Hinzufügen' : 'Lagerort anlegen'}">+</summary><div class="action-menu-panel">${itemAction}<button class="menu-item" type="button" data-storage-create-single="${escapeHtml(parentId)}"><strong>Einzelner Lagerort</strong><small>Einen frei benannten Lagerort anlegen</small></button><button class="menu-item" type="button" data-storage-create-series="${escapeHtml(parentId)}"><strong>Mehrere Lagerorte</strong><small>Eine fortlaufend nummerierte Reihe anlegen</small></button><button class="menu-item" type="button" data-storage-create-matrix="${escapeHtml(parentId)}"><strong>Lagermatrix</strong><small>Ein Raster wie A1, A2, B1 … anlegen</small></button></div></details>`;
 }
 
@@ -3229,7 +3388,7 @@ function storageFinderItemInspector(location, item, localEntry, stockData, notes
   const itemActions = inventoryItemManagementActions(item);
   const actionSeparator = actions && itemActions ? '<span class="action-menu-separator" aria-hidden="true"></span>' : '';
   const merchant = item.merchantUrl ? `<a class="menu-item storage-item-menu-link" href="${escapeHtml(item.merchantUrl)}" target="_blank" rel="noopener noreferrer">Händler öffnen</a>` : '';
-  const menu = contextActionMenu(`Aktionen für ${item.name}`, `${actions}${actionSeparator}${itemActions}${merchant}<a class="menu-item storage-item-menu-link" href="${inventoryItemHref(item.id, archived, '')}">Vollständige Artikeldetails</a>`, { className:'storage-finder-column-menu storage-item-column-menu' });
+  const menu = contextActionMenu(`Aktionen für ${item.name}`, `${actions}${actionSeparator}${itemActions}${merchant}<a class="menu-item storage-item-menu-link" href="${inventoryItemHref(item.id, archived, '')}">Vollständige Artikeldetails</a>${inventoryItemPermanentLinkAction(item)}`, { className:'storage-finder-column-menu storage-item-column-menu' });
   const localOverview = collection
     ? `<section class="storage-item-local"><span>In ${escapeHtml(location.name)}</span><strong>Vorhanden</strong><span>Bestandsführung</span><strong class="storage-item-local-minimum">Ohne Menge</strong>${localEntry.note ? `<small>${escapeHtml(localEntry.note)}</small>` : ''}</section>`
     : `<section class="storage-item-local"><span>In ${escapeHtml(location.name)}</span><strong>${escapeHtml(formatInventoryQuantity(localEntry.quantity))} ${escapeHtml(unit)}</strong><span>Lokales Minimum</span><strong class="storage-item-local-minimum">${escapeHtml(localMinimum)}</strong>${localEntry.note ? `<small>${escapeHtml(localEntry.note)}</small>` : ''}</section>`;
@@ -3261,6 +3420,10 @@ function bindStorageLocationActions() {
     button.closest('details')?.removeAttribute('open');
     openInventoryItemDialog('', button.dataset.storageCreateItem);
   });
+  document.querySelectorAll('[data-storage-import-items]').forEach(button => button.onclick = () => {
+    button.closest('details')?.removeAttribute('open');
+    openInventoryBatchImportDialog(button.dataset.storageImportItems);
+  });
   document.querySelectorAll('[data-storage-create-single],[data-storage-create-series],[data-storage-create-matrix]').forEach(button => button.onclick = () => {
     button.closest('details')?.removeAttribute('open');
     const mode = button.hasAttribute('data-storage-create-series') ? 'series' : button.hasAttribute('data-storage-create-matrix') ? 'matrix' : 'single';
@@ -3285,11 +3448,7 @@ function bindStorageLocationActions() {
       await route();
     } catch (error) { toast(error.message); }
   });
-  document.querySelectorAll('[data-storage-copy-link]').forEach(button => button.onclick = async () => {
-    const url = new URL(storageLocationHref(button.dataset.storageCopyLink), location.origin).href;
-    try { await navigator.clipboard.writeText(url); toast('Lagerort-Link kopiert.'); }
-    catch { toast('Der Link konnte nicht kopiert werden.'); }
-  });
+  bindInventoryPermanentLinks();
   bindStorageFinderKeyboard();
   bindStorageFinderBlankNavigation(state.storageLocationsIncludeArchived);
   bindStorageTransferDragDrop();
@@ -3368,7 +3527,13 @@ async function renderInventoryArchive() {
   ]);
   const locations = (locationData.locations || []).filter(location => location.status === 'ARCHIVED');
   const items = (itemData.items || []).filter(item => item.status === 'ARCHIVED');
-  const archiveMenu = (kind, id, name) => mayEditProjects() ? contextActionMenu(`Aktionen für ${name}`, `<button class="menu-item" type="button" data-inventory-archive-restore="${kind}" data-archive-id="${escapeHtml(id)}">Wiederherstellen</button><button class="menu-item danger" type="button" data-inventory-permanent-delete="${kind}" data-archive-id="${escapeHtml(id)}">Endgültig löschen</button>`, { className:'inventory-archive-menu' }) : '';
+  const archiveMenu = (kind, id, name) => {
+    const management = mayEditProjects() ? `<button class="menu-item" type="button" data-inventory-archive-restore="${kind}" data-archive-id="${escapeHtml(id)}">Wiederherstellen</button><button class="menu-item danger" type="button" data-inventory-permanent-delete="${kind}" data-archive-id="${escapeHtml(id)}">Endgültig löschen</button>` : '';
+    const link = kind === 'item'
+      ? `<button class="menu-item" type="button" data-inventory-item-copy-link="${escapeHtml(id)}">Dauerhaften Link kopieren</button>`
+      : `<button class="menu-item" type="button" data-storage-copy-link="${escapeHtml(id)}">Dauerhaften Link kopieren</button>`;
+    return contextActionMenu(`Aktionen für ${name}`, `${management}${link}`, { className:'inventory-archive-menu' });
+  };
   const locationRows = locations.map(location => `<article class="inventory-archive-row"><a href="${storageLocationHref(location.id, true)}"><span><strong>${escapeHtml(location.name)}</strong></span><i aria-hidden="true">›</i></a>${archiveMenu('location', location.id, location.name)}</article>`).join('');
   const itemRows = items.map(item => `<article class="inventory-archive-row"><a href="${inventoryItemHref(item.id, true, '')}"><span><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(item.stockUnit)}${item.manufacturer ? ` · ${escapeHtml(item.manufacturer)}` : ''}</small></span><i aria-hidden="true">›</i></a>${archiveMenu('item', item.id, item.name)}</article>`).join('');
   const inventoryArchiveHead = standardPageHeader({ title:'Archiv', description:'Archivierte Lagerorte und Artikel bleiben mit ihren historischen Referenzen erhalten.', icon:'archive', className:'storage-finder-page-head inventory-archive-page-head' });
@@ -3378,6 +3543,7 @@ async function renderInventoryArchive() {
 }
 
 function bindInventoryArchiveActions() {
+  bindInventoryPermanentLinks();
   document.querySelectorAll('[data-inventory-archive-restore]').forEach(button => button.onclick = async () => {
     const kind = button.dataset.inventoryArchiveRestore;
     const endpoint = kind === 'item' ? 'inventory-items' : 'storage-locations';
@@ -3525,6 +3691,7 @@ const settingsSections = [
   ['profile','Profil','Dein persönlicher Zugang zum Logbuch.'],
   ['users','Benutzerverwaltung','Konten, Rollen und Projektfreigaben verwalten.'],
   ['data','Daten & Backups','Projektdaten und Benutzerkonten unabhängig voneinander sichern und wiederherstellen.'],
+  ['appearance','Erscheinungsbild','Name, Logo und Farbschema dieser Logbuch-Instanz gestalten.'],
   ['server','Server','Adresse, Name und Zeitzone dieser Logbuch-Instanz konfigurieren.'],
   ['security','Sicherheit','Aktive Anmeldungen und verbundene Geräte verwalten.'],
   ['system','System','Wartung und Aktualisierung des Logbuchs sowie Fehlerdiagnose.'],
@@ -3552,6 +3719,32 @@ function generalSettingsContent() {
     <div class="setting-row"><div><strong>Archiv sortieren</strong><p>Diese Sortierung wird beim Öffnen des Archivs verwendet.</p></div><select data-general-preference="archiveSort" class="setting-select general-sort-select" aria-label="Standardsortierung des Archivs">${sortOptions(false, state.user.archiveSort || 'createdAt:desc')}</select></div>
     <div class="setting-row general-icon-setting"><div><strong>Standard-Projektsymbol</strong><p>Dieses Symbol erscheint bei allen Projekten, denen kein eigenes Symbol zugewiesen wurde.</p></div><form id="default-project-icon-form"><input type="hidden" name="icon" value="${escapeHtml(defaultProjectIconName())}"><div class="icon-picker" data-icon-picker="default-project"></div></form></div>
   </div></div>`;
+}
+
+function appearanceContent() {
+  const appearance = state.appearance || {};
+  const color = normalizeHexColor(appearance.accentColor) || '#e5322c';
+  const themeMode = ['light','dark','auto'].includes(appearance.themeMode) ? appearance.themeMode : 'light';
+  const [red, green, blue] = hexRgb(color);
+  const logoPreview = appearance.hasLogo && appearance.logoUrl
+    ? `<img src="${escapeHtml(appearance.logoUrl)}" alt="Aktuelles eigenes Logo" data-appearance-logo-preview>`
+    : '<span class="appearance-preview-wordmark" data-appearance-wordmark-preview><strong data-appearance-name-preview></strong><small data-appearance-subtitle-preview></small></span>';
+  return `<div class="settings-group appearance-settings">
+    <form id="appearance-form">
+      <section class="appearance-section"><div class="settings-section-head"><h2>Name und Logo</h2><p>Diese Angaben verändern die sichtbare Marke oben im Menü. Intern bleibt die Anwendung weiterhin das Logbuch.</p></div><div class="appearance-layout">
+        <div class="appearance-fields"><label>Anzeigename<input name="displayName" value="${escapeHtml(appearance.displayName || 'Logbuch')}" minlength="2" maxlength="80" required><small>Zum Beispiel „Johannes Logbuch“, „Maker Logbuch“ oder „Meine Werkstatt“.</small></label><label>Untertitel <span class="optional">optional</span><input name="subtitle" value="${escapeHtml(appearance.subtitle || '')}" maxlength="120"><small>Eine kurze Ergänzung unter dem Anzeigenamen.</small></label><label>Eigenes Logo <span class="optional">optional</span><input name="logo" type="file" accept="image/jpeg,image/png,image/webp,image/gif"><small>JPEG, PNG, WebP oder GIF bis 8 MB. Ein breites Logo eignet sich für das Seitenmenü am besten.</small></label></div>
+        <div class="appearance-brand-card"><span>Vorschau</span><div class="appearance-brand-preview" data-appearance-brand-preview>${logoPreview}</div>${appearance.hasLogo ? '<button class="button secondary compact" type="button" data-remove-appearance-logo>Eigenes Logo entfernen</button>' : ''}</div>
+      </div></section>
+      <section class="appearance-section appearance-color-section"><div class="settings-section-head"><h2>Farbschema</h2><p>Wähle die Helligkeit der Oberfläche und eine Akzentfarbe. Warnungen, Fehler und Erfolge werden passend dazu harmonisiert und bleiben eindeutig erkennbar.</p></div>
+        <fieldset class="appearance-theme-modes"><legend>Darstellungsmodus</legend>${[['light','Hell','Immer die helle Oberfläche verwenden.'],['dark','Dunkel','Immer die dunkle Oberfläche verwenden.'],['auto','Automatisch','Der Einstellung dieses Geräts folgen.']].map(([value,label,description]) => `<label><input type="radio" name="themeMode" value="${value}" ${themeMode === value ? 'checked' : ''}><span><strong>${label}</strong><small>${description}</small></span></label>`).join('')}</fieldset>
+        <div class="appearance-color-layout">
+        <div class="appearance-color-primary"><label>Farbfeld<input name="accentPicker" type="color" value="${escapeHtml(color)}"></label><label>Hex-Code<input name="accentColor" value="${escapeHtml(color)}" maxlength="7" pattern="#[0-9A-Fa-f]{6}" spellcheck="false" required></label><button class="button secondary compact" type="button" data-reset-accent-color>Logbuch-Rot einsetzen</button></div>
+        <div class="appearance-rgb-controls" aria-label="RGB-Farbregler">${[['red','Rot',red],['green','Grün',green],['blue','Blau',blue]].map(([name, label, value]) => `<label><span>${label}<output data-rgb-output="${name}">${value}</output></span><input name="${name}" type="range" min="0" max="255" step="1" value="${value}"></label>`).join('')}</div>
+        <div class="appearance-color-samples" data-appearance-color-samples><button class="button primary" type="button">Primär</button><span class="appearance-sample-soft">Akzentfläche</span><a href="#">Beispiellink</a></div>
+      </div></section>
+      <div class="appearance-actions"><p>Die Farben werden automatisch so abgestuft, dass Texte und Bedienelemente lesbar bleiben.</p><button class="button primary" type="submit">Erscheinungsbild speichern</button></div>
+    </form>
+  </div>`;
 }
 
 function dataContent() {
@@ -3598,7 +3791,7 @@ const deviceLabel = userAgent => {
   if (/Windows/i.test(value)) return 'Windows-PC';
   return value.slice(0, 55);
 };
-const auditLabel = action => ({ 'user.created':'Benutzer angelegt', 'user.updated':'Benutzer geändert', 'user.deleted':'Benutzer gelöscht', 'password.changed':'Passwort geändert', 'session.revoked':'Sitzung beendet', 'log.created':'Log angelegt', 'log.updated':'Log bearbeitet', 'log.deleted':'Log gelöscht', 'tag.created':'Tag angelegt', 'tag.updated':'Tag geändert', 'tag.merged':'Tags zusammengeführt', 'tag.deleted':'Tag gelöscht', 'file.imported':'Datei aus Backup importiert', 'data.project_imported':'Projekt aus Backup importiert', 'data.users_exported':'Benutzerkonten exportiert', 'data.users_imported':'Benutzerkonten importiert', 'data.full_backup_restored':'Vollbackup wiederhergestellt', 'server.settings_updated':'Servereinstellungen geändert', 'system.update_requested':'Logbuch-Update angefordert', 'system.content_cleared':'Alle Inhalte gelöscht', 'system.users_cleared':'Benutzerkonten zurückgesetzt', 'demo.installed':'Beispieldaten eingespielt', 'demo.removed':'Beispieldaten entfernt' }[action] || action);
+const auditLabel = action => ({ 'user.created':'Benutzer angelegt', 'user.updated':'Benutzer geändert', 'user.deleted':'Benutzer gelöscht', 'password.changed':'Passwort geändert', 'session.revoked':'Sitzung beendet', 'log.created':'Log angelegt', 'log.updated':'Log bearbeitet', 'log.deleted':'Log gelöscht', 'tag.created':'Tag angelegt', 'tag.updated':'Tag geändert', 'tag.merged':'Tags zusammengeführt', 'tag.deleted':'Tag gelöscht', 'file.imported':'Datei aus Backup importiert', 'data.project_imported':'Projekt aus Backup importiert', 'data.users_exported':'Benutzerkonten exportiert', 'data.users_imported':'Benutzerkonten importiert', 'data.full_backup_restored':'Vollbackup wiederhergestellt', 'appearance.settings_updated':'Erscheinungsbild geändert', 'appearance.logo_updated':'Logo geändert', 'appearance.logo_removed':'Eigenes Logo entfernt', 'server.settings_updated':'Servereinstellungen geändert', 'system.update_requested':'Logbuch-Update angefordert', 'system.content_cleared':'Alle Inhalte gelöscht', 'system.users_cleared':'Benutzerkonten zurückgesetzt', 'demo.installed':'Beispieldaten eingespielt', 'demo.removed':'Beispieldaten entfernt' }[action] || action);
 
 function updateCardContent() {
   const update = state.update || {};
@@ -3645,7 +3838,7 @@ function serverContent() {
   const platform = server.platform === 'docker' ? 'Docker' : server.platform === 'test' ? 'Testumgebung' : 'Webhosting';
   return `<div class="settings-group device-settings">
     <section><div class="settings-section-head"><h2>Instanz</h2><p>Diese Angaben gelten für alle Benutzer und für erzeugte Projektlinks.</p></div><form id="server-form" class="device-form"><div class="device-form-fields">
-      <label>Name der Instanz<input name="siteName" value="${escapeHtml(server.siteName || 'Logbuch')}" minlength="2" maxlength="80" required><small>Wird in Backups und Systeminformationen verwendet.</small></label>
+      <label>Technischer Name der Instanz<input name="siteName" value="${escapeHtml(server.siteName || 'Logbuch')}" minlength="2" maxlength="80" required><small>Wird in Backups und Systeminformationen verwendet und ist unabhängig vom sichtbaren Anzeigenamen.</small></label>
       <label>Öffentliche Webadresse<input name="baseUrl" type="url" value="${escapeHtml(server.baseUrl || location.origin)}" maxlength="300" required><small>Beispiel: https://log.example.de. Relative Projektlinks bleiben bei Umzügen erhalten.</small></label>
       <label>Zeitzone<select name="timezone"><option value="Europe/Berlin" ${server.timezone === 'Europe/Berlin' ? 'selected' : ''}>Europe/Berlin</option><option value="Europe/Vienna" ${server.timezone === 'Europe/Vienna' ? 'selected' : ''}>Europe/Vienna</option><option value="Europe/Zurich" ${server.timezone === 'Europe/Zurich' ? 'selected' : ''}>Europe/Zurich</option><option value="UTC" ${server.timezone === 'UTC' ? 'selected' : ''}>UTC</option></select><small>Wird für Zeitangaben im Logbuch verwendet.</small></label>
     </div><div class="device-form-actions"><p>Betriebsart: ${escapeHtml(platform)} · Serverzeit: ${escapeHtml(formatDateTime(server.currentTime))}</p><button class="button primary" type="submit">Servereinstellungen speichern</button></div></form></section>
@@ -3672,6 +3865,7 @@ function settingsContent(section) {
     <div class="role-legend-row"><strong>Leser</strong><p>Kann freigegebene Projekte ausschließlich ansehen.</p></div>
   </div></section><section class="user-section" aria-label="Benutzerkonten"><div class="settings-section-head"><h2>Benutzerkonten</h2><p>Status, Rolle und Projektzugriff der angelegten Benutzer.</p></div><div class="setting-list user-list">${state.users.length ? state.users.map(userRow).join('') : '<div class="settings-empty"><strong>Noch keine Benutzer vorhanden</strong></div>'}</div></section></div>`;
   if (section === 'data') return dataContent();
+  if (section === 'appearance') return appearanceContent();
   if (section === 'server') return serverContent();
   if (section === 'security') return securityContent();
   if (section === 'audit') return auditContent();
@@ -3755,12 +3949,125 @@ function bindServerActions() {
   });
 }
 
+function bindAppearanceActions() {
+  const form = $('#appearance-form');
+  if (!form) return;
+  const brandPreview = $('[data-appearance-brand-preview]', form);
+  const samplePreview = $('[data-appearance-color-samples]', form);
+  const colorInput = form.elements.accentColor;
+  const picker = form.elements.accentPicker;
+  const channels = ['red','green','blue'];
+  const updateBrandPreview = (logoUrl = null) => {
+    if (logoUrl) {
+      brandPreview.innerHTML = `<img src="${escapeHtml(logoUrl)}" alt="Logo-Vorschau" data-appearance-logo-preview>`;
+      return;
+    }
+    brandPreview.innerHTML = '<span class="appearance-preview-wordmark"><strong data-appearance-name-preview></strong><small data-appearance-subtitle-preview></small></span>';
+    const name = $('[data-appearance-name-preview]', brandPreview);
+    const subtitle = $('[data-appearance-subtitle-preview]', brandPreview);
+    name.textContent = form.elements.displayName.value.trim() || 'Logbuch';
+    subtitle.textContent = form.elements.subtitle.value.trim();
+    subtitle.hidden = !subtitle.textContent;
+  };
+  const syncBrandText = () => {
+    const name = $('[data-appearance-name-preview]', brandPreview);
+    const subtitle = $('[data-appearance-subtitle-preview]', brandPreview);
+    if (name) name.textContent = form.elements.displayName.value.trim() || 'Logbuch';
+    if (subtitle) { subtitle.textContent = form.elements.subtitle.value.trim(); subtitle.hidden = !subtitle.textContent; }
+  };
+  const applyPreviewColor = color => {
+    applyAccentColor(color, brandPreview);
+    applyAccentColor(color, samplePreview);
+  };
+  const syncColor = (color, source = '') => {
+    const normalized = normalizeHexColor(color);
+    if (!normalized) return false;
+    const values = hexRgb(normalized);
+    colorInput.value = normalized;
+    picker.value = normalized;
+    channels.forEach((channel, index) => {
+      form.elements[channel].value = String(values[index]);
+      form.querySelector(`[data-rgb-output="${channel}"]`).textContent = String(values[index]);
+    });
+    colorInput.setCustomValidity('');
+    applyPreviewColor(normalized);
+    return true;
+  };
+  const syncFromChannels = () => syncColor(rgbHex(channels.map(channel => Number(form.elements[channel].value))), 'rgb');
+
+  form.elements.displayName.oninput = syncBrandText;
+  form.elements.subtitle.oninput = syncBrandText;
+  picker.oninput = () => syncColor(picker.value, 'picker');
+  colorInput.oninput = () => {
+    const normalized = normalizeHexColor(colorInput.value);
+    colorInput.setCustomValidity(normalized ? '' : 'Bitte einen Hex-Code wie #e5322c eingeben.');
+    if (normalized) syncColor(normalized, 'hex');
+  };
+  channels.forEach(channel => form.elements[channel].oninput = syncFromChannels);
+  form.querySelectorAll('input[name="themeMode"]').forEach(input => input.onchange = () => {
+    state.appearance.themeMode = input.value;
+    applyThemeMode(input.value);
+    applyPreviewColor(colorInput.value);
+  });
+  $('[data-reset-accent-color]', form).onclick = () => syncColor('#e5322c');
+  form.elements.logo.onchange = () => {
+    if (appearanceLogoPreviewUrl) URL.revokeObjectURL(appearanceLogoPreviewUrl);
+    appearanceLogoPreviewUrl = '';
+    const file = form.elements.logo.files?.[0];
+    if (!file) {
+      updateBrandPreview(state.appearance.hasLogo ? state.appearance.logoUrl : null);
+      return;
+    }
+    appearanceLogoPreviewUrl = URL.createObjectURL(file);
+    updateBrandPreview(appearanceLogoPreviewUrl);
+  };
+  $('[data-remove-appearance-logo]', form)?.addEventListener('click', async buttonEvent => {
+    if (!await confirmAction('Das eigene Logo entfernen und wieder den Anzeigenamen verwenden?', { title:'Eigenes Logo entfernen', confirmLabel:'Logo entfernen' })) return;
+    const button = buttonEvent.currentTarget;
+    button.disabled = true;
+    try {
+      const appearance = await api('/settings/appearance/logo', { method:'DELETE', body:'{}' });
+      applyAppearance(appearance);
+      toast('Eigenes Logo entfernt');
+      renderSettings();
+    } catch (error) { toast(error.message); button.disabled = false; }
+  });
+  form.onsubmit = async event => {
+    event.preventDefault();
+    if (!form.reportValidity()) return;
+    const button = form.querySelector('button[type="submit"]');
+    button.disabled = true;
+    try {
+      let appearance = await api('/settings/appearance', { method:'PATCH', body:JSON.stringify({
+        displayName:form.elements.displayName.value,
+        subtitle:form.elements.subtitle.value,
+        accentColor:normalizeHexColor(colorInput.value),
+        themeMode:new FormData(form).get('themeMode'),
+      }) });
+      const logo = form.elements.logo.files?.[0];
+      if (logo) {
+        const payload = new FormData();
+        payload.append('logo', logo, logo.name);
+        appearance = await api('/settings/appearance/logo', { method:'POST', body:payload });
+      }
+      if (appearanceLogoPreviewUrl) URL.revokeObjectURL(appearanceLogoPreviewUrl);
+      appearanceLogoPreviewUrl = '';
+      applyAppearance(appearance);
+      toast('Erscheinungsbild gespeichert');
+      renderSettings();
+    } catch (error) { toast(error.message); button.disabled = false; }
+  };
+  if (!appearanceLogoPreviewUrl) updateBrandPreview(state.appearance.hasLogo ? state.appearance.logoUrl : null);
+  syncColor(state.appearance.accentColor || '#e5322c');
+}
+
 async function renderSettings() {
   const active = settingsSections.some(([id]) => id === state.activeSettings) ? state.activeSettings : 'general';
   const [, title, description] = settingsSections.find(([id]) => id === active);
   if (active === 'users' && state.user?.admin) await Promise.all([loadUsers(), loadProjects()]);
   if (active === 'tags' && state.user?.admin) await loadTags();
   if (active === 'data' && state.user?.admin) await Promise.all([loadUsers(), loadProjects(), loadTags(), loadFolders(), loadServerSettings(), loadStorageStats()]);
+  if (active === 'appearance' && state.user?.admin) await loadAppearance();
   if (active === 'profile') await loadProjects();
   if (active === 'security' && !state.user.mustChangePassword) await loadSessions();
   if (active === 'audit' && state.user?.admin) await loadAudit();
@@ -3776,6 +4083,7 @@ async function renderSettings() {
   if (active === 'security') bindSecurityActions();
   if (active === 'system' && state.user?.admin) bindSystemActions();
   if (active === 'server' && state.user?.admin) bindServerActions();
+  if (active === 'appearance' && state.user?.admin) bindAppearanceActions();
   if (active === 'profile') $('[data-change-password]').onclick = () => openPasswordDialog(false);
   if (active === 'general') {
     const savePreference = async (control, key, value) => {
@@ -5289,6 +5597,18 @@ async function copyLink(path, button) {
   else window.prompt('Link kopieren:', link);
 }
 
+function bindInventoryPermanentLinks() {
+  document.querySelectorAll('[data-inventory-item-copy-link]').forEach(button => {
+    button.onclick = () => copyLink(permanentInventoryItemHref(button.dataset.inventoryItemCopyLink), button);
+  });
+  document.querySelectorAll('[data-storage-copy-link]').forEach(button => {
+    button.onclick = () => copyLink(permanentStorageLocationHref(button.dataset.storageCopyLink), button);
+  });
+  document.querySelectorAll('[data-category-copy-link]').forEach(button => {
+    button.onclick = () => copyLink(permanentInventoryCategoryHref(button.dataset.categoryCopyLink), button);
+  });
+}
+
 function bindProjectActions() {
   document.querySelectorAll('[data-project-flag]').forEach(button => button.onclick = async event => {
     event.preventDefault();
@@ -6404,6 +6724,88 @@ $('#inventory-category-delete').onclick = async () => {
   try { await api(`/inventory-categories/${encodeURIComponent(id)}`, { method:'DELETE', body:'{}' }); $('#inventory-category-dialog').close(); location.href = inventoryCategoryHref(); }
   catch (error) { $('#inventory-category-error').textContent = error.message; }
 };
+async function inventoryBatchPayload() {
+  const form = $('#inventory-batch-import-form');
+  const file = form.elements.csvFile.files?.[0];
+  if (!file) throw new Error('Bitte wähle zuerst eine ausgefüllte CSV-Datei aus.');
+  if (file.size > 2 * 1024 * 1024) throw new Error('Die CSV-Datei darf höchstens 2 MB groß sein.');
+  state.inventoryBatchCsv = await file.text();
+  return {
+    storageLocationId:form.elements.storageLocationId.value,
+    categoryIds:JSON.parse(form.dataset.categoryIds || '[]'),
+    csv:state.inventoryBatchCsv,
+  };
+}
+$('#inventory-batch-import-form').elements.csvFile.onchange = () => {
+  state.inventoryBatchCsv = '';
+  renderInventoryBatchPreview();
+  $('#inventory-batch-import-error').textContent = '';
+};
+$('#inventory-batch-preview-button').onclick = async () => {
+  const error = $('#inventory-batch-import-error');
+  const button = $('#inventory-batch-preview-button');
+  error.textContent = '';
+  renderInventoryBatchPreview();
+  button.disabled = true;
+  button.textContent = 'CSV wird geprüft …';
+  try {
+    renderInventoryBatchPreview(await api('/inventory-items/import-preview', { method:'POST', body:JSON.stringify(await inventoryBatchPayload()) }));
+  } catch (cause) { error.textContent = cause.message; }
+  finally { button.disabled = false; button.textContent = 'Vorschau prüfen'; }
+};
+$('#inventory-batch-category-create').onclick = async () => {
+  const form = $('#inventory-batch-import-form');
+  const name = form.elements.newCategoryName.value.trim();
+  const error = $('#inventory-batch-category-error');
+  error.textContent = '';
+  if (!name) {
+    error.textContent = 'Gib einen Namen für die neue Kategorie ein.';
+    form.elements.newCategoryName.focus();
+    return;
+  }
+  const button = $('#inventory-batch-category-create');
+  button.disabled = true;
+  try {
+    const saved = await api('/inventory-categories', { method:'POST', body:JSON.stringify({ name, parentId:form.elements.newCategoryParentId.value || null, icon:'folder', description:'' }) });
+    await loadInventoryCategories();
+    const selected = new Set(JSON.parse(form.dataset.categoryIds || '[]'));
+    selected.add(saved.id);
+    form.dataset.categoryIds = JSON.stringify([...selected]);
+    form.elements.newCategoryName.value = '';
+    form.elements.newCategoryParentId.innerHTML = inventoryCategoryParentOptions('', saved.parentId || null);
+    renderInventoryBatchCategoryPicker(form, initialCompactColumnPath(state.inventoryCategories, selected));
+    toast(`Kategorie „${saved.name}“ angelegt und ausgewählt.`);
+  } catch (cause) { error.textContent = cause.message; }
+  finally { button.disabled = false; }
+};
+$('#inventory-batch-import-form').elements.newCategoryName.addEventListener('keydown', event => {
+  if (event.key !== 'Enter') return;
+  event.preventDefault();
+  event.stopPropagation();
+  $('#inventory-batch-category-create').click();
+});
+$('#inventory-batch-import-form').onsubmit = async event => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const error = $('#inventory-batch-import-error');
+  const submit = $('#inventory-batch-import-submit');
+  if (!state.inventoryBatchPreview?.valid) return;
+  error.textContent = '';
+  submit.disabled = true;
+  submit.textContent = 'Artikel werden importiert …';
+  try {
+    const result = await api('/inventory-items/import', { method:'POST', body:JSON.stringify(await inventoryBatchPayload()) });
+    const storageLocationId = form.elements.storageLocationId.value;
+    $('#inventory-batch-import-dialog').close();
+    form.reset();
+    state.inventoryBatchCsv = '';
+    state.inventoryBatchPreview = null;
+    toast(`${result.count} ${result.count === 1 ? 'Artikel wurde' : 'Artikel wurden'} importiert.`);
+    location.href = storageLocationHref(storageLocationId);
+    await route();
+  } catch (cause) { error.textContent = cause.message; }
+  finally { submit.textContent = 'Artikel importieren'; submit.disabled = !state.inventoryBatchPreview?.valid; }
+};
 $('#inventory-item-form').onsubmit = async event => {
   event.preventDefault();
   const form = event.currentTarget;
@@ -6760,4 +7162,4 @@ document.addEventListener('click', event => {
   });
 });
 
-api('/me').then(user => { state.user = user; showApp(); }).catch(() => {});
+loadAppearance().finally(() => api('/me').then(user => { state.user = user; showApp(); }).catch(() => {}));

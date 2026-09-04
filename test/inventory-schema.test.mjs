@@ -53,6 +53,20 @@ test('Inventarmigration legt Kernmodell, Foreign Keys und Indizes an', async () 
   assert.ok(schema.indexes.includes('inventory_items_tracking_status_name'));
 });
 
+test('Additive Lagermigrationen bleiben nach einer zurückgesetzten Schemaversion wiederholbar', async () => {
+  const { stdout, stderr } = await inventoryDatabaseScript(`
+    $pdo->exec("UPDATE meta SET value = '13' WHERE key = 'schema_version'");
+    $database = null;
+    $pdo = null;
+    $reopened = new \\Logbuch\\Database($argv[2]);
+    $reopenedPdo = $reopened->pdo();
+    $columns = $reopenedPdo->query('PRAGMA table_info(storage_locations)')->fetchAll(PDO::FETCH_COLUMN, 1);
+    echo json_encode(['version' => (int) $reopenedPdo->query("SELECT value FROM meta WHERE key = 'schema_version'")->fetchColumn(), 'sortOrderCount' => count(array_filter($columns, fn($column) => $column === 'sort_order')), 'iconCount' => count(array_filter($columns, fn($column) => $column === 'icon')), 'hasType' => in_array('type', $columns, true)]);
+  `);
+  assert.equal(stderr, '');
+  assert.deepEqual(JSON.parse(stdout), { version:19, sortOrderCount:1, iconCount:1, hasType:false });
+});
+
 test('DB verhindert negative und doppelte physische Bestände', async () => {
   const { stdout } = await inventoryDatabaseScript(`
     $pdo->exec("INSERT INTO stock_entries (id, item_id, storage_location_id, quantity, created_at, updated_at) VALUES ('stock-a', 'item-screw', 'location-a', 3.5, '2026-08-27T00:00:00Z', '2026-08-27T00:00:00Z')");

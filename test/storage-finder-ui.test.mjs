@@ -58,9 +58,9 @@ test('Die Desktop-Spaltenansicht nutzt den Raum zwischen Seitenkopf und Browserr
   assert.match(script, /workspace\.classList\.contains\('storage-finder-edge-to-edge'\) \? 0/);
 });
 
-test('Die Lageransicht besitzt dieselbe weiße Kopffläche wie die Hauptbereiche', () => {
+test('Die Lageransicht besitzt dieselbe themenfähige Kopffläche wie die Hauptbereiche', () => {
   assert.match(script, /standardPageHeader\(\{ title:'Lager'[^\n]+icon:'warehouse'/);
-  assert.match(styles, /\.standard-page-head \{[^}]*height:154px;[^}]*background:#fff;/);
+  assert.match(styles, /\.standard-page-head \{[^}]*height:154px;[^}]*background:var\(--surface\);/);
   assert.match(styles, /@media \(max-width:780px\)[\s\S]*\.standard-page-head \{ height:auto;/);
 });
 
@@ -100,8 +100,8 @@ test('Lagerorte besitzen denselben hinterlegten Icon-Picker wie Projektordner', 
   assert.match(script, /entityIconName\(location, 'archive'\)/);
   assert.match(script, /icon:form\.elements\.icon\.value/);
   assert.match(script, /storage-finder-icon storage-finder-location-icon/);
-  assert.match(styles, /\.storage-finder-location-icon \{[^}]+color:var\(--red\);[^}]+border-color:#dfaaa7;[^}]+background:linear-gradient/);
-  assert.match(styles, /\.storage-finder-item-icon \{[^}]+color:#747b84;[^}]+background:transparent;/);
+  assert.match(styles, /\.storage-finder-location-icon \{[^}]+color:var\(--red\);[^}]+border-color:var\(--accent-border\);[^}]+background:linear-gradient/);
+  assert.match(styles, /\.storage-finder-item-icon \{[^}]+color:var\(--muted\);[^}]+background:transparent;/);
   assert.doesNotMatch(html, /id="storage-location-form"[\s\S]*<label>Typ<select/);
   assert.doesNotMatch(script, /storageLocationTypeLabels|location\.type/);
 });
@@ -172,8 +172,8 @@ test('Lagerortzeilen zeigen den vollständigen Unterbaum als kompakte Zähler', 
   assert.match(script, /title="Anzahl unterschiedlicher Artikel in diesem Lagerort und seinem Unterbaum"/);
   assert.match(script, /storage-finder-counts/);
   assert.match(styles, /\.storage-finder-column \{ width:340px; min-width:340px;[^}]*flex:0 0 340px;/);
-  assert.match(styles, /\.storage-finder-count \{[^}]*border-radius:999px;[^}]*background:#eef0f2;/);
-  assert.match(styles, /\.storage-finder-row\.selected \.storage-finder-count[^}]*background:#fff;/);
+  assert.match(styles, /\.storage-finder-count \{[^}]*border-radius:999px;[^}]*background:var\(--interactive-hover\);/);
+  assert.match(styles, /\.storage-finder-row\.selected \.storage-finder-count[^}]*background:var\(--accent-contrast\);/);
 });
 
 test('Alle Lagerortspalten teilen sich Sortierung und Leerfilter aus dem Seitenkopf', () => {

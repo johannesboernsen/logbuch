@@ -228,6 +228,18 @@ final class Database
                 $statements[] = 'CREATE INDEX IF NOT EXISTS todos_user_repeat_waiting ON todos(user_id, repeat_waiting_at)';
                 $sql = implode(";\n", $statements);
             }
+            if (in_array($version, [14, 15, 16], true)) {
+                $locationColumns = array_column($this->pdo->query('PRAGMA table_info(storage_locations)')->fetchAll(), 'name');
+                if ($version === 14 && in_array('sort_order', $locationColumns, true)) {
+                    $sql = 'CREATE INDEX IF NOT EXISTS storage_locations_parent_status_sort ON storage_locations(parent_id, status, sort_order, name COLLATE NOCASE)';
+                }
+                if ($version === 15 && in_array('icon', $locationColumns, true)) {
+                    $sql = 'SELECT 1';
+                }
+                if ($version === 16 && !in_array('type', $locationColumns, true)) {
+                    $sql = 'SELECT 1';
+                }
+            }
             if ($version === 19) {
                 $itemColumns = array_column($this->pdo->query('PRAGMA table_info(inventory_items)')->fetchAll(), 'name');
                 if (in_array('tracking_mode', $itemColumns, true)) {

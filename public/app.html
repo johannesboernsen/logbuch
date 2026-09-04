@@ -3,10 +3,11 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#f6f7f9">
+  <meta name="theme-color" content="#f6f7f9" data-theme-color>
+  <meta name="color-scheme" content="light dark">
   <title>Logbuch</title>
   <link rel="icon" href="/favicon.svg?v=20260824-1" type="image/svg+xml">
-  <link rel="stylesheet" href="/styles.css?v=20260903-013">
+  <link rel="stylesheet" href="/styles.css?v=20260904-004">
 </head>
 <body>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
@@ -14,7 +15,7 @@
   <section id="login-view" class="login-shell">
     <div class="login-copy">
       <div>
-        <a class="brand login-brand" href="/" aria-label="Logbuch"><img src="/logbuch-logo.svg?v=20260822-3" alt=""></a>
+        <a class="brand login-brand" href="/" aria-label="Logbuch" data-brand><img class="brand-custom-logo" data-brand-logo alt="" hidden><span class="brand-wordmark" data-brand-wordmark><strong data-brand-name>Logbuch</strong><small data-brand-subtitle hidden></small></span></a>
         <p class="login-pitch">Erfasse Fortschritte, Materialien und die nächste gute Idee.</p>
       </div>
     </div>
@@ -31,7 +32,7 @@
 
   <div id="app" class="app hidden">
     <aside class="sidebar">
-      <a class="brand" href="/#/" aria-label="Logbuch"><img src="/logbuch-logo.svg?v=20260822-3" alt=""></a>
+      <a class="brand" href="/#/" aria-label="Logbuch" data-brand><img class="brand-custom-logo" data-brand-logo alt="" hidden><span class="brand-wordmark" data-brand-wordmark><strong data-brand-name>Logbuch</strong><small data-brand-subtitle hidden></small></span></a>
       <nav aria-label="Hauptnavigation">
         <a class="nav-item active" href="/#/" data-route="home"><span aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="8.5"></circle><path d="m8.2 12.2 2.5 2.5 5.4-5.6"></path></svg></span> Übersicht</a>
         <a class="nav-item" href="/#/todos" data-route="todos"><span aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M9 6h11M9 12h11M9 18h11"></path><path d="m3.5 6 1 1 2-2M3.5 12l1 1 2-2M3.5 18l1 1 2-2"></path></svg></span> Erinnerungen <i id="todo-nav-count" class="todo-nav-count" title="Anzahl der offenen Erinnerungen" aria-label="Anzahl der offenen Erinnerungen">0</i></a>
@@ -66,6 +67,7 @@
             <a href="/#/settings/profile" data-settings-route="profile">Profil</a>
             <a href="/#/settings/users" data-settings-route="users" data-admin-setting>Benutzerverwaltung</a>
             <a href="/#/settings/data" data-settings-route="data" data-admin-setting>Backup</a>
+            <a href="/#/settings/appearance" data-settings-route="appearance" data-admin-setting>Erscheinungsbild</a>
             <a href="/#/settings/server" data-settings-route="server" data-admin-setting>Server</a>
             <a href="/#/settings/security" data-settings-route="security" data-admin-setting>Sicherheit</a>
             <a href="/#/settings/system" data-settings-route="system" data-admin-setting><span>System</span><i id="system-update-badge" class="update-nav-badge" hidden>Update</i></a>
@@ -85,7 +87,7 @@
     <header class="mobile-header">
       <div class="mobile-header-main">
         <button id="menu-button" class="icon-button" aria-label="Menü öffnen" aria-expanded="false">☰</button>
-        <a class="brand" href="/#/" aria-label="Logbuch"><img src="/logbuch-logo.svg?v=20260822-3" alt=""></a>
+        <a class="brand" href="/#/" aria-label="Logbuch" data-brand><img class="brand-custom-logo" data-brand-logo alt="" hidden><span class="brand-wordmark" data-brand-wordmark><strong data-brand-name>Logbuch</strong><small data-brand-subtitle hidden></small></span></a>
       </div>
       <div id="mobile-header-actions" class="mobile-header-actions"></div>
     </header>
@@ -350,6 +352,25 @@
     </form>
   </dialog>
 
+  <dialog id="inventory-batch-import-dialog" class="inventory-batch-import-dialog">
+    <form id="inventory-batch-import-form" method="dialog" novalidate>
+      <input type="hidden" name="storageLocationId">
+      <div class="dialog-head"><div><h2>Artikel stapelweise importieren</h2><p id="inventory-batch-import-copy" class="dialog-copy"></p></div><button class="icon-button" type="button" value="cancel" aria-label="Schließen">×</button></div>
+      <section class="inventory-import-template-card">
+        <div><strong>1. CSV-Vorlage ausfüllen</strong><p>Die Vorlage bleibt immer gleich. Der Lagerort und gemeinsame Kategorien werden erst hier im Dialog festgelegt.</p></div>
+        <a class="button secondary compact" href="/api/inventory-items/import-template" download="logbuch-artikel-import.csv">CSV-Vorlage herunterladen</a>
+      </section>
+      <label><span class="field-label-line">2. Ausgefüllte CSV-Datei</span><input name="csvFile" type="file" accept=".csv,text/csv" required><small class="field-hint">Bis zu 500 Artikel und 2 MB. Leere optionale Felder sind erlaubt; Einheit ist standardmäßig „Stück“.</small></label>
+      <fieldset class="inventory-category-picker inventory-import-category-picker"><legend>3. Gemeinsame Kategorien <span class="optional">optional</span></legend><p class="field-hint">Alle ausgewählten Kategorien werden jedem importierten Artikel zugeordnet.</p><div id="inventory-batch-category-options"></div>
+        <div class="inventory-import-category-create"><input name="newCategoryName" maxlength="160" placeholder="Neue Kategorie"><select name="newCategoryParentId" aria-label="Übergeordnete Kategorie"><option value="">Oberste Ebene</option></select><button id="inventory-batch-category-create" class="button secondary compact" type="button">Kategorie anlegen</button></div>
+        <p id="inventory-batch-category-error" class="form-error"></p>
+      </fieldset>
+      <section id="inventory-batch-preview" class="inventory-batch-preview" hidden></section>
+      <p id="inventory-batch-import-error" class="form-error"></p>
+      <div class="dialog-actions inventory-batch-import-actions"><button class="button secondary" type="button" value="cancel">Abbrechen</button><button id="inventory-batch-preview-button" class="button secondary" type="button">Vorschau prüfen</button><button id="inventory-batch-import-submit" class="button primary" type="submit" disabled>Artikel importieren</button></div>
+    </form>
+  </dialog>
+
   <dialog id="inventory-item-dialog" class="inventory-item-dialog">
     <form id="inventory-item-form" method="dialog" novalidate>
       <input type="hidden" name="itemId">
@@ -460,6 +481,6 @@
     </form>
   </dialog>
 
-  <script src="/app.js?v=20260903-014" defer></script>
+  <script src="/app.js?v=20260904-004" defer></script>
 </body>
 </html>

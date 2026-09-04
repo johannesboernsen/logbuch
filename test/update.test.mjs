@@ -141,13 +141,13 @@ test('Webhosting-Update sichert und ersetzt ausschließlich signierte Programmda
     docker:{ image:'ghcr.io/johannesboernsen/logbuch', digest:`sha256:${'b'.repeat(64)}`, updater:{ image:'ghcr.io/johannesboernsen/logbuch-updater', digest:`sha256:${'d'.repeat(64)}` } },
   }, null, 2)}\n`;
   signature = sign('sha256', Buffer.from(manifest), privateKey).toString('base64');
-  const php = spawn('php', ['-S', '127.0.0.1:4241', '-t', 'public', 'public/router.php'], {
+  const php = spawn('php', ['-S', '127.0.0.1:4261', '-t', 'public', 'public/router.php'], {
     cwd:root,
     env:{ ...process.env, LOGBUCH_ROOT_PATH:installRoot, LOGBUCH_STORAGE_PATH:storage, LOGBUCH_PLATFORM:'webhosting', LOGBUCH_UPDATE_PUBLIC_KEY_PATH:publicKeyPath, LOGBUCH_UPDATE_MANIFEST_URL:`http://127.0.0.1:${releasePort}/update-manifest.json`, LOGBUCH_UPDATE_SIGNATURE_URL:`http://127.0.0.1:${releasePort}/update-manifest.sig` },
     stdio:'ignore',
   });
   try {
-    const appUrl = 'http://127.0.0.1:4241';
+    const appUrl = 'http://127.0.0.1:4261';
     for (let attempt = 0; attempt < 50; attempt += 1) {
       if (await fetch(`${appUrl}/api/install/status`).then(response => response.ok).catch(() => false)) break;
       await new Promise(resolve => setTimeout(resolve, 100));

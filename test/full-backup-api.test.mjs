@@ -84,6 +84,13 @@ test('Vollbackup sichert und ersetzt Projekte, Erinnerungen und das gesamte Lage
   itemImageForm.append('image', new Blob([itemImageBytes], { type:'image/png' }), 'schraube.png');
   const itemImageUpload = await fetch(`${baseUrl}/api/inventory-items/demo-item-schrauben-m4x30/image`, { method:'POST', headers:{ Cookie:cookie, 'X-Logbuch-CSRF':csrf, Accept:'application/json' }, body:itemImageForm });
   assert.equal(itemImageUpload.status, 201, await itemImageUpload.text());
+  const appearance = await jsonRequest('/api/settings/appearance', { method:'PATCH', body:JSON.stringify({ displayName:'Gesicherte Werkstatt', subtitle:'Mit Logo', accentColor:'#2468ac', themeMode:'dark' }) });
+  assert.equal(appearance.response.status, 200, JSON.stringify(appearance.data));
+  const logoBytes = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64');
+  const logoForm = new FormData();
+  logoForm.append('logo', new Blob([logoBytes], { type:'image/png' }), 'werkstatt.png');
+  const logoUpload = await fetch(`${baseUrl}/api/settings/appearance/logo`, { method:'POST', headers:{ Cookie:cookie, 'X-Logbuch-CSRF':csrf, Accept:'application/json' }, body:logoForm });
+  assert.equal(logoUpload.status, 201, await logoUpload.text());
 
   const reminder = await jsonRequest('/api/todos', { method:'POST', body:JSON.stringify({ title:'Backup-Erinnerung' }) });
   assert.equal(reminder.response.status, 201);
@@ -112,6 +119,8 @@ test('Vollbackup sichert und ersetzt Projekte, Erinnerungen und das gesamte Lage
   assert.equal(manifest.inventoryItemImages.length, 1);
   assert.equal(manifest.inventoryItemImages[0].itemId, 'demo-item-schrauben-m4x30');
   assert.deepEqual(Buffer.from(files.get('inventory-items/demo-item-schrauben-m4x30/image.bin')), itemImageBytes);
+  assert.equal(manifest.appearanceLogo.mimeType, 'image/png');
+  assert.deepEqual(Buffer.from(files.get('appearance/logo.bin')), logoBytes);
 
   const inconsistentManifest = structuredClone(manifest);
   inconsistentManifest.tables.inventory_items = [];
@@ -147,6 +156,11 @@ test('Vollbackup sichert und ersetzt Projekte, Erinnerungen und das gesamte Lage
   const restoredImage = await fetch(`${baseUrl}/api/inventory-items/demo-item-schrauben-m4x30/image`, { headers:{ Cookie:cookie } });
   assert.equal(restoredImage.status, 200);
   assert.deepEqual(Buffer.from(await restoredImage.arrayBuffer()), itemImageBytes);
+  const restoredAppearance = await jsonRequest('/api/appearance');
+  assert.deepEqual({ displayName:restoredAppearance.data.displayName, subtitle:restoredAppearance.data.subtitle, accentColor:restoredAppearance.data.accentColor, themeMode:restoredAppearance.data.themeMode, hasLogo:restoredAppearance.data.hasLogo }, { displayName:'Gesicherte Werkstatt', subtitle:'Mit Logo', accentColor:'#2468ac', themeMode:'dark', hasLogo:true });
+  const restoredLogo = await fetch(`${baseUrl}/api/appearance/logo`);
+  assert.equal(restoredLogo.status, 200);
+  assert.deepEqual(Buffer.from(await restoredLogo.arrayBuffer()), logoBytes);
   assert.equal((await jsonRequest('/api/stock-transactions?itemId=demo-item-schrauben-m4x30')).data.transactions.length, 3);
   assert.equal((await jsonRequest('/api/audit')).data.events.some(event => event.action === 'data.full_backup_restored'), true);
 });

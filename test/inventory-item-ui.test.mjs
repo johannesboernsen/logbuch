@@ -139,7 +139,7 @@ test('Detailabschnitte verwenden gemeinsame Flächen und Projektlisten-Trenner',
   assert.match(script, /function inventoryDetailSummary/);
   assert.match(script, /<div class="inventory-detail-section-body">/);
   assert.match(styles, /\.inventory-detail-section \{[^}]*border:0;[^}]*background:transparent;/);
-  assert.match(styles, /\.inventory-detail-section-body \{[^}]*border:1px solid var\(--line\);[^}]*border-radius:14px;[^}]*background:#fff;/);
+  assert.match(styles, /\.inventory-detail-section-body \{[^}]*border:1px solid var\(--line\);[^}]*border-radius:14px;[^}]*background:var\(--surface\);/);
   assert.match(styles, /\.inventory-detail-section > summary::before,[^{]+\{[^}]*height:1px;[^}]*background:var\(--line\);/);
   assert.match(styles, /\.inventory-detail-section \.inventory-stock-entry \{[^}]*border-bottom:1px solid var\(--line\);/);
   assert.match(styles, /\.inventory-detail-section \.inventory-reservation \{[^}]*border-bottom:1px solid var\(--line\);/);
@@ -190,7 +190,7 @@ test('Der Artikelrahmen reicht dynamisch bis zum unteren Browserrand', () => {
   assert.match(script, /requestAnimationFrame\(fitInventoryWorkspaces\)/);
 });
 
-test('Die Artikelansicht besitzt dieselbe weiße Kopffläche wie die Hauptbereiche', () => {
+test('Die Artikelansicht besitzt dieselbe themenfähige Kopffläche wie die Hauptbereiche', () => {
   assert.match(script, /standardPageHeader\(\{ title:'Artikel'[^\n]+className:'storage-finder-page-head inventory-items-page-head'/);
-  assert.match(styles, /\.standard-page-head \{[^}]*height:154px;[^}]*border-bottom:1px solid var\(--line\);[^}]*background:#fff;/);
+  assert.match(styles, /\.standard-page-head \{[^}]*height:154px;[^}]*border-bottom:1px solid var\(--line\);[^}]*background:var\(--surface\);/);
 });

@@ -33,7 +33,11 @@ test('parallele Ersteinrichtung erzeugt genau einen Administrator', async () => 
     assert.equal(responses.filter(response => response.status === 201).length, 1, `${responseSummary.join('\n')}\n${serverErrors.slice(-8000)}`);
     assert.equal(responses.filter(response => response.status === 409).length, ports.length - 1);
   } finally {
-    servers.forEach(server => server.kill('SIGTERM'));
+    await Promise.all(servers.map(server => new Promise(resolve => {
+      if (server.exitCode !== null) return resolve();
+      server.once('exit', resolve);
+      server.kill('SIGTERM');
+    })));
     await rm(storage, { recursive:true, force:true });
   }
 });
