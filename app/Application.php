@@ -20,6 +20,7 @@ final class Application
         'tags' => ['id', 'name', 'normalized_name', 'active', 'created_at'],
         'settings' => ['key', 'value'],
         'folders' => ['id', 'parent_id', 'name', 'description', 'priority', 'flagged', 'icon', 'tag_ids_json', 'created_by', 'created_at', 'updated_at'],
+        'project_public_shares' => ['id', 'token', 'name', 'scope_type', 'project_status', 'folder_id', 'expires_at', 'active', 'created_by', 'created_at', 'updated_at'],
         'todos' => ['id', 'user_id', 'title', 'parent_id', 'completed_at', 'cleared_at', 'repeat_interval', 'repeat_unit', 'repeat_due_at', 'repeat_waiting_at', 'sort_order', 'created_at', 'updated_at'],
         'storage_locations' => ['id', 'parent_id', 'name', 'description', 'status', 'created_at', 'updated_at', 'sort_order', 'icon'],
         'inventory_categories' => ['id', 'parent_id', 'name', 'description', 'icon', 'sort_order', 'created_at', 'updated_at'],
@@ -29,12 +30,18 @@ final class Application
         'stock_entries' => ['id', 'item_id', 'storage_location_id', 'quantity', 'minimum_quantity', 'note', 'status', 'created_at', 'updated_at'],
         'reservations' => ['id', 'item_id', 'project_id', 'project_entry_collection', 'project_entry_id', 'requested_quantity', 'fulfilled_quantity', 'status', 'note', 'created_by', 'created_at', 'updated_at', 'closed_at'],
         'stock_transactions' => ['id', 'item_id', 'type', 'quantity', 'source_storage_location_id', 'destination_storage_location_id', 'reservation_id', 'reversal_of_transaction_id', 'note', 'recorded_by', 'occurred_at', 'created_at'],
+        'inventory_audit_requests' => ['id', 'item_id', 'stock_entry_id', 'priority', 'note', 'due_at', 'status', 'created_by', 'created_at', 'resolved_by', 'resolved_at'],
+        'inventory_audits' => ['id', 'name', 'status', 'scope_json', 'created_by', 'created_at', 'completed_by', 'completed_at'],
+        'inventory_audit_entries' => ['id', 'audit_id', 'item_id', 'stock_entry_id', 'storage_location_id', 'tracking_mode', 'book_quantity', 'counted_quantity', 'result', 'note', 'correction_transaction_id', 'checked_by', 'checked_at', 'sort_order'],
+        'inventory_import_batches' => ['id', 'source_filename', 'storage_location_id', 'category_ids_json', 'status', 'created_by', 'created_at', 'reverted_by', 'reverted_at'],
+        'inventory_import_batch_items' => ['batch_id', 'item_id', 'original_item_id', 'stock_entry_id', 'initial_transaction_id', 'row_number', 'item_name', 'snapshot_json'],
     ];
 
     private readonly PDO $db;
     private readonly Auth $auth;
     private readonly ProjectStore $projects;
     private readonly FolderStore $folders;
+    private readonly ProjectShareStore $projectShares;
     private readonly TodoStore $todos;
     private readonly StorageLocationStore $storageLocations;
     private readonly InventoryItemStore $inventoryItems;
@@ -43,6 +50,8 @@ final class Application
     private readonly InventoryStockStore $inventoryStock;
     private readonly InventoryBatchImportStore $inventoryBatchImport;
     private readonly InventoryReservationStore $inventoryReservations;
+    private readonly InventoryAuditStore $inventoryAudits;
+    private readonly InventoryBulkStore $inventoryBulk;
     private readonly UpdateService $updates;
 
     public function __construct(private readonly string $storagePath)
@@ -52,6 +61,7 @@ final class Application
         $this->auth = new Auth($this->db);
         $this->projects = new ProjectStore($storagePath . '/projects');
         $this->folders = new FolderStore($this->db);
+        $this->projectShares = new ProjectShareStore($this->db, $this->projects, $this->folders);
         $this->todos = new TodoStore($this->db);
         $this->storageLocations = new StorageLocationStore($this->db);
         $this->inventoryItems = new InventoryItemStore($this->db, $storagePath . '/inventory-items');
@@ -60,6 +70,8 @@ final class Application
         $this->inventoryStock = new InventoryStockStore($this->db);
         $this->inventoryBatchImport = new InventoryBatchImportStore($this->db);
         $this->inventoryReservations = new InventoryReservationStore($this->db, $this->projects);
+        $this->inventoryAudits = new InventoryAuditStore($this->db);
+        $this->inventoryBulk = new InventoryBulkStore($this->db);
         $this->updates = new UpdateService($storagePath, \logbuch_root_path(), $this->db, (string) (getenv('LOGBUCH_PLATFORM') ?: 'webhosting'));
     }
 
@@ -128,6 +140,9 @@ final class Application
             if ($path === '/api/appearance/logo' && $method === 'GET') {
                 $this->streamAppearanceLogo();
             }
+            if (preg_match('#^/api/public/project-shares/([a-f0-9]{64})$#', $path, $match) && $method === 'GET') {
+                $this->json(200, $this->projectShares->publicData($match[1]));
+            }
             if ($path === '/api/login' && $method === 'POST') {
                 $user = $this->auth->login((string) ($input['user'] ?? ''), (string) ($input['password'] ?? ''), $this->clientIp(), (string) ($_SERVER['HTTP_USER_AGENT'] ?? ''));
                 $this->json(200, $this->withCsrf($user));
@@ -158,6 +173,30 @@ final class Application
             }
             if ($path === '/api/account/preferences' && $method === 'PATCH') {
                 $this->json(200, $this->updatePreferences($user, $input));
+            }
+            if ($path === '/api/project-shares') {
+                $this->requireAdmin($user);
+                if ($method === 'GET') {
+                    $shares = array_map(fn(array $share): array => [...$share, 'url' => $this->projectShareUrl((string) $share['token'])], $this->projectShares->list());
+                    $this->json(200, ['shares' => $shares, 'baseUrl' => $this->configuredBaseUrl()]);
+                }
+                if ($method === 'POST') {
+                    $share = $this->projectShares->create($input, (string) $user['id']);
+                    $this->audit($user['id'], 'project_share.created', (string) $share['id'], (string) $share['scopeLabel']);
+                    $this->json(201, [...$share, 'url' => $this->projectShareUrl((string) $share['token'])]);
+                }
+            }
+            if (preg_match('#^/api/project-shares/([^/]+)/rotate$#', $path, $match) && $method === 'POST') {
+                $this->requireAdmin($user);
+                $share = $this->projectShares->rotate(rawurldecode($match[1]));
+                $this->audit($user['id'], 'project_share.rotated', (string) $share['id']);
+                $this->json(200, [...$share, 'url' => $this->projectShareUrl((string) $share['token'])]);
+            }
+            if (preg_match('#^/api/project-shares/([^/]+)$#', $path, $match) && $method === 'DELETE') {
+                $this->requireAdmin($user);
+                $share = $this->projectShares->deactivate(rawurldecode($match[1]));
+                $this->audit($user['id'], 'project_share.deactivated', (string) $share['id']);
+                $this->json(200, $share);
             }
             if ($path === '/api/system' && $method === 'GET') {
                 $this->json(200, $this->systemStatus());
@@ -262,6 +301,25 @@ final class Application
                 $result = $this->inventoryBatchImport->import($input, (string) $user['id']);
                 $this->audit($user['id'], 'inventory_items.batch_imported', (string) $result['storageLocationId'], 'count=' . $result['count'] . ';categories=' . count($result['categoryIds']));
                 $this->json(201, $result);
+            }
+            if ($path === '/api/inventory-imports' && $method === 'GET') {
+                $this->json(200, ['imports' => $this->inventoryBatchImport->list(trim((string) ($_GET['storageLocationId'] ?? '')) ?: null)]);
+            }
+            if (preg_match('#^/api/inventory-imports/([^/]+)/revert$#', $path, $match) && $method === 'POST') {
+                $this->requireEditor($user);
+                $id = rawurldecode($match[1]);
+                $result = $this->inventoryBatchImport->revert($id, (string) $user['id']);
+                $this->audit($user['id'], 'inventory_items.batch_import_reverted', $id, 'count=' . $result['reverted']);
+                $this->json(200, $result);
+            }
+            if (preg_match('#^/api/inventory-imports/([^/]+)$#', $path, $match) && $method === 'GET') {
+                $this->json(200, $this->inventoryBatchImport->detail(rawurldecode($match[1])));
+            }
+            if ($path === '/api/inventory-items/batch' && $method === 'POST') {
+                $this->requireEditor($user);
+                $result = $this->inventoryBulk->items($input, (string) $user['id']);
+                $this->audit($user['id'], 'inventory_items.batch_updated', $result['action'], 'count=' . $result['changed']);
+                $this->json(200, $result);
             }
             if ($path === '/api/inventory-items' && $method === 'POST') {
                 $this->requireEditor($user);
@@ -405,6 +463,12 @@ final class Application
                 if ($itemId !== null) $result['summary'] = $this->inventoryStock->summary($itemId);
                 $this->json(200, $result);
             }
+            if ($path === '/api/stock-entries/batch' && $method === 'POST') {
+                $this->requireEditor($user);
+                $result = $this->inventoryBulk->stockEntries($input, (string) $user['id']);
+                $this->audit($user['id'], 'stock_entries.batch_updated', $result['action'], 'count=' . $result['changed']);
+                $this->json(200, $result);
+            }
             if ($path === '/api/stock-entries' && $method === 'POST') {
                 $this->requireEditor($user);
                 $entry = $this->inventoryStock->create($input, $user['id']);
@@ -445,6 +509,46 @@ final class Application
                     ($_GET['includeSatisfied'] ?? '') === '1',
                     (string) ($_GET['sort'] ?? 'urgency'),
                 ));
+            }
+            if ($path === '/api/inventory-audits' && $method === 'GET') {
+                $this->json(200, $this->inventoryAudits->overview((int) ($_GET['staleDays'] ?? 365)));
+            }
+            if ($path === '/api/inventory-audit-requests' && $method === 'POST') {
+                $this->requireEditor($user);
+                $request = $this->inventoryAudits->request($input, (string) $user['id']);
+                $this->audit($user['id'], 'inventory_audit.requested', $request['id'], 'item=' . $request['itemId'] . ';priority=' . $request['priority']);
+                $this->json(201, $request);
+            }
+            if (preg_match('#^/api/inventory-audit-requests/([^/]+)$#', $path, $match) && $method === 'DELETE') {
+                $this->requireEditor($user);
+                $requestId = rawurldecode($match[1]);
+                $removed = $this->inventoryAudits->dismissRequest($requestId, (string) $user['id']);
+                $this->audit($user['id'], 'inventory_audit.request_dismissed', $requestId);
+                $this->json(200, ['removed' => $removed]);
+            }
+            if ($path === '/api/inventory-audits' && $method === 'POST') {
+                $this->requireEditor($user);
+                $audit = $this->inventoryAudits->createAudit($input, (string) $user['id']);
+                $this->audit($user['id'], 'inventory_audit.created', $audit['id'], 'positions=' . $audit['summary']['total']);
+                $this->json(201, $audit);
+            }
+            if (preg_match('#^/api/inventory-audits/([^/]+)/entries/([^/]+)$#', $path, $match) && $method === 'POST') {
+                $this->requireEditor($user);
+                $auditId = rawurldecode($match[1]);
+                $entryId = rawurldecode($match[2]);
+                $audit = $this->inventoryAudits->check($auditId, $entryId, $input, (string) $user['id']);
+                $this->audit($user['id'], 'inventory_audit.position_checked', $entryId, 'audit=' . $auditId);
+                $this->json(200, $audit);
+            }
+            if (preg_match('#^/api/inventory-audits/([^/]+)/complete$#', $path, $match) && $method === 'POST') {
+                $this->requireEditor($user);
+                $auditId = rawurldecode($match[1]);
+                $audit = $this->inventoryAudits->complete($auditId, (string) $user['id']);
+                $this->audit($user['id'], 'inventory_audit.completed', $auditId);
+                $this->json(200, $audit);
+            }
+            if (preg_match('#^/api/inventory-audits/([^/]+)$#', $path, $match) && $method === 'GET') {
+                $this->json(200, $this->inventoryAudits->audit(rawurldecode($match[1])));
             }
             if ($path === '/api/reservations' && $method === 'GET') {
                 $itemId = trim((string) ($_GET['itemId'] ?? '')) ?: null;
@@ -1362,6 +1466,38 @@ final class Application
                 throw new HttpError(422, 'Ungültige Reihenfolge der Übersichtsbereiche.');
             }
         }
+        if (isset($input['inventoryLabelOutputMode']) && !in_array($input['inventoryLabelOutputMode'], ['sheet', 'roll'], true)) {
+            throw new HttpError(422, 'Ungültige Etiketten-Ausgabeart.');
+        }
+        if (isset($input['inventoryLabelProfileId']) && (!is_string($input['inventoryLabelProfileId']) || !preg_match('/^[a-zA-Z0-9-]{1,80}$/', $input['inventoryLabelProfileId']))) {
+            throw new HttpError(422, 'Ungültiges Etikettenprofil.');
+        }
+        if (array_key_exists('inventoryLabelProfiles', $input)) {
+            if (!is_array($input['inventoryLabelProfiles']) || count($input['inventoryLabelProfiles']) > 30) {
+                throw new HttpError(422, 'Es können höchstens 30 eigene Etikettenprofile gespeichert werden.');
+            }
+            $profileIds = [];
+            foreach ($input['inventoryLabelProfiles'] as $profile) {
+                if (!is_array($profile)) throw new HttpError(422, 'Ungültiges Etikettenprofil.');
+                $id = $profile['id'] ?? null;
+                $name = trim((string) ($profile['name'] ?? ''));
+                $width = $profile['width'] ?? null;
+                $height = $profile['height'] ?? null;
+                $margin = $profile['margin'] ?? null;
+                $offsetX = $profile['offsetX'] ?? null;
+                $offsetY = $profile['offsetY'] ?? null;
+                $numeric = static fn(mixed $value): bool => is_int($value) || is_float($value);
+                if (!is_string($id) || !preg_match('/^custom-[a-zA-Z0-9-]{1,70}$/', $id) || isset($profileIds[$id])) throw new HttpError(422, 'Ungültige oder doppelte Etikettenprofil-ID.');
+                if ($name === '' || mb_strlen($name) > 80) throw new HttpError(422, 'Profilnamen müssen 1–80 Zeichen lang sein.');
+                if (!$numeric($width) || !$numeric($height) || $width < 10 || $width > 310 || $height < 10 || $height > 500) throw new HttpError(422, 'Etiketten müssen zwischen 10 × 10 und 310 × 500 mm groß sein.');
+                if (!$numeric($margin) || $margin < 0 || $margin > 20 || $margin * 2 >= min($width, $height)) throw new HttpError(422, 'Ungültiger Etiketten-Innenabstand.');
+                if (!$numeric($offsetX) || !$numeric($offsetY) || abs($offsetX) > 10 || abs($offsetY) > 10) throw new HttpError(422, 'Die Etiketten-Kalibrierung darf höchstens 10 mm betragen.');
+                if (!in_array($profile['layout'] ?? null, ['auto', 'landscape', 'portrait', 'qr'], true)) throw new HttpError(422, 'Ungültiges Etikettenlayout.');
+                if (!in_array($profile['contentLevel'] ?? null, ['qr', 'title', 'compact', 'full'], true)) throw new HttpError(422, 'Ungültiger Etiketteninhalt.');
+                if (!is_bool($profile['border'] ?? null)) throw new HttpError(422, 'Ungültige Rahmen-Einstellung.');
+                $profileIds[$id] = true;
+            }
+        }
         $statement = $this->db->prepare('SELECT preferences_json FROM users WHERE id = :id');
         $statement->execute(['id' => $user['id']]);
         $preferences = array_replace($this->auth->defaultPreferences(), json_decode((string) $statement->fetchColumn(), true) ?: []);
@@ -1410,6 +1546,17 @@ final class Application
         $scheme = ((!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') || strtolower((string) ($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '')) === 'https') ? 'https' : 'http';
         $host = preg_replace('/[^A-Za-z0-9.\-:\[\]]/', '', (string) ($_SERVER['HTTP_HOST'] ?? 'localhost')) ?: 'localhost';
         return $scheme . '://' . $host;
+    }
+
+    private function configuredBaseUrl(): string
+    {
+        $general = $this->getSetting('general', []);
+        return rtrim((string) ($general['baseUrl'] ?? $this->detectedBaseUrl()), '/');
+    }
+
+    private function projectShareUrl(string $token): string
+    {
+        return $this->configuredBaseUrl() . '/share/projects/' . rawurlencode($token);
     }
 
     private function inventoryItemWithCategories(array $item): array
@@ -1462,6 +1609,7 @@ final class Application
             'stockEntries' => (int) $this->db->query('SELECT COUNT(*) FROM stock_entries')->fetchColumn(),
             'reservations' => (int) $this->db->query('SELECT COUNT(*) FROM reservations')->fetchColumn(),
             'stockTransactions' => (int) $this->db->query('SELECT COUNT(*) FROM stock_transactions')->fetchColumn(),
+            'inventoryAudits' => (int) $this->db->query('SELECT COUNT(*) FROM inventory_audits')->fetchColumn(),
         ];
 
         $this->db->exec('BEGIN IMMEDIATE');
@@ -1469,6 +1617,11 @@ final class Application
         try {
             // Dependent inventory records must go first so historical foreign
             // keys never point at content removed by this reset.
+            $this->db->exec('DELETE FROM inventory_audit_entries');
+            $this->db->exec('DELETE FROM inventory_audit_requests');
+            $this->db->exec('DELETE FROM inventory_audits');
+            $this->db->exec('DELETE FROM inventory_import_batch_items');
+            $this->db->exec('DELETE FROM inventory_import_batches');
             $this->db->exec('DELETE FROM stock_transactions');
             $this->db->exec('DELETE FROM reservations');
             $this->db->exec('DELETE FROM stock_entries');
@@ -1482,6 +1635,7 @@ final class Application
             $this->db->exec('DELETE FROM todos');
             $this->db->exec('DELETE FROM user_projects');
             $this->db->exec('DELETE FROM tags');
+            $this->db->exec('DELETE FROM project_public_shares');
             $this->db->exec('UPDATE folders SET parent_id = NULL WHERE parent_id IS NOT NULL');
             $this->db->exec('DELETE FROM folders');
 
@@ -2125,7 +2279,11 @@ final class Application
         $projects = $manifest['projects'] ?? null;
         if (!is_array($tables) || !is_array($projects) || count($projects) > 10000) throw new HttpError(422, 'Das Vollbackup ist unvollständig.');
         foreach (self::FULL_BACKUP_TABLES as $table => $columns) {
-            $rows = $tables[$table] ?? ($schemaVersion < 18 && $table === 'inventory_item_notes' ? [] : null);
+            $legacyOptional = ($schemaVersion < 18 && $table === 'inventory_item_notes')
+                || ($schemaVersion < 20 && in_array($table, ['inventory_audit_requests', 'inventory_audits', 'inventory_audit_entries'], true))
+                || ($schemaVersion < 21 && in_array($table, ['inventory_import_batches', 'inventory_import_batch_items'], true))
+                || ($schemaVersion < 22 && $table === 'project_public_shares');
+            $rows = $tables[$table] ?? ($legacyOptional ? [] : null);
             if (!is_array($rows) || count($rows) > 500000) throw new HttpError(422, 'Die Tabelle „' . $table . '“ im Vollbackup ist ungültig.');
             foreach ($rows as $row) {
                 if (!is_array($row)) throw new HttpError(422, 'Die Tabelle „' . $table . '“ im Vollbackup ist ungültig.');
@@ -2196,6 +2354,12 @@ final class Application
     {
         $tables = $manifest['tables'];
         $tables['inventory_item_notes'] ??= [];
+        $tables['inventory_audit_requests'] ??= [];
+        $tables['inventory_audits'] ??= [];
+        $tables['inventory_audit_entries'] ??= [];
+        $tables['inventory_import_batches'] ??= [];
+        $tables['inventory_import_batch_items'] ??= [];
+        $tables['project_public_shares'] ??= [];
         if ((int) ($manifest['schemaVersion'] ?? 0) < 19) {
             $tables['inventory_items'] = array_map(static fn(array $row): array => ['tracking_mode' => 'QUANTITY', ...$row], $tables['inventory_items']);
         }
@@ -2250,6 +2414,7 @@ final class Application
             $this->insertFullBackupRows('tags', $tables['tags']);
             $this->insertFullBackupRows('settings', $tables['settings']);
             $this->insertFullBackupSelfRows('folders', $tables['folders']);
+            $this->insertFullBackupRows('project_public_shares', $tables['project_public_shares']);
             $this->insertFullBackupSelfRows('todos', $tables['todos']);
             $this->insertFullBackupSelfRows('storage_locations', $tables['storage_locations']);
             $this->insertFullBackupSelfRows('inventory_categories', $tables['inventory_categories']);
@@ -2259,6 +2424,11 @@ final class Application
             $this->insertFullBackupRows('stock_entries', $tables['stock_entries']);
             $this->insertFullBackupRows('reservations', $tables['reservations']);
             $this->insertFullBackupSelfRows('stock_transactions', $tables['stock_transactions'], 'reversal_of_transaction_id');
+            $this->insertFullBackupRows('inventory_import_batches', $tables['inventory_import_batches']);
+            $this->insertFullBackupRows('inventory_import_batch_items', $tables['inventory_import_batch_items']);
+            $this->insertFullBackupRows('inventory_audits', $tables['inventory_audits']);
+            $this->insertFullBackupRows('inventory_audit_requests', $tables['inventory_audit_requests']);
+            $this->insertFullBackupRows('inventory_audit_entries', $tables['inventory_audit_entries']);
             $this->insertFullBackupRows('user_projects', $tables['user_projects']);
             $this->insertFullBackupRows('audit', $tables['audit']);
 
@@ -2317,6 +2487,11 @@ final class Application
 
     private function clearFullBackupTables(): void
     {
+        $this->db->exec('DELETE FROM inventory_audit_entries');
+        $this->db->exec('DELETE FROM inventory_audit_requests');
+        $this->db->exec('DELETE FROM inventory_audits');
+        $this->db->exec('DELETE FROM inventory_import_batch_items');
+        $this->db->exec('DELETE FROM inventory_import_batches');
         $this->db->exec('DELETE FROM stock_transactions');
         $this->db->exec('DELETE FROM reservations');
         $this->db->exec('DELETE FROM stock_entries');
@@ -2332,6 +2507,7 @@ final class Application
         $this->db->exec('DELETE FROM sessions');
         $this->db->exec('DELETE FROM login_attempts');
         $this->db->exec('DELETE FROM audit');
+        $this->db->exec('DELETE FROM project_public_shares');
         $this->db->exec('UPDATE folders SET parent_id = NULL WHERE parent_id IS NOT NULL');
         $this->db->exec('DELETE FROM folders');
         $this->db->exec('DELETE FROM tags');

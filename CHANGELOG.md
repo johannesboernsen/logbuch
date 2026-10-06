@@ -4,7 +4,25 @@ Hier werden die wichtigen Änderungen des Logbuchs festgehalten. Die Einträge s
 
 ## [Unveröffentlicht]
 
-Noch keine Änderungen.
+## [0.8.1] - 2026-10-06
+
+Das Logbuch unterstützt nun öffentliche Projektübersichten und ergänzt die Lagerverwaltung um Inventuren, gemeinsame Stapelaktionen sowie frei konfigurierbare QR-Etiketten.
+
+### Wichtigste Änderungen
+
+- Projektansichten können als dynamische, öffentliche Übersicht ohne Anmeldung freigegeben werden. Statusansichten, die gesamte reguläre Projektliste oder komplette Ordnerunterbäume zeigen ausschließlich Projektname, Beschreibung, Status und Fälligkeit in einer sortierbaren Liste; Freigabelinks lassen sich befristen, erneuern und sofort widerrufen.
+- Artikel können in der Artikelliste und in geöffneten Kategorien gemeinsam ausgewählt werden, um Kategorien zu ergänzen oder zu entfernen, globale Mindestbestände zu pflegen, Inventuren vorzumerken und Etiketten zu drucken.
+- Mehrere Lagerpositionen eines Lagerorts lassen sich vollständig in einen anderen Lagerort verschieben oder mit einem gemeinsamen lokalen Mindestbestand versehen; Umlagerungen bleiben in der Buchungshistorie nachvollziehbar.
+- CSV-Importe werden mit Datei, Zielort und Artikeln protokolliert. Neu importierte Lagerpositionen sind direkt ausgewählt und unveränderte Importe können nach einer Konfliktprüfung vollständig zurückgenommen werden.
+- Inventurläufe lassen sich auf einzelne Lagerorte oder Unterbäume sowie eine oder mehrere Kategorien einschließlich Unterkategorien begrenzen. Bestandsprüfungen, Abweichungen und daraus erzeugte Korrekturbuchungen bleiben nachvollziehbar.
+- Artikel und konkrete Lagerpositionen können mit Vermerk, Termin und normaler oder dringender Priorität zur Inventur vorgemerkt werden. Eine eigene Ansicht bündelt dringende, vorgemerkte und lange unangetastete Bestände.
+- Lose Sammlungen erhalten passende Inventurzustände ohne Mengenerfassung.
+- Aus den dauerhaften Links von Artikeln, Lagerorten und Kategorien lassen sich direkt QR-Codes und druckbare Etiketten erzeugen.
+- Einzelne QR-Codes können offline als SVG oder PNG heruntergeladen werden; die QR-Daten werden dabei ausschließlich lokal im Browser erzeugt.
+- Für einen Lagerort kann ein vollständiger Etikettenbogen seiner direkt enthaltenen Artikel oder aller Artikel im Unterbaum gedruckt beziehungsweise als PDF gespeichert werden.
+- Neben A4-Bögen unterstützt die Druckausgabe jetzt Rollenetiketten für beliebige systemseitig installierte DYMO-, Brother-, Zebra- und andere Etikettendrucker. Jede Druckseite entspricht dabei exakt der frei eingestellten Etikettengröße.
+- Eigene Etikettenprofile speichern Maße, Innenabstand, Druckkalibrierung, Rahmen, Informationsumfang und ein automatisches oder festes Hoch-/Querformat-Layout als persönliche Einstellung.
+- Zu kleine Etiketten reduzieren weniger wichtige Informationen automatisch und warnen, wenn die verbleibende QR-Code-Fläche möglicherweise nicht zuverlässig scannt.
 
 ## [0.8.0] - 2026-09-04
 

@@ -39,7 +39,7 @@ test('Inventarmigration legt Kernmodell, Foreign Keys und Indizes an', async () 
   `);
   assert.equal(stderr, '');
   const schema = JSON.parse(stdout);
-  for (const table of ['storage_locations', 'inventory_categories', 'inventory_item_categories', 'inventory_items', 'inventory_item_notes', 'stock_entries', 'stock_transactions', 'reservations']) {
+  for (const table of ['storage_locations', 'inventory_categories', 'inventory_item_categories', 'inventory_items', 'inventory_item_notes', 'stock_entries', 'stock_transactions', 'reservations', 'inventory_audit_requests', 'inventory_audits', 'inventory_audit_entries', 'inventory_import_batches', 'inventory_import_batch_items', 'project_public_shares']) {
     assert.ok(schema.tables.includes(table), `Tabelle ${table} fehlt`);
   }
   assert.equal(schema.foreignKeys, 1);
@@ -51,6 +51,7 @@ test('Inventarmigration legt Kernmodell, Foreign Keys und Indizes an', async () 
   assert.ok(schema.indexes.includes('stock_transactions_item_occurred'));
   assert.ok(schema.indexes.includes('inventory_item_notes_item_created'));
   assert.ok(schema.indexes.includes('inventory_items_tracking_status_name'));
+  assert.ok(schema.indexes.includes('inventory_audit_entries_item_checked'));
 });
 
 test('Additive Lagermigrationen bleiben nach einer zurückgesetzten Schemaversion wiederholbar', async () => {
@@ -64,7 +65,7 @@ test('Additive Lagermigrationen bleiben nach einer zurückgesetzten Schemaversio
     echo json_encode(['version' => (int) $reopenedPdo->query("SELECT value FROM meta WHERE key = 'schema_version'")->fetchColumn(), 'sortOrderCount' => count(array_filter($columns, fn($column) => $column === 'sort_order')), 'iconCount' => count(array_filter($columns, fn($column) => $column === 'icon')), 'hasType' => in_array('type', $columns, true)]);
   `);
   assert.equal(stderr, '');
-  assert.deepEqual(JSON.parse(stdout), { version:19, sortOrderCount:1, iconCount:1, hasType:false });
+  assert.deepEqual(JSON.parse(stdout), { version:22, sortOrderCount:1, iconCount:1, hasType:false });
 });
 
 test('DB verhindert negative und doppelte physische Bestände', async () => {

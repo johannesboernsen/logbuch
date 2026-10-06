@@ -216,6 +216,20 @@ test('Übersichtsbereiche werden in Zeilen konfiguriert', async () => {
   assert.deepEqual(updated.data.overviewOrder, overviewOrder);
 });
 
+test('Eigene Etikettenprofile werden als validierte Benutzerpräferenz gespeichert', async () => {
+  const profile = { id:'custom-dymo-89x28', name:'DYMO breit', width:89, height:28, margin:1.5, offsetX:0.4, offsetY:-0.2, layout:'auto', contentLevel:'full', border:false };
+  const updated = await request('/api/account/preferences', { method:'PATCH', body:JSON.stringify({ inventoryLabelOutputMode:'roll', inventoryLabelProfileId:profile.id, inventoryLabelProfiles:[profile] }) });
+  assert.equal(updated.response.status, 200);
+  assert.equal(updated.data.inventoryLabelOutputMode, 'roll');
+  assert.equal(updated.data.inventoryLabelProfileId, profile.id);
+  assert.deepEqual(updated.data.inventoryLabelProfiles, [profile]);
+
+  const invalid = await request('/api/account/preferences', { method:'PATCH', body:JSON.stringify({ inventoryLabelProfiles:[{ ...profile, width:5 }] }) });
+  assert.equal(invalid.response.status, 422);
+  const duplicate = await request('/api/account/preferences', { method:'PATCH', body:JSON.stringify({ inventoryLabelProfiles:[profile, profile] }) });
+  assert.equal(duplicate.response.status, 422);
+});
+
 test('Persönliche Erinnerungen bleiben einfach, sortierbar und vom Projektlog getrennt', async () => {
   assert.equal((await request('/api/todos')).data.openCount, 0);
   assert.equal((await request('/api/todos', { method:'POST', body:JSON.stringify({ title:'   ' }) })).response.status, 422);

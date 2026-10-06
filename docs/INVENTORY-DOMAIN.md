@@ -69,6 +69,29 @@ Historische Reservierungen behalten ihre IDs auch dann, wenn ein Projektelement 
 
 Attachments und die bestehenden Projekt-Notizen sind an Projektverzeichnisse und Projekt-Collections gebunden. Die Lagerkerntabellen besitzen deshalb vorerst Beschreibungs-/Notizfelder, aber noch keine unechte Wiederverwendung des Projekt-Attachment-Formats. Ein globales Attachment-/Notizmodell für Lagerorte, Artikel und Bestandseinträge wird zusammen mit den zugehörigen Schreib- und Backup-Flows ergänzt.
 
-Artikel, Lagerorte und Kategorien besitzen inzwischen dauerhafte, ID-basierte Links. Sie können als Ziel für QR-Codes und NFC-Tags verwendet werden und bleiben beim Umbenennen oder Verschieben unverändert.
+Artikel, Lagerorte und Kategorien besitzen dauerhafte, ID-basierte Links. Sie können als Ziel für QR-Codes und NFC-Tags verwendet werden und bleiben beim Umbenennen oder Verschieben unverändert. Das Logbuch erzeugt daraus lokal einzelne QR-Codes als SVG oder PNG und druckbare Etiketten. Für Lagerorte kann zusätzlich ein Etikettenbogen der direkt enthaltenen Artikel oder aller Artikel im vollständigen Unterbaum erzeugt werden; mehrfach abgelegte Artikel erscheinen darin nur einmal.
 
-Weiterhin offen bleiben direkt erzeugte QR-Etiketten, Tags, benutzerdefinierte Eigenschaften, Inventur, ein tatsächlicher Einkaufs-/Bestellprozess sowie globale Lager-Anhänge und -Notizen.
+Die Druckausgabe unterscheidet A4-Bögen von Rollenetiketten. Ein Rollenprofil beschreibt die tatsächliche Breite und Höhe, den Innenabstand, eine Druckkalibrierung, einen optionalen Rahmen, den Informationsumfang und das gewünschte Layout. Rollenetiketten werden mit einer eigenen Druckseite je Datensatz und einer passenden CSS-Seitengröße erzeugt, sodass sie über den normalen Systemdruckdialog herstellerunabhängig ausgegeben werden können. Automatische Layouts ordnen QR-Code und Text anhand des Seitenverhältnisses horizontal oder vertikal an. Bei unzureichender Fläche werden Zusatzinformationen prioritätsbasiert entfernt; die Oberfläche warnt zusätzlich vor einem möglicherweise zu kleinen QR-Code.
+
+Eigene Rollenprofile liegen in den validierten persönlichen Benutzerpräferenzen. Dadurch bleiben sie beim Wechsel des Browsers erhalten und werden über die bestehenden Benutzer- und Vollbackup-Flows mitgesichert. Die mitgelieferten Standardgrößen bleiben unveränderliche Ausgangspunkte und können als eigenes Profil kopiert und angepasst werden.
+
+## Stapelimport und Mehrfachverwaltung
+
+- Jeder erfolgreiche CSV-Import wird als eigener Importvorgang mit Quelldatei, Zielort, Kategorien und angelegten Artikeln gespeichert. Direkt danach bleiben seine Lagerpositionen für gemeinsame Folgeaktionen ausgewählt.
+- Ein Import kann vollständig zurückgenommen werden, solange keiner seiner Artikel nachträglich verändert, gebucht, reserviert, inventarisiert oder anderweitig ergänzt wurde. Die Konfliktprüfung erfolgt vor der atomaren Rücknahme und nennt blockierende Artikel.
+- In der Artikelliste und einer geöffneten Kategorie bezieht sich die Auswahl auf Artikelstammdaten. Gemeinsam möglich sind das Hinzufügen oder Entfernen von Kategorien, ein globaler Mindestbestand, Inventurvormerkungen und Etiketten.
+- In einem geöffneten Lagerort bezieht sich die Auswahl auf konkrete Lagerpositionen. Dort kommen vollständige Umlagerungen und ein gemeinsamer lokaler Mindestbestand hinzu.
+- Gemeinsame Mindestbestände setzen eine einheitliche Bestandseinheit voraus; lose Sammlungen besitzen weiterhin keinen Mengen-Mindestbestand.
+- Beim Verschieben wird der vollständige Bestand jeder ausgewählten Position umgelagert. Bestehende Zielpositionen werden zusammengeführt, Ziel-Mindestbestände haben Vorrang und Mengenbewegungen werden einzeln als `TRANSFER` protokolliert.
+
+## Inventur
+
+- Eine Inventur prüft eine konkrete Lagerposition, also die Kombination aus Artikel und Lagerort. Ein Artikel an mehreren Lagerorten erzeugt mehrere Positionen.
+- `inventory_audits` speichert einen benannten Lauf und dessen zum Startzeitpunkt festgeschriebenen Umfang. `inventory_audit_entries` hält den damaligen Buchbestand, das Prüfergebnis und eine optionale Korrekturbuchung fest. Auch eine Prüfung ohne Differenz bleibt damit nachweisbar.
+- Lagerort- und Kategorieauswahl werden als Schnittmenge angewendet. Ein Lagerort kann exakt oder einschließlich aller Unterlagerorte gewählt werden; mehrere Kategorien bilden untereinander eine Vereinigungsmenge und können jeweils ihre Unterkategorien einschließen.
+- Mengenartikel werden gezählt. Eine bestätigte Abweichung aktualisiert Bestand und unveränderliche `CORRECTION`-Buchung atomar. Lose Sammlungen werden ohne Menge als in Ordnung, klärungsbedürftig, nicht auffindbar oder übersprungen geprüft.
+- `inventory_audit_requests` merkt einen Artikel global oder an einem bestimmten Lagerplatz mit normaler oder dringender Priorität, Vermerk und optionalem Prüfdatum vor. Eine Bestandsbewegung entfernt diese Vormerkung nicht. Lokale Vormerkungen werden durch die lokale Prüfung erledigt; eine globale Vormerkung erst, wenn alle aktiven Lagerpositionen seit ihrer Anlage geprüft wurden.
+- Die Liste „lange unangetastet“ leitet ihre letzte relevante Aktivität aus Artikel-/Lagerpositionsanlage, physischen Bestandsbewegungen und ausdrücklichen Inventurprüfungen ab. Stammdatenänderungen, Notizen und Reservierungen gelten nicht als physische Bestätigung.
+- Inventurdaten gehören zum Vollbackup und werden beim vollständigen Inhaltsreset mit entfernt.
+
+Weiterhin offen bleiben das direkte Beschreiben physischer NFC-Tags, benutzerdefinierte Eigenschaften, ein tatsächlicher Einkaufs-/Bestellprozess sowie globale Lager-Anhänge und -Notizen.

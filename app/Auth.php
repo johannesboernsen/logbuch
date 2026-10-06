@@ -233,6 +233,9 @@ final class Auth
             'overviewDueSoonRows' => 2,
             'overviewHighPriorityRows' => 2,
             'overviewOrder' => ['summary', 'recentlyEdited', 'marked', 'dueSoon', 'highPriority', 'next', 'recent', 'activity', 'timeline'],
+            'inventoryLabelOutputMode' => 'sheet',
+            'inventoryLabelProfileId' => 'generic-62x29',
+            'inventoryLabelProfiles' => [],
         ];
     }
 

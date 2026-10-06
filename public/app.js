@@ -7,6 +7,14 @@ let inventoryCategoryDrag = null;
 let inventoryCategoryItemDrag = null;
 let inventoryItemImagePreviewUrl = '';
 let appearanceLogoPreviewUrl = '';
+let inventoryLabelModel = null;
+let inventoryLabelRequest = 0;
+let inventoryLabelProfileDraftId = null;
+let inventoryBulkItemIds = new Set();
+let inventoryBulkStockEntryIds = new Set();
+let inventoryBulkCategoryIds = [];
+let inventoryBulkLocationId = '';
+let inventoryLastImportId = '';
 const systemDarkMode = window.matchMedia('(prefers-color-scheme: dark)');
 const api = async (path, options = {}) => {
   const method = (options.method || 'GET').toUpperCase();
@@ -416,6 +424,7 @@ const projectFlagIcon = () => '<svg viewBox="0 0 24 24" fill="none" aria-hidden=
 const editIcon = () => '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.4 2.6a1 1 0 0 1 3 3l-9 9a2 2 0 0 1-.9.5l-2.9.9a.5.5 0 0 1-.6-.6l.9-2.9a2 2 0 0 1 .5-.9Z"></path></svg>';
 const printIcon = () => '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M7 9V3h10v6"></path><path d="M7 18H5a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><path d="M7 14h10v7H7Z"></path><path d="M17.5 12h.01"></path></svg>';
 const exportIcon = () => '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 3v12"></path><path d="m7 8 5-5 5 5"></path><path d="M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6"></path></svg>';
+const publicShareIcon = () => '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="18" cy="5" r="2.5"></circle><circle cx="6" cy="12" r="2.5"></circle><circle cx="18" cy="19" r="2.5"></circle><path d="m8.2 10.8 7.6-4.5M8.2 13.2l7.6 4.5"></path></svg>';
 const projectEditButton = project => mayEditProjects() ? `<button class="edit-action" type="button" data-edit-project="${escapeHtml(project.id)}" aria-label="Projekt bearbeiten" title="Projekt bearbeiten">${editIcon()}</button>` : '';
 const projectExportButton = project => `<details class="action-menu project-export-menu"><summary aria-label="Projekt teilen oder exportieren" title="Projekt teilen oder exportieren">${exportIcon()}</summary><div class="action-menu-panel"><button class="menu-item" type="button" data-ai-project-export="${escapeHtml(project.id)}"><strong>Für KI herunterladen</strong><small>Projektstand als Markdown weitergeben</small></button><span class="action-menu-separator" aria-hidden="true"></span><a class="menu-item" href="/api/backup/projects/${encodeURIComponent(project.id)}"><strong>Rohdaten</strong><small>Für eine andere Logbuch-Instanz</small></a><a class="menu-item" href="/#/projects/${encodeURIComponent(project.id)}/export" target="_blank" rel="noopener"><strong>PDF-Export</strong><small>Farbig, inklusive Bilder</small></a><a class="menu-item" href="/#/projects/${encodeURIComponent(project.id)}/print" target="_blank" rel="noopener"><strong>Druckansicht</strong><small>Schwarz-weiß</small></a></div></details>`;
 const folderEditButton = folder => mayEditProjects() ? `<button class="edit-action" type="button" data-edit-folder="${escapeHtml(folder.id)}" aria-label="Ordner bearbeiten" title="Ordner bearbeiten">${editIcon()}</button>` : '';
@@ -594,11 +603,11 @@ function inventoryItemManagementActions(item, archived = item.status === 'ARCHIV
   if (!mayEditProjects()) return '';
   return archived
     ? `<button class="menu-item" type="button" data-inventory-item-restore="${escapeHtml(item.id)}">Wiederherstellen</button>`
-    : `${includeEdit ? `<button class="menu-item" type="button" data-inventory-item-edit="${escapeHtml(item.id)}">Artikel bearbeiten</button>` : ''}<button class="menu-item danger" type="button" data-inventory-item-archive="${escapeHtml(item.id)}" data-inventory-item-name="${escapeHtml(item.name)}">Archivieren</button>`;
+    : `${includeEdit ? `<button class="menu-item" type="button" data-inventory-item-edit="${escapeHtml(item.id)}">Artikel bearbeiten</button>` : ''}<button class="menu-item" type="button" data-inventory-audit-request="${escapeHtml(item.id)}">Zur Inventur vormerken</button><button class="menu-item danger" type="button" data-inventory-item-archive="${escapeHtml(item.id)}" data-inventory-item-name="${escapeHtml(item.name)}">Archivieren</button>`;
 }
 
 function inventoryItemPermanentLinkAction(item) {
-  return `<button class="menu-item" type="button" data-inventory-item-copy-link="${escapeHtml(item.id)}">Dauerhaften Link kopieren</button>`;
+  return `<button class="menu-item" type="button" data-inventory-label-kind="item" data-inventory-label-id="${escapeHtml(item.id)}">QR-Code & Etikett</button><button class="menu-item" type="button" data-inventory-item-copy-link="${escapeHtml(item.id)}">Dauerhaften Link kopieren</button>`;
 }
 
 function inventoryItemDetailsButton(item, includeArchived = item.status === 'ARCHIVED') {
@@ -662,11 +671,12 @@ function updateProjectMenuCounts() {
 }
 
 async function loadInventoryMenuCounts() {
-  const [locationData, categoryData, itemData, replenishmentData] = await Promise.all([
+  const [locationData, categoryData, itemData, replenishmentData, auditData] = await Promise.all([
     api('/storage-locations?includeArchived=1'),
     api('/inventory-categories'),
     api('/inventory-items?includeArchived=1'),
     api('/inventory-replenishment'),
+    api('/inventory-audits'),
   ]);
   const locations = locationData.locations || [];
   const items = itemData.items || [];
@@ -675,6 +685,7 @@ async function loadInventoryMenuCounts() {
     categories:(categoryData.categories || []).length,
     items:items.filter(item => item.status === 'ACTIVE').length,
     replenishment:Number(replenishmentData.summary?.itemCount || 0),
+    audits:Number(auditData.summary?.requestCount || 0),
     archive:locations.filter(location => location.status === 'ARCHIVED').length + items.filter(item => item.status === 'ARCHIVED').length,
   };
   document.querySelectorAll('[data-inventory-count]').forEach(node => { node.textContent = counts[node.dataset.inventoryCount] ?? 0; });
@@ -1869,6 +1880,7 @@ const inventoryReplenishmentHref = (query = '', includeSatisfied = false, sort =
   if (sort !== 'urgency') params.set('sort', sort);
   return `/#/inventory/replenishment${params.size ? `?${params}` : ''}`;
 };
+const inventoryAuditHref = (id = '') => `/#/inventory/audits${id ? `/${encodeURIComponent(id)}` : ''}`;
 
 async function loadStorageLocations(includeArchived = false) {
   const data = await api(`/storage-locations${includeArchived ? '?includeArchived=1' : ''}`);
@@ -2130,7 +2142,9 @@ function inventoryItemRow(item, selectedId = '', categoryId = '', sort = 'name',
   const stock = collection ? 'Vorhanden' : quantity(item.physicalQuantity);
   const reserved = collection ? `${Number(item.bookingCount || 0)} Projekte` : quantity(item.reservedQuantity);
   const available = collection ? 'Ohne Menge' : quantity(item.availableQuantity);
-  return `<tr class="inventory-item-row${item.id === selectedId ? ' selected' : ''}${archived ? ' archived' : ''}" data-inventory-item-route="${escapeHtml(href)}" tabindex="0"><td class="inventory-item-name-column"><a href="${href}"${item.id === selectedId ? ' aria-current="page"' : ''}><strong>${escapeHtml(item.name)}</strong>${collection ? '<small>Lose Sammlung ohne Mengenerfassung</small>' : archived ? '<small>Archiviert</small>' : ''}</a></td><td class="inventory-item-meta-column"><span>${escapeHtml(item.manufacturer || '–')}</span><small>${escapeHtml(item.articleNumber || '–')}</small></td><td class="inventory-item-number-column"><span>${stock}</span></td><td class="inventory-item-number-column inventory-item-reserved-column"><span>${reserved}</span></td><td class="inventory-item-number-column${!collection && Number(item.availableQuantity || 0) < 0 ? ' low' : ''}"><span>${available}</span></td><td class="inventory-item-actions-column">${actions}</td></tr>`;
+  const checked = inventoryBulkItemIds.has(item.id);
+  const selection = mayEditProjects() && !archived ? `<td class="inventory-bulk-check-column"><label><input type="checkbox" data-bulk-item-id="${escapeHtml(item.id)}" aria-label="${escapeHtml(item.name)} auswählen"${checked ? ' checked' : ''}><span></span></label></td>` : '<td class="inventory-bulk-check-column"></td>';
+  return `<tr class="inventory-item-row${item.id === selectedId ? ' selected' : ''}${checked ? ' bulk-selected' : ''}${archived ? ' archived' : ''}" data-inventory-item-route="${escapeHtml(href)}" tabindex="0">${selection}<td class="inventory-item-name-column"><a href="${href}"${item.id === selectedId ? ' aria-current="page"' : ''}><strong>${escapeHtml(item.name)}</strong>${collection ? '<small>Lose Sammlung ohne Mengenerfassung</small>' : archived ? '<small>Archiviert</small>' : ''}</a></td><td class="inventory-item-meta-column"><span>${escapeHtml(item.manufacturer || '–')}</span><small>${escapeHtml(item.articleNumber || '–')}</small></td><td class="inventory-item-number-column"><span>${stock}</span></td><td class="inventory-item-number-column inventory-item-reserved-column"><span>${reserved}</span></td><td class="inventory-item-number-column${!collection && Number(item.availableQuantity || 0) < 0 ? ' low' : ''}"><span>${available}</span></td><td class="inventory-item-actions-column">${actions}</td></tr>`;
 }
 
 function inventoryItemSortHeader(label, field, sort, direction, className = '') {
@@ -2141,8 +2155,18 @@ function inventoryItemSortHeader(label, field, sort, direction, className = '') 
   return `<th${className ? ` class="${className}"` : ''} aria-sort="${ariaSort}"><a class="inventory-item-sort-link${active ? ' active' : ''}" href="${href}" title="Nach ${escapeHtml(label)} ${nextDirection === 'asc' ? 'aufsteigend' : 'absteigend'} sortieren"><span>${escapeHtml(label)}</span><i aria-hidden="true">${active ? (direction === 'asc' ? '↑' : '↓') : '↕'}</i></a></th>`;
 }
 
-function inventoryItemTable(rows, sort, direction) {
-  return `<table class="inventory-item-table"><thead><tr>${inventoryItemSortHeader('Artikel', 'name', sort, direction)}${inventoryItemSortHeader('Hersteller · Artikelnummer', 'manufacturer', sort, direction, 'inventory-item-meta-column')}${inventoryItemSortHeader('Bestand', 'physical', sort, direction, 'inventory-item-number-heading')}${inventoryItemSortHeader('Reserviert', 'reserved', sort, direction, 'inventory-item-number-heading inventory-item-reserved-column')}${inventoryItemSortHeader('Verfügbar', 'available', sort, direction, 'inventory-item-number-heading')}<th><span class="visually-hidden">Aktionen</span></th></tr></thead><tbody>${rows}</tbody></table>`;
+function inventoryItemTable(rows, sort, direction, visibleItems = []) {
+  const selectable = visibleItems.filter(item => item.status === 'ACTIVE');
+  const all = selectable.length > 0 && selectable.every(item => inventoryBulkItemIds.has(item.id));
+  return `<table class="inventory-item-table"><thead><tr><th class="inventory-bulk-check-column"><label><input type="checkbox" data-bulk-items-all aria-label="Alle angezeigten Artikel auswählen"${all ? ' checked' : ''}><span></span></label></th>${inventoryItemSortHeader('Artikel', 'name', sort, direction)}${inventoryItemSortHeader('Hersteller · Artikelnummer', 'manufacturer', sort, direction, 'inventory-item-meta-column')}${inventoryItemSortHeader('Bestand', 'physical', sort, direction, 'inventory-item-number-heading')}${inventoryItemSortHeader('Reserviert', 'reserved', sort, direction, 'inventory-item-number-heading inventory-item-reserved-column')}${inventoryItemSortHeader('Verfügbar', 'available', sort, direction, 'inventory-item-number-heading')}<th><span class="visually-hidden">Aktionen</span></th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+function inventoryBulkToolbar(context, locationId = '') {
+  const ids = context === 'stock' ? inventoryBulkStockEntryIds : inventoryBulkItemIds;
+  if (!ids.size) return '';
+  const physical = context === 'stock' ? `<button type="button" data-bulk-action="MOVE">Verschieben</button><button type="button" data-bulk-action="SET_LOCAL_MINIMUM">Lokales Minimum</button>` : '<button type="button" data-bulk-action="SET_GLOBAL_MINIMUM">Globales Minimum</button>';
+  const importDetail = context === 'stock' && inventoryLastImportId ? '<button type="button" data-last-import-detail>Importdetails</button>' : '';
+  return `<section class="inventory-bulk-toolbar" data-bulk-context="${context}"${locationId ? ` data-bulk-location="${escapeHtml(locationId)}"` : ''}><strong>${ids.size} ${context === 'stock' ? 'Lagerpositionen' : 'Artikel'} ausgewählt</strong><div>${physical}<button type="button" data-bulk-action="ADD_CATEGORIES">Kategorien hinzufügen</button><button type="button" data-bulk-action="REMOVE_CATEGORIES">Kategorien entfernen</button><button type="button" data-bulk-action="REQUEST_AUDIT">Zur Inventur</button><button type="button" data-bulk-labels>Etiketten</button>${importDetail}<button type="button" data-bulk-clear>Auswahl aufheben</button></div></section>`;
 }
 
 const stockTransactionLabels = { RECEIPT:'Zugang', RETURN:'Rückgabe', CONSUMPTION:'Verbrauch', TRANSFER:'Umlagerung', CORRECTION:'Korrektur', DISPOSAL:'Entsorgung', LOSS:'Verlust' };
@@ -2773,6 +2797,81 @@ function bindReservationActions() {
   });
 }
 
+function selectedInventoryBulkItemIds(context) {
+  if (context === 'item') return [...inventoryBulkItemIds];
+  return [...document.querySelectorAll('[data-bulk-stock-id]:checked')].map(input => input.dataset.bulkStockItem).filter((id, index, ids) => ids.indexOf(id) === index);
+}
+
+function renderInventoryBulkCategoryPicker(requestedPath = null) {
+  renderCompactColumnPicker({ container:$('#inventory-bulk-category-options'), items:state.inventoryCategories, selectedIds:new Set(inventoryBulkCategoryIds), path:requestedPath || [], selectionMode:'multiple', inputName:'bulkCategoryIds', rootLabel:'Kategorien', fallbackIcon:'folder', onSelectionChange:next => { inventoryBulkCategoryIds = [...next]; }, onPathChange:() => {} });
+}
+
+function renderInventoryBulkLocationPicker(requestedPath = null) {
+  const selected = new Set(inventoryBulkLocationId ? [inventoryBulkLocationId] : []);
+  renderCompactColumnPicker({ container:$('#inventory-bulk-location-options'), items:state.storageLocations.filter(location => location.status === 'ACTIVE'), selectedIds:selected, path:requestedPath || initialCompactColumnPath(state.storageLocations, selected), selectionMode:'single', inputName:'bulkLocationId', rootLabel:'Lagerorte', fallbackIcon:'archive', disabledIds:new Set(), onSelectionChange:next => { inventoryBulkLocationId = [...next][0] || ''; $('#inventory-bulk-form').elements.destinationStorageLocationId.value = inventoryBulkLocationId; }, onPathChange:() => {} });
+}
+
+async function openInventoryBulkDialog(action, context) {
+  await Promise.all([loadInventoryCategories(), loadStorageLocations(false)]);
+  const count = context === 'stock' ? inventoryBulkStockEntryIds.size : inventoryBulkItemIds.size;
+  const labels = { ADD_CATEGORIES:'Kategorien hinzufügen', REMOVE_CATEGORIES:'Kategorien entfernen', SET_GLOBAL_MINIMUM:'Globalen Mindestbestand setzen', SET_LOCAL_MINIMUM:'Lokalen Mindestbestand setzen', MOVE:'Lagerpositionen verschieben', REQUEST_AUDIT:'Zur Inventur vormerken' };
+  const form = $('#inventory-bulk-form'); form.reset(); form.elements.context.value = context; form.elements.action.value = action;
+  $('#inventory-bulk-title').textContent = labels[action] || 'Mehrfach bearbeiten';
+  $('#inventory-bulk-copy').textContent = `${count} ${context === 'stock' ? 'Lagerpositionen' : 'Artikel'} ausgewählt.`;
+  form.querySelector('[data-bulk-categories]').hidden = !['ADD_CATEGORIES','REMOVE_CATEGORIES'].includes(action);
+  form.querySelector('[data-bulk-minimum]').hidden = !['SET_GLOBAL_MINIMUM','SET_LOCAL_MINIMUM'].includes(action);
+  form.querySelector('[data-bulk-location]').hidden = action !== 'MOVE';
+  form.querySelector('[data-bulk-audit]').hidden = action !== 'REQUEST_AUDIT';
+  form.querySelector('[data-bulk-note]').hidden = !['MOVE','REQUEST_AUDIT'].includes(action);
+  form.querySelector('[data-bulk-minimum-label]').textContent = action === 'SET_LOCAL_MINIMUM' ? 'Lokaler Mindestbestand' : 'Globaler Mindestbestand';
+  inventoryBulkCategoryIds = []; inventoryBulkLocationId = ''; $('#inventory-bulk-error').textContent = '';
+  if (!form.querySelector('[data-bulk-categories]').hidden) renderInventoryBulkCategoryPicker();
+  if (action === 'MOVE') renderInventoryBulkLocationPicker();
+  $('#inventory-bulk-dialog').showModal();
+}
+
+async function openInventoryBulkLabels(context) {
+  const ids = selectedInventoryBulkItemIds(context);
+  const entries = await Promise.all(ids.map(id => inventoryEntityLabel('item', id)));
+  const dialog = $('#inventory-label-dialog'); const form = $('#inventory-label-form');
+  dialog.dataset.kind = 'bulk'; dialog.dataset.id = '';
+  form.elements.scope.value = 'entity'; form.elements.outputMode.value = state.user?.inventoryLabelOutputMode === 'roll' ? 'roll' : 'sheet';
+  renderInventoryLabelProfileOptions(); syncInventoryLabelOutputFields(); $('#inventory-label-scope-field').hidden = true;
+  $('#inventory-label-dialog-title').textContent = 'Etiketten für Auswahl'; $('#inventory-label-dialog-copy').textContent = `${entries.length} dauerhafte Artikellinks werden ausgegeben.`;
+  inventoryLabelModel = { title:'Ausgewählte Artikel', entries }; $('#inventory-label-error').textContent = ''; renderInventoryLabelPreview(); dialog.showModal();
+}
+
+async function openInventoryImportDetail(id) {
+  const detail = await api(`/inventory-imports/${encodeURIComponent(id)}`); inventoryLastImportId = id;
+  $('#inventory-import-detail-title').textContent = 'Importdetails';
+  $('#inventory-import-detail-copy').textContent = `${detail.itemCount} Artikel · ${detail.storageLocationName} · ${formatDateTime(detail.createdAt)}`;
+  const blockers = detail.rollbackBlockers || [];
+  $('#inventory-import-detail-content').innerHTML = `<dl class="inventory-import-meta"><div><dt>Datei</dt><dd>${escapeHtml(detail.sourceFilename || 'Ohne Dateiname')}</dd></div><div><dt>Status</dt><dd>${detail.status === 'REVERTED' ? 'Zurückgenommen' : 'Aktiv'}</dd></div></dl><div class="inventory-import-items">${detail.items.map(item => `<div><span>Zeile ${item.rowNumber}</span>${item.itemId ? `<a href="${inventoryItemHref(item.itemId, false, '')}">${escapeHtml(item.name)}</a>` : `<strong>${escapeHtml(item.name)}</strong>`}${item.rollbackBlockers.length ? `<small>${escapeHtml(item.rollbackBlockers.join(' '))}</small>` : '<small>Unverändert</small>'}</div>`).join('')}</div>${blockers.length ? `<section class="inventory-import-blockers"><strong>Rücknahme derzeit nicht möglich</strong><p>${escapeHtml(blockers.join(' '))}</p></section>` : ''}`;
+  $('#inventory-import-detail-error').textContent = '';
+  const revert = $('#inventory-import-revert'); revert.hidden = detail.status !== 'ACTIVE'; revert.disabled = !detail.canRevert;
+  $('#inventory-import-detail-dialog').showModal();
+}
+
+async function openInventoryImportHistory(locationId) {
+  const data = await api(`/inventory-imports?storageLocationId=${encodeURIComponent(locationId)}`);
+  $('#inventory-import-detail-title').textContent = 'Importverlauf';
+  $('#inventory-import-detail-copy').textContent = `${data.imports.length} gespeicherte Importvorgänge für diesen Lagerort.`;
+  $('#inventory-import-detail-content').innerHTML = data.imports.length ? `<div class="inventory-import-history">${data.imports.map(entry => `<button type="button" data-import-detail="${escapeHtml(entry.id)}"><span>${escapeHtml(formatDateTime(entry.createdAt))}</span><strong>${entry.itemCount} Artikel</strong><small>${escapeHtml(entry.sourceFilename || 'CSV-Import')} · ${entry.status === 'REVERTED' ? 'zurückgenommen' : 'aktiv'}</small></button>`).join('')}</div>` : '<div class="empty"><strong>Noch keine Importe.</strong>Neue CSV-Importe erscheinen künftig hier.</div>';
+  $('#inventory-import-revert').hidden = true; $('#inventory-import-detail-error').textContent = ''; $('#inventory-import-detail-dialog').showModal();
+  document.querySelectorAll('[data-import-detail]').forEach(button => button.onclick = () => { $('#inventory-import-detail-dialog').close(); openInventoryImportDetail(button.dataset.importDetail); });
+}
+
+function bindInventoryBulkActions() {
+  document.querySelectorAll('[data-bulk-item-id]').forEach(input => input.onchange = async () => { input.checked ? inventoryBulkItemIds.add(input.dataset.bulkItemId) : inventoryBulkItemIds.delete(input.dataset.bulkItemId); await route(); });
+  document.querySelector('[data-bulk-items-all]')?.addEventListener('change', async event => { document.querySelectorAll('[data-bulk-item-id]').forEach(input => { if (event.target.checked) inventoryBulkItemIds.add(input.dataset.bulkItemId); else inventoryBulkItemIds.delete(input.dataset.bulkItemId); }); await route(); });
+  document.querySelectorAll('[data-bulk-stock-id]').forEach(input => input.onchange = async () => { input.checked ? inventoryBulkStockEntryIds.add(input.dataset.bulkStockId) : inventoryBulkStockEntryIds.delete(input.dataset.bulkStockId); await route(); });
+  document.querySelectorAll('[data-bulk-action]').forEach(button => button.onclick = () => openInventoryBulkDialog(button.dataset.bulkAction, button.closest('[data-bulk-context]').dataset.bulkContext));
+  document.querySelectorAll('[data-bulk-labels]').forEach(button => button.onclick = () => openInventoryBulkLabels(button.closest('[data-bulk-context]').dataset.bulkContext));
+  document.querySelectorAll('[data-bulk-clear]').forEach(button => button.onclick = async () => { const context = button.closest('[data-bulk-context]').dataset.bulkContext; (context === 'stock' ? inventoryBulkStockEntryIds : inventoryBulkItemIds).clear(); if (context === 'stock') inventoryLastImportId = ''; await route(); });
+  document.querySelectorAll('[data-location-imports]').forEach(button => button.onclick = () => openInventoryImportHistory(button.dataset.locationImports));
+  document.querySelectorAll('[data-last-import-detail]').forEach(button => button.onclick = () => openInventoryImportDetail(inventoryLastImportId));
+}
+
 function bindInventoryItemActions() {
   const main = $('#main');
   main.onclick = state.inventoryStockItem ? event => {
@@ -2780,7 +2879,7 @@ function bindInventoryItemActions() {
   } : null;
   document.querySelectorAll('[data-inventory-item-route]').forEach(row => {
     const open = event => {
-      if (event.target.closest('a,button,details,summary')) return;
+      if (event.target.closest('a,button,input,label,details,summary')) return;
       location.href = row.dataset.inventoryItemRoute;
     };
     row.onclick = open;
@@ -2788,6 +2887,7 @@ function bindInventoryItemActions() {
   });
   document.querySelectorAll('[data-inventory-item-create]').forEach(button => button.onclick = () => openInventoryItemDialog());
   document.querySelectorAll('[data-inventory-item-edit]').forEach(button => button.onclick = () => openInventoryItemDialog(button.dataset.inventoryItemEdit));
+  document.querySelectorAll('[data-inventory-audit-request]').forEach(button => button.onclick = () => openInventoryAuditRequestDialog(button.dataset.inventoryAuditRequest, button.dataset.stockEntryId || ''));
   document.querySelectorAll('[data-inventory-item-archive]').forEach(button => button.onclick = async () => {
     const name = button.dataset.inventoryItemName || 'Diesen Artikel';
     if (!await confirmAction(`„${name}“ archivieren? Historische Verweise bleiben erhalten.`, { title:'Artikel archivieren', confirmLabel:'Archivieren' })) return;
@@ -2805,6 +2905,7 @@ function bindInventoryItemActions() {
     } catch (error) { toast(error.message); }
   });
   bindInventoryPermanentLinks();
+  bindInventoryBulkActions();
   document.querySelectorAll('[data-inventory-item-note-create]').forEach(button => button.onclick = () => openInventoryItemNoteDialog(button.dataset.inventoryItemNoteCreate));
   document.querySelectorAll('[data-inventory-item-note-edit]').forEach(button => button.onclick = () => openInventoryItemNoteDialog(button.dataset.inventoryItem, button.dataset.inventoryItemNoteEdit));
   document.querySelectorAll('[data-inventory-item-note-delete]').forEach(button => button.onclick = async () => {
@@ -2927,10 +3028,12 @@ async function renderInventoryItems(itemId = '', includeArchived = false, query 
   if (categoryId) categoryIds.add(categoryId);
   const filteredItems = categoryId ? state.inventoryItems.filter(item => (item.categoryIds || []).some(id => categoryIds.has(id))) : state.inventoryItems;
   const visibleItems = sortInventoryItems(filteredItems, sort, direction);
+  const visibleItemIds = new Set(visibleItems.filter(item => item.status === 'ACTIVE').map(item => item.id));
+  inventoryBulkItemIds = new Set([...inventoryBulkItemIds].filter(id => visibleItemIds.has(id)));
   const rows = visibleItems.map(item => inventoryItemRow(item, current?.id || '', categoryId, sort, direction)).join('');
   const empty = query || categoryId ? `<div class="inventory-item-empty"><strong>Keine passenden Artikel.</strong><span>Ändere den Suchbegriff oder die gewählte Kategorie.</span></div>` : `<div class="inventory-item-empty"><strong>Noch keine Artikel vorhanden.</strong>${mayEditProjects() ? '<button class="button primary compact" type="button" data-inventory-item-create>Ersten Artikel anlegen</button>' : ''}</div>`;
   const inventoryItemsHead = standardPageHeader({ title:'Artikel', description:'Artikelstammdaten unabhängig von Lagerort und Bestand.', icon:'tag', actions:mayEditProjects() ? '<button class="button primary compact" type="button" data-inventory-item-create>Artikel anlegen</button>' : '', className:'storage-finder-page-head inventory-items-page-head' });
-  $('#main').innerHTML = `${inventoryItemsHead}<form id="inventory-item-search" class="inventory-item-search" role="search"><span aria-hidden="true">${iconSvg('search')}</span><input name="q" type="search" maxlength="200" value="${escapeHtml(query)}" placeholder="Name, Hersteller, Artikelnummer oder Barcode" aria-label="Artikel durchsuchen"><label class="inventory-item-category-filter"><span class="visually-hidden">Nach Kategorie filtern</span><select name="category" aria-label="Nach Kategorie filtern">${inventoryItemCategoryFilterOptions(categoryId)}</select></label>${query || categoryId ? '<button class="button secondary compact" type="button" data-clear-inventory-search>Zurücksetzen</button>' : ''}</form><div class="inventory-item-shell${current ? ' has-selection' : ''}"><section class="inventory-item-list-panel" aria-label="Artikelliste">${rows ? inventoryItemTable(rows, sort, direction) : empty}</section>${inventoryItemDetail(current, includeArchived, stockData, transactionData.transactions || [], reservationData.reservations || [], noteData.notes || [], categoryId, sort, direction)}</div>`;
+  $('#main').innerHTML = `${inventoryItemsHead}<form id="inventory-item-search" class="inventory-item-search" role="search"><span aria-hidden="true">${iconSvg('search')}</span><input name="q" type="search" maxlength="200" value="${escapeHtml(query)}" placeholder="Name, Hersteller, Artikelnummer oder Barcode" aria-label="Artikel durchsuchen"><label class="inventory-item-category-filter"><span class="visually-hidden">Nach Kategorie filtern</span><select name="category" aria-label="Nach Kategorie filtern">${inventoryItemCategoryFilterOptions(categoryId)}</select></label>${query || categoryId ? '<button class="button secondary compact" type="button" data-clear-inventory-search>Zurücksetzen</button>' : ''}</form>${inventoryBulkToolbar('item')}<div class="inventory-item-shell${current ? ' has-selection' : ''}"><section class="inventory-item-list-panel" aria-label="Artikelliste">${rows ? inventoryItemTable(rows, sort, direction, visibleItems) : empty}</section>${inventoryItemDetail(current, includeArchived, stockData, transactionData.transactions || [], reservationData.reservations || [], noteData.notes || [], categoryId, sort, direction)}</div>`;
   requestAnimationFrame(fitInventoryWorkspaces);
   document.title = current ? `${current.name} · Artikel · Logbuch` : 'Artikel · Lager · Logbuch';
   bindInventoryItemActions();
@@ -2976,6 +3079,102 @@ async function renderInventoryReplenishment(routeQuery) {
   form.elements.view.onchange = navigate;
   form.elements.sort.onchange = navigate;
   form.querySelector('[data-reset-replenishment]')?.addEventListener('click', () => { location.href = inventoryReplenishmentHref(); });
+}
+
+const inventoryAuditResultLabels = { PENDING:'Ungeprüft', MATCH:'Bestand stimmt', CORRECTED:'Abweichung korrigiert', OPEN_DIFFERENCE:'Abweichung offen', NOT_FOUND:'Nicht auffindbar', OK:'Vorhanden und in Ordnung', ATTENTION:'Klärungsbedarf', SKIPPED:'Übersprungen' };
+
+async function openInventoryAuditRequestDialog(itemId, stockEntryId = '') {
+  const [item, stock] = await Promise.all([api(`/inventory-items/${encodeURIComponent(itemId)}`), api(`/stock-entries?itemId=${encodeURIComponent(itemId)}`)]);
+  const form = $('#inventory-audit-request-form');
+  form.reset();
+  form.elements.itemId.value = item.id;
+  form.elements.stockEntryId.innerHTML = `<option value="">Artikel an allen Lagerorten</option>${(stock.entries || []).filter(entry => entry.status === 'ACTIVE').map(entry => `<option value="${escapeHtml(entry.id)}"${entry.id === stockEntryId ? ' selected' : ''}>Nur ${escapeHtml(stockLocationPath(entry))}</option>`).join('')}`;
+  $('#inventory-audit-request-copy').textContent = `${item.name} wird in der Inventurliste hervorgehoben, bis die betroffenen Lagerpositionen geprüft wurden.`;
+  $('#inventory-audit-request-error').textContent = '';
+  $('#inventory-audit-request-dialog').showModal();
+}
+
+async function openInventoryAuditCreateDialog(defaults = {}) {
+  await Promise.all([loadStorageLocations(false), loadInventoryCategories()]);
+  const form = $('#inventory-audit-create-form');
+  form.reset();
+  form.elements.name.value = `Inventur ${new Intl.DateTimeFormat('de-DE').format(new Date())}`;
+  form.elements.locationId.innerHTML = `<option value="">Alle Lagerorte</option>${state.storageLocations.map(location => `<option value="${escapeHtml(location.id)}"${location.id === defaults.locationId ? ' selected' : ''}>${escapeHtml(storageLocationOptionLabel(location))}</option>`).join('')}`;
+  form.elements.categoryIds.innerHTML = inventoryCategoryTree(state.inventoryCategories).map(({ category, depth }) => `<option value="${escapeHtml(category.id)}"${(defaults.categoryIds || []).includes(category.id) ? ' selected' : ''}>${'  '.repeat(depth)}${depth ? '↳ ' : ''}${escapeHtml(category.name)}</option>`).join('');
+  form.elements.requestMode.value = defaults.requestMode || 'ALL';
+  $('#inventory-audit-create-error').textContent = '';
+  $('#inventory-audit-create-dialog').showModal();
+}
+
+function inventoryAuditRequestMarkup(request) {
+  const urgent = request.priority === 'URGENT';
+  const location = request.locationName ? `Nur ${request.locationName}` : 'Alle Lagerorte des Artikels';
+  return `<article class="inventory-audit-request${urgent ? ' urgent' : ''}"><div><span class="inventory-audit-priority">${urgent ? 'Dringend' : 'Vorgemerkt'}</span><h3><a href="${inventoryItemHref(request.itemId, false, '')}">${escapeHtml(request.itemName)}</a></h3><p>${escapeHtml(location)}${request.dueAt ? ` · prüfen bis ${escapeHtml(formatDate(request.dueAt))}` : ''}</p>${request.note ? `<blockquote>${escapeHtml(request.note)}</blockquote>` : ''}</div>${mayEditProjects() ? `<button class="button secondary compact" type="button" data-audit-request-dismiss="${escapeHtml(request.id)}">Vormerkung entfernen</button>` : ''}</article>`;
+}
+
+function inventoryAuditRunMarkup(audit) {
+  const open = audit.status === 'OPEN';
+  const done = Math.max(0, Number(audit.positionCount) - Number(audit.pendingCount));
+  return `<a class="inventory-audit-run" href="${inventoryAuditHref(audit.id)}"><div><span class="setting-status ${open ? 'warning' : 'active'}">${open ? 'Laufend' : audit.status === 'COMPLETED' ? 'Abgeschlossen' : 'Abgebrochen'}</span><h3>${escapeHtml(audit.name)}</h3><p>${escapeHtml(formatDateTime(audit.createdAt))}</p></div><div><strong>${done} / ${Number(audit.positionCount)}</strong><span>Positionen geprüft</span>${Number(audit.attentionCount) ? `<small>${Number(audit.attentionCount)} mit Klärungsbedarf</small>` : ''}</div></a>`;
+}
+
+function inventoryAuditEntryMarkup(entry, auditOpen) {
+  const collection = entry.trackingMode === 'COLLECTION';
+  const pending = entry.result === 'PENDING';
+  const request = entry.requestPriority ? `<span class="inventory-audit-priority${entry.requestPriority === 'URGENT' ? ' urgent' : ''}">${entry.requestPriority === 'URGENT' ? 'Dringend vorgemerkt' : 'Vorgemerkt'}</span>` : '';
+  const result = !pending ? `<span class="inventory-audit-entry-result result-${entry.result.toLowerCase()}">${escapeHtml(inventoryAuditResultLabels[entry.result] || entry.result)}</span>` : '';
+  const quantity = collection ? `<label>Prüfergebnis<select name="result"><option value="OK"${entry.result === 'OK' ? ' selected' : ''}>Vorhanden und in Ordnung</option><option value="ATTENTION"${entry.result === 'ATTENTION' ? ' selected' : ''}>Vorhanden, aber Klärungsbedarf</option><option value="NOT_FOUND"${entry.result === 'NOT_FOUND' ? ' selected' : ''}>Nicht auffindbar</option><option value="SKIPPED"${entry.result === 'SKIPPED' ? ' selected' : ''}>Überspringen</option></select></label>` : `<label>Gezählter Bestand<div class="inventory-audit-count"><input name="countedQuantity" type="number" min="0" max="1000000000000" step="${String(entry.stockUnit).toLowerCase() === 'stück' ? '1' : 'any'}" value="${escapeHtml(entry.countedQuantity ?? entry.bookQuantity)}" required><span>${escapeHtml(entry.stockUnit)}</span></div></label><label class="checkbox-setting"><input name="correctStock" type="checkbox" checked><span>Abweichung direkt als Korrektur buchen</span></label>`;
+  const form = auditOpen ? `<form class="inventory-audit-check-form" data-audit-entry="${escapeHtml(entry.id)}">${quantity}<label>Prüfnotiz <span class="optional">optional</span><input name="note" maxlength="2000" value="${escapeHtml(entry.note || entry.requestNote || '')}"></label><div class="inventory-audit-check-actions">${!collection ? '<button class="button secondary compact" type="button" data-audit-special="NOT_FOUND">Nicht auffindbar</button><button class="button secondary compact" type="button" data-audit-special="SKIPPED">Überspringen</button>' : ''}<button class="button primary compact" type="submit">Prüfung speichern</button></div></form>` : '';
+  return `<article class="inventory-audit-entry${pending ? ' pending' : ''}"><header><div>${request}<h3>${escapeHtml(entry.itemName)}</h3><p>${escapeHtml(entry.locationName)}</p></div><div>${result}<strong>${collection ? 'Lose Sammlung' : `${escapeHtml(formatInventoryQuantity(entry.bookQuantity))} ${escapeHtml(entry.stockUnit)} Buchbestand`}</strong></div></header>${form}${!auditOpen && entry.note ? `<p class="inventory-audit-entry-note">${escapeHtml(entry.note)}</p>` : ''}</article>`;
+}
+
+async function renderInventoryAuditDetail(id) {
+  const audit = await api(`/inventory-audits/${encodeURIComponent(id)}`);
+  const summary = audit.summary;
+  const open = audit.status === 'OPEN';
+  const head = standardPageHeader({ title:audit.name, description:`${summary.total} Lagerpositionen · ${summary.pending} noch ungeprüft`, icon:'clipboard-check', breadcrumbs:`<a href="${inventoryAuditHref()}">Inventur</a><span>›</span><span>${escapeHtml(audit.name)}</span>`, actions:open && mayEditProjects() ? `<button class="button primary compact" type="button" data-audit-complete ${summary.pending ? 'disabled' : ''}>Inventur abschließen</button>` : '', className:'inventory-audit-page-head' });
+  const metrics = `<section class="inventory-audit-summary"><div><span>Gesamt</span><strong>${summary.total}</strong></div><div><span>Ungeprüft</span><strong>${summary.pending}</strong></div><div><span>Stimmt</span><strong>${summary.match}</strong></div><div><span>Korrigiert</span><strong>${summary.corrected}</strong></div><div><span>Klärungsbedarf</span><strong>${summary.attention + summary.notFound}</strong></div></section>`;
+  $('#main').innerHTML = `${head}<div class="inventory-audit-content">${metrics}<section class="inventory-audit-entry-list">${audit.entries.map(entry => inventoryAuditEntryMarkup(entry, open && mayEditProjects())).join('')}</section></div>`;
+  document.title = `${audit.name} · Inventur · Logbuch`;
+  document.querySelectorAll('.inventory-audit-check-form').forEach(form => {
+    const save = async special => {
+      const payload = { note:form.elements.note.value };
+      if (special) payload.result = special;
+      else if (form.elements.result) payload.result = form.elements.result.value;
+      else { payload.countedQuantity = form.elements.countedQuantity.value; payload.correctStock = form.elements.correctStock.checked; }
+      try { await api(`/inventory-audits/${encodeURIComponent(id)}/entries/${encodeURIComponent(form.dataset.auditEntry)}`, { method:'POST', body:JSON.stringify(payload) }); toast('Prüfung gespeichert.'); await renderInventoryAuditDetail(id); }
+      catch (error) { toast(error.message); }
+    };
+    form.onsubmit = event => { event.preventDefault(); save(''); };
+    form.querySelectorAll('[data-audit-special]').forEach(button => button.onclick = () => save(button.dataset.auditSpecial));
+  });
+  document.querySelector('[data-audit-complete]')?.addEventListener('click', async () => {
+    try { await api(`/inventory-audits/${encodeURIComponent(id)}/complete`, { method:'POST', body:'{}' }); toast('Inventur abgeschlossen.'); await renderInventoryAuditDetail(id); }
+    catch (error) { toast(error.message); }
+  });
+}
+
+async function renderInventoryAudits(routeQuery) {
+  const staleDays = Math.max(1, Math.min(3650, Number(routeQuery.get('days')) || 365));
+  const data = await api(`/inventory-audits?staleDays=${staleDays}`);
+  const requests = data.requests || [];
+  const urgent = requests.filter(request => request.priority === 'URGENT');
+  const normal = requests.filter(request => request.priority !== 'URGENT');
+  const stale = data.stalePositions || [];
+  const head = standardPageHeader({ title:'Inventur', description:'Bestände gezielt prüfen, Abweichungen korrigieren und lange unangetastete Lagerpositionen erkennen.', icon:'clipboard-check', actions:mayEditProjects() ? '<button class="button primary compact" type="button" data-audit-create>Inventur starten</button>' : '', className:'inventory-audit-page-head' });
+  const summary = data.summary || {};
+  const overview = `<section class="inventory-audit-summary"><div><span>Dringend</span><strong>${Number(summary.urgentCount || 0)}</strong></div><div><span>Vorgemerkt</span><strong>${Number(summary.requestCount || 0)}</strong></div><div><span>Lange unangetastet</span><strong>${Number(summary.staleCount || 0)}</strong></div><div><span>Laufende Inventuren</span><strong>${Number(summary.openAuditCount || 0)}</strong></div></section>`;
+  const section = (title, copy, content) => `<section class="inventory-audit-section"><div class="inventory-audit-section-head"><div><h2>${title}</h2><p>${copy}</p></div></div>${content}</section>`;
+  const requestList = values => values.length ? `<div class="inventory-audit-request-list">${values.map(inventoryAuditRequestMarkup).join('')}</div>` : '<div class="empty compact"><strong>Keine Einträge.</strong></div>';
+  const staleList = stale.length ? `<div class="inventory-audit-stale-list">${stale.slice(0, 200).map(position => `<article><div><h3><a href="${inventoryItemHref(position.itemId, false, '')}">${escapeHtml(position.itemName)}</a></h3><p>${escapeHtml(position.locationName)} · ${position.quantity === null ? 'Lose Sammlung' : `${escapeHtml(formatInventoryQuantity(position.quantity))} ${escapeHtml(position.stockUnit)}`}</p></div><span>Seit ${escapeHtml(formatDate(position.lastRelevantActivityAt))}</span>${mayEditProjects() ? `<button class="button secondary compact" type="button" data-inventory-audit-request="${escapeHtml(position.itemId)}" data-stock-entry-id="${escapeHtml(position.stockEntryId)}">Vormerken</button>` : ''}</article>`).join('')}</div>` : `<div class="empty compact"><strong>Keine Position ist länger als ${staleDays} Tage unangetastet.</strong></div>`;
+  const controls = `<form class="inventory-audit-age-filter"><label>Als lange unangetastet anzeigen nach<select name="days"><option value="90"${staleDays === 90 ? ' selected' : ''}>3 Monaten</option><option value="180"${staleDays === 180 ? ' selected' : ''}>6 Monaten</option><option value="365"${staleDays === 365 ? ' selected' : ''}>12 Monaten</option><option value="730"${staleDays === 730 ? ' selected' : ''}>24 Monaten</option></select></label></form>`;
+  const runs = (data.audits || []).length ? `<div class="inventory-audit-run-list">${data.audits.map(inventoryAuditRunMarkup).join('')}</div>` : '<div class="empty compact"><strong>Noch keine Inventur angelegt.</strong></div>';
+  $('#main').innerHTML = `${head}<div class="inventory-audit-content">${overview}${urgent.length ? section('Dringend zu inventarisieren', 'Bewusst hoch priorisierte oder zeitkritische Prüfungen.', requestList(urgent)) : ''}${section('Vorgemerkte Artikel', 'Manuell zur Inventur markierte Artikel und Lagerpositionen.', requestList(normal))}${section('Lange unangetastet', 'Anlage, Bestandsbewegungen und ausdrückliche Prüfungen bestimmen die letzte relevante Aktivität.', `${controls}${staleList}`)}${section('Inventurläufe', 'Laufende Inventuren fortsetzen oder abgeschlossene Prüfungen nachlesen.', runs)}</div>`;
+  document.title = 'Inventur · Lager · Logbuch';
+  document.querySelector('[data-audit-create]')?.addEventListener('click', () => openInventoryAuditCreateDialog());
+  document.querySelector('.inventory-audit-age-filter select').onchange = event => { location.href = `${inventoryAuditHref()}?days=${encodeURIComponent(event.target.value)}`; };
+  document.querySelectorAll('[data-inventory-audit-request]').forEach(button => button.onclick = () => openInventoryAuditRequestDialog(button.dataset.inventoryAuditRequest, button.dataset.stockEntryId || ''));
+  document.querySelectorAll('[data-audit-request-dismiss]').forEach(button => button.onclick = async () => { try { await api(`/inventory-audit-requests/${encodeURIComponent(button.dataset.auditRequestDismiss)}`, { method:'DELETE', body:'{}' }); toast('Vormerkung entfernt.'); await renderInventoryAudits(routeQuery); } catch (error) { toast(error.message); } });
 }
 
 function storageLocationDescendantIds(id) {
@@ -3050,7 +3249,7 @@ function openInventoryCategoryDialog(categoryId = '', parentId = null) {
 function inventoryCategoryActionMenu(category) {
   if (!category) return '';
   const management = mayEditProjects() ? `<button class="menu-item" type="button" data-category-edit="${escapeHtml(category.id)}">Bearbeiten oder verschieben</button>` : '';
-  const actions = `${management}<button class="menu-item" type="button" data-category-copy-link="${escapeHtml(category.id)}">Dauerhaften Link kopieren</button>`;
+  const actions = `${management}<button class="menu-item" type="button" data-inventory-label-kind="category" data-inventory-label-id="${escapeHtml(category.id)}">QR-Code & Etikett</button><button class="menu-item" type="button" data-category-copy-link="${escapeHtml(category.id)}">Dauerhaften Link kopieren</button>`;
   return contextActionMenu(`Aktionen für ${category.name}`, actions, { className:'storage-finder-column-menu' });
 }
 
@@ -3064,13 +3263,15 @@ function inventoryCategoryRow(category, selectedId = '') {
   return `<article class="storage-finder-row${selected ? ' selected' : ''}" draggable="${mayEditProjects() ? 'true' : 'false'}" data-category-row="${escapeHtml(category.id)}" data-category-drop="${escapeHtml(category.id)}" data-category-drag="${escapeHtml(category.id)}"><a class="storage-finder-link" href="${inventoryCategoryHref(category.id)}" data-storage-parent-href="${inventoryCategoryHref(category.parentId || '')}"${selected ? ' aria-current="page"' : ''}><span class="storage-finder-icon storage-finder-location-icon" aria-hidden="true">${iconSvg(entityIconName(category, 'folder'))}</span><span class="storage-finder-copy"><strong>${escapeHtml(category.name)}</strong><small>${category.childCount ? `${category.childCount} Unterkategorie${category.childCount === 1 ? '' : 'n'}` : ''}${category.childCount && category.directItemCount ? ' · ' : ''}${category.directItemCount ? `${category.directItemCount} Artikel` : ''}</small></span></a></article>`;
 }
 
-function inventoryCategoryItemRow(item, categoryId, selectedId = '') {
-  return `<article class="storage-finder-row storage-finder-item-row${item.id === selectedId ? ' selected' : ''}" draggable="${mayEditProjects() ? 'true' : 'false'}" data-category-item-drag="${escapeHtml(item.id)}"><a class="storage-finder-link" href="${inventoryCategoryHref(categoryId, item.id)}" data-storage-parent-href="${inventoryCategoryHref(categoryId)}"${item.id === selectedId ? ' aria-current="page"' : ''}><span class="storage-finder-icon storage-finder-item-icon" aria-hidden="true">${iconSvg('tag')}</span><span class="storage-finder-copy"><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(item.stockUnit)}</small></span></a></article>`;
+function inventoryCategoryItemRow(item, categoryId, selectedId = '', bulkSelectable = false) {
+  const checked = inventoryBulkItemIds.has(item.id);
+  const checkbox = bulkSelectable && mayEditProjects() ? `<label class="storage-finder-bulk-check"><input type="checkbox" data-bulk-item-id="${escapeHtml(item.id)}" aria-label="${escapeHtml(item.name)} auswählen"${checked ? ' checked' : ''}><span></span></label>` : '';
+  return `<article class="storage-finder-row storage-finder-item-row${item.id === selectedId ? ' selected' : ''}${checked ? ' bulk-selected' : ''}" draggable="${mayEditProjects() ? 'true' : 'false'}" data-category-item-drag="${escapeHtml(item.id)}">${checkbox}<a class="storage-finder-link" href="${inventoryCategoryHref(categoryId, item.id)}" data-storage-parent-href="${inventoryCategoryHref(categoryId)}"${item.id === selectedId ? ' aria-current="page"' : ''}><span class="storage-finder-icon storage-finder-item-icon" aria-hidden="true">${iconSvg('tag')}</span><span class="storage-finder-copy"><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(item.stockUnit)}</small></span></a></article>`;
 }
 
 function inventoryCategoryColumn(parent, children, items, selectedCategoryId = '', selectedItemId = '', current = false) {
   const parentId = parent?.id || '';
-  const rows = children.map(category => inventoryCategoryRow(category, selectedCategoryId)).join('') + (parent ? items.map(item => inventoryCategoryItemRow(item, parent.id, selectedItemId)).join('') : '');
+  const rows = children.map(category => inventoryCategoryRow(category, selectedCategoryId)).join('') + (parent ? items.map(item => inventoryCategoryItemRow(item, parent.id, selectedItemId, current)).join('') : '');
   return `<section class="storage-finder-column" data-category-column="${escapeHtml(parentId)}"${current ? ' data-finder-current-column' : ''}><header><strong>${escapeHtml(parent?.name || 'Kategorien')}</strong><div class="storage-finder-column-actions">${mayEditProjects() ? inventoryCategoryCreateControl(parent) : ''}${inventoryCategoryActionMenu(parent)}</div></header><div class="storage-finder-list" data-category-clear-selection="${escapeHtml(parentId)}">${rows || `<div class="storage-finder-empty"><span>${parent ? 'Noch keine Unterkategorien oder Artikel' : 'Noch keine Kategorien'}</span></div>`}</div></section>`;
 }
 
@@ -3081,6 +3282,7 @@ function inventoryCategoryItemInspector(category, item, stockData) {
 }
 
 function bindInventoryCategoryActions() {
+  bindInventoryBulkActions();
   document.querySelectorAll('[data-category-create]').forEach(button => button.onclick = () => openInventoryCategoryDialog('', button.dataset.categoryCreate || null));
   document.querySelectorAll('[data-category-create-item]').forEach(button => button.onclick = () => {
     button.closest('details')?.removeAttribute('open');
@@ -3127,14 +3329,18 @@ async function renderInventoryCategories(categoryId = '', itemId = '') {
   const path = detail?.path || [];
   const childrenOf = parentId => state.inventoryCategories.filter(category => category.parentId === parentId);
   const itemSets = await Promise.all(path.map(category => api(`/inventory-categories/${encodeURIComponent(category.id)}/items`)));
+  const currentCategoryItemIds = new Set((itemSets.at(-1)?.items || []).map(item => item.id));
+  inventoryBulkItemIds = new Set([...inventoryBulkItemIds].filter(id => currentCategoryItemIds.has(id)));
   const columns = [inventoryCategoryColumn(null, childrenOf(null), [], path[0]?.id || '', '', path.length === 0)];
   path.forEach((category, index) => columns.push(inventoryCategoryColumn(category, childrenOf(category.id), itemSets[index]?.items || [], path[index + 1]?.id || '', index === path.length - 1 ? itemId : '', index === path.length - 1)));
   const item = itemId ? (itemSets.at(-1)?.items || []).find(candidate => candidate.id === itemId) || await api(`/inventory-items/${encodeURIComponent(itemId)}`) : null;
   const stockData = item ? await api(`/stock-entries?itemId=${encodeURIComponent(item.id)}`) : null;
   const breadcrumbs = `<nav class="folder-breadcrumbs storage-breadcrumbs" aria-label="Kategoriepfad"><a href="${inventoryCategoryHref()}">Kategorien</a>${path.map(category => `<span>›</span><a href="${inventoryCategoryHref(category.id)}">${escapeHtml(category.name)}</a>`).join('')}${item ? `<span>›</span><a aria-current="page" href="${inventoryCategoryHref(categoryId, item.id)}">${escapeHtml(item.name)}</a>` : ''}</nav>`;
-  const head = standardPageHeader({ title:'Kategorien', description:'Artikel thematisch ordnen und aus mehreren Blickwinkeln wiederfinden.', icon:'folder', actions:mayEditProjects() ? '<button class="button primary compact" type="button" data-category-create="">Kategorie anlegen</button>' : '', className:'storage-finder-page-head' });
-  $('#main').innerHTML = `${head}<div class="storage-finder-frame storage-finder-edge-to-edge"><div class="storage-finder-shell${item ? ' has-item-selection' : ''}" data-storage-finder-shell><div class="storage-finder-columns">${columns.join('')}</div>${item ? inventoryCategoryItemInspector(detail.category, item, stockData) : ''}</div><footer class="storage-finder-statusbar">${breadcrumbs}</footer></div>`;
+  const categoryAuditAction = mayEditProjects() && categoryId ? `<button class="button secondary compact" type="button" data-audit-create-category="${escapeHtml(categoryId)}">Kategorie inventarisieren</button>` : '';
+  const head = standardPageHeader({ title:'Kategorien', description:'Artikel thematisch ordnen und aus mehreren Blickwinkeln wiederfinden.', icon:'folder', actions:mayEditProjects() ? `${categoryAuditAction}<button class="button primary compact" type="button" data-category-create="">Kategorie anlegen</button>` : '', className:'storage-finder-page-head' });
+  $('#main').innerHTML = `${head}${inventoryBulkToolbar('item')}<div class="storage-finder-frame storage-finder-edge-to-edge"><div class="storage-finder-shell${item ? ' has-item-selection' : ''}" data-storage-finder-shell><div class="storage-finder-columns">${columns.join('')}</div>${item ? inventoryCategoryItemInspector(detail.category, item, stockData) : ''}</div><footer class="storage-finder-statusbar">${breadcrumbs}</footer></div>`;
   document.title = `${item?.name || detail?.category?.name || 'Kategorien'} · Lager · Logbuch`;
+  document.querySelector('[data-audit-create-category]')?.addEventListener('click', event => openInventoryAuditCreateDialog({ categoryIds:[event.currentTarget.dataset.auditCreateCategory] }));
   bindInventoryCategoryActions();
   requestAnimationFrame(() => {
     fitInventoryWorkspaces();
@@ -3257,7 +3463,7 @@ function storageLocationActionMenu(location) {
   const management = !mayEditProjects() ? '' : archived
     ? `<button class="menu-item" type="button" data-storage-restore="${escapeHtml(location.id)}">Wiederherstellen</button>`
     : `<button class="menu-item" type="button" data-storage-edit="${escapeHtml(location.id)}">Bearbeiten oder umplatzieren</button><button class="menu-item danger" type="button" data-storage-archive="${escapeHtml(location.id)}" data-storage-name="${escapeHtml(location.name)}">Unterbaum archivieren</button>`;
-  const actions = `${management}<button class="menu-item" type="button" data-storage-copy-link="${escapeHtml(location.id)}">Dauerhaften Link kopieren</button>`;
+  const actions = `${management}<button class="menu-item" type="button" data-inventory-label-kind="location" data-inventory-label-id="${escapeHtml(location.id)}">QR-Code & Etiketten</button><button class="menu-item" type="button" data-storage-copy-link="${escapeHtml(location.id)}">Dauerhaften Link kopieren</button>`;
   return contextActionMenu(`Aktionen für ${location.name}`, actions, { className:'storage-finder-column-menu' });
 }
 
@@ -3349,13 +3555,16 @@ function storageFinderEntry(location, selectedId = '') {
   </article>`;
 }
 
-function storageFinderItemEntry(entry, parentId, selectedItemId = '', includeArchived = false) {
+function storageFinderItemEntry(entry, parentId, selectedItemId = '', includeArchived = false, bulkSelectable = false) {
   const selected = entry.itemId === selectedItemId;
   const archived = entry.itemStatus === 'ARCHIVED' || entry.status === 'ARCHIVED';
   const collection = isLooseCollection(entry);
   const draggable = mayEditProjects() && !archived && (collection || entry.quantity > 0);
   const detail = collection ? 'Lose Sammlung · ohne Mengenerfassung' : `${escapeHtml(formatInventoryQuantity(entry.quantity))} ${escapeHtml(entry.stockUnit)}${entry.minimumQuantity === null ? '' : ` · Min. ${escapeHtml(formatInventoryQuantity(entry.minimumQuantity))}`}`;
-  return `<article class="storage-finder-row storage-finder-item-row${selected ? ' selected' : ''}${archived ? ' archived' : ''}" data-storage-finder-item="${escapeHtml(entry.itemId)}"${draggable ? ` draggable="true" data-stock-drag-entry="${escapeHtml(entry.id)}" data-stock-drag-item="${escapeHtml(entry.itemId)}" data-stock-drag-source="${escapeHtml(parentId)}" data-stock-drag-source-name="${escapeHtml(entry.locationName)}" data-stock-drag-name="${escapeHtml(entry.itemName)}" data-stock-drag-quantity="${escapeHtml(entry.quantity)}" data-stock-drag-unit="${escapeHtml(entry.stockUnit)}" data-stock-drag-tracking="${escapeHtml(entry.trackingMode)}"` : ''}>
+  const bulkChecked = inventoryBulkStockEntryIds.has(entry.id);
+  const bulkCheck = bulkSelectable && mayEditProjects() && !archived ? `<label class="storage-finder-bulk-check"><input type="checkbox" data-bulk-stock-id="${escapeHtml(entry.id)}" data-bulk-stock-item="${escapeHtml(entry.itemId)}" aria-label="${escapeHtml(entry.itemName)} auswählen"${bulkChecked ? ' checked' : ''}><span></span></label>` : '';
+  return `<article class="storage-finder-row storage-finder-item-row${selected ? ' selected' : ''}${bulkChecked ? ' bulk-selected' : ''}${archived ? ' archived' : ''}" data-storage-finder-item="${escapeHtml(entry.itemId)}"${draggable ? ` draggable="true" data-stock-drag-entry="${escapeHtml(entry.id)}" data-stock-drag-item="${escapeHtml(entry.itemId)}" data-stock-drag-source="${escapeHtml(parentId)}" data-stock-drag-source-name="${escapeHtml(entry.locationName)}" data-stock-drag-name="${escapeHtml(entry.itemName)}" data-stock-drag-quantity="${escapeHtml(entry.quantity)}" data-stock-drag-unit="${escapeHtml(entry.stockUnit)}" data-stock-drag-tracking="${escapeHtml(entry.trackingMode)}"` : ''}>
+    ${bulkCheck}
     <a class="storage-finder-link" href="${storageContextItemHref(parentId, entry.itemId, includeArchived)}"${selected ? ' aria-current="page"' : ''} data-storage-parent-href="${storageLocationHref(parentId, includeArchived)}"><span class="storage-finder-icon storage-finder-item-icon" aria-hidden="true">${iconSvg('tag')}</span><span class="storage-finder-copy"><strong>${escapeHtml(entry.itemName)}</strong><small>${detail}${archived ? ' · Archiviert' : ''}</small></span></a>
   </article>`;
 }
@@ -3366,7 +3575,7 @@ function storageFinderColumn(parent, locations, stockEntries = [], selectedLocat
   const heading = parent ? parent.name : 'Lagerorte';
   const empty = parent ? 'Noch keine Unterorte oder Artikel' : 'Noch keine Lagerorte';
   const locationRows = locations.map(location => storageFinderEntry(location, selectedLocationId)).join('');
-  const itemRows = parent ? [...stockEntries].sort((left, right) => String(left.itemName || '').localeCompare(String(right.itemName || ''), 'de', { sensitivity:'base', numeric:true })).map(entry => storageFinderItemEntry(entry, parentId, selectedItemId, includeArchived)).join('') : '';
+  const itemRows = parent ? [...stockEntries].sort((left, right) => String(left.itemName || '').localeCompare(String(right.itemName || ''), 'de', { sensitivity:'base', numeric:true })).map(entry => storageFinderItemEntry(entry, parentId, selectedItemId, includeArchived, current)).join('') : '';
   const columnDropTarget = parent && parent.status === 'ACTIVE' ? ` data-storage-column-drop-target="${escapeHtml(parentId)}" data-storage-column-drop-name="${escapeHtml(parent.name)}"` : '';
   const locationColumnDropTarget = !parent || parent.status === 'ACTIVE' ? ` data-storage-location-column-target="${escapeHtml(parentId)}"` : '';
   const headerActions = `${canAdd ? storageLocationCreateMenu(parent) : ''}${storageLocationActionMenu(parent)}`;
@@ -3416,6 +3625,7 @@ function bindStorageFinderBlankNavigation(includeArchived = false) {
 }
 
 function bindStorageLocationActions() {
+  bindInventoryBulkActions();
   document.querySelectorAll('[data-storage-create-item]').forEach(button => button.onclick = () => {
     button.closest('details')?.removeAttribute('open');
     openInventoryItemDialog('', button.dataset.storageCreateItem);
@@ -3465,6 +3675,11 @@ async function renderInventory(locationId = '', includeArchived = false, itemId 
   const path = detail?.path || [];
   const columnStockData = await Promise.all(path.map(location => api(`/stock-entries?storageLocationId=${encodeURIComponent(location.id)}${includeArchived ? '&includeArchived=1' : ''}`)));
   const stockByLocation = new Map(path.map((location, index) => [location.id, columnStockData[index]?.entries || []]));
+  if (current) {
+    const currentIds = new Set((stockByLocation.get(current.id) || []).map(entry => entry.id));
+    inventoryBulkStockEntryIds = new Set([...inventoryBulkStockEntryIds].filter(id => currentIds.has(id)));
+  } else inventoryBulkStockEntryIds.clear();
+  if (!inventoryBulkStockEntryIds.size) inventoryLastImportId = '';
   let selectedItem = null;
   let selectedStockData = { entries:[], summary:null };
   let selectedNoteData = { notes:[] };
@@ -3505,11 +3720,13 @@ async function renderInventory(locationId = '', includeArchived = false, itemId 
   const headingCopy = 'Lagerorte und Artikel verwalten.';
   const inspector = selectedItem ? storageFinderItemInspector(current, selectedItem, localEntry, selectedStockData, selectedNoteData.notes || [], includeArchived) : '';
   const createAction = mayEditProjects() && !includeArchived ? '<button class="button primary compact" type="button" data-storage-create-single="">Lagerort anlegen</button>' : '';
-  const inventoryHead = standardPageHeader({ title:'Lager', description:headingCopy, icon:'warehouse', className:'storage-finder-page-head', actions:`${storageLocationViewControls()}${createAction}` });
-  $('#main').innerHTML = `${inventoryHead}<div class="storage-finder-frame storage-finder-edge-to-edge"><div class="storage-finder-shell${selectedItem ? ' has-item-selection' : ''}" data-storage-finder-shell><div class="storage-finder-columns">${columns.join('')}</div>${inspector}</div><footer class="storage-finder-statusbar">${breadcrumbs}</footer></div>`;
+  const auditAction = mayEditProjects() && current && !includeArchived ? `<button class="button secondary compact" type="button" data-audit-create-location="${escapeHtml(current.id)}">Lagerort inventarisieren</button><button class="button secondary compact" type="button" data-location-imports="${escapeHtml(current.id)}">Importe</button>` : '';
+  const inventoryHead = standardPageHeader({ title:'Lager', description:headingCopy, icon:'warehouse', className:'storage-finder-page-head', actions:`${storageLocationViewControls()}${auditAction}${createAction}` });
+  $('#main').innerHTML = `${inventoryHead}${inventoryBulkToolbar('stock', current?.id || '')}<div class="storage-finder-frame storage-finder-edge-to-edge"><div class="storage-finder-shell${selectedItem ? ' has-item-selection' : ''}" data-storage-finder-shell><div class="storage-finder-columns">${columns.join('')}</div>${inspector}</div><footer class="storage-finder-statusbar">${breadcrumbs}</footer></div>`;
   document.title = selectedItem ? `${selectedItem.name} · ${current.name} · Lager · Logbuch` : current ? `${current.name} · Lager · Logbuch` : 'Lager · Logbuch';
   bindStorageLocationActions();
   bindStorageLocationViewControls(locationId, itemId, includeArchived);
+  document.querySelector('[data-audit-create-location]')?.addEventListener('click', event => openInventoryAuditCreateDialog({ locationId:event.currentTarget.dataset.auditCreateLocation }));
   if (selectedItem) bindInventoryItemActions();
   requestAnimationFrame(() => {
     fitInventoryWorkspaces();
@@ -3529,10 +3746,11 @@ async function renderInventoryArchive() {
   const items = (itemData.items || []).filter(item => item.status === 'ARCHIVED');
   const archiveMenu = (kind, id, name) => {
     const management = mayEditProjects() ? `<button class="menu-item" type="button" data-inventory-archive-restore="${kind}" data-archive-id="${escapeHtml(id)}">Wiederherstellen</button><button class="menu-item danger" type="button" data-inventory-permanent-delete="${kind}" data-archive-id="${escapeHtml(id)}">Endgültig löschen</button>` : '';
+    const label = `<button class="menu-item" type="button" data-inventory-label-kind="${kind}" data-inventory-label-id="${escapeHtml(id)}">QR-Code & Etikett${kind === 'location' ? 'en' : ''}</button>`;
     const link = kind === 'item'
       ? `<button class="menu-item" type="button" data-inventory-item-copy-link="${escapeHtml(id)}">Dauerhaften Link kopieren</button>`
       : `<button class="menu-item" type="button" data-storage-copy-link="${escapeHtml(id)}">Dauerhaften Link kopieren</button>`;
-    return contextActionMenu(`Aktionen für ${name}`, `${management}${link}`, { className:'inventory-archive-menu' });
+    return contextActionMenu(`Aktionen für ${name}`, `${management}${label}${link}`, { className:'inventory-archive-menu' });
   };
   const locationRows = locations.map(location => `<article class="inventory-archive-row"><a href="${storageLocationHref(location.id, true)}"><span><strong>${escapeHtml(location.name)}</strong></span><i aria-hidden="true">›</i></a>${archiveMenu('location', location.id, location.name)}</article>`).join('');
   const itemRows = items.map(item => `<article class="inventory-archive-row"><a href="${inventoryItemHref(item.id, true, '')}"><span><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(item.stockUnit)}${item.manufacturer ? ` · ${escapeHtml(item.manufacturer)}` : ''}</small></span><i aria-hidden="true">›</i></a>${archiveMenu('item', item.id, item.name)}</article>`).join('');
@@ -3620,6 +3838,81 @@ async function renderGlobalSearch(routeQuery) {
   form.querySelectorAll('select').forEach(select => select.onchange = navigate);
 }
 
+function currentProjectShareScope() {
+  if (state.currentFolderId) {
+    const folder = folderById(state.currentFolderId);
+    return { scopeType:'FOLDER', projectStatus:'', folderId:state.currentFolderId, name:`Ordner: ${folder?.name || 'Projektordner'}`, copy:`Der Ordner „${folder?.name || 'Projektordner'}“ wird einschließlich seiner Unterordner und aller regulären Projektstatus freigegeben.` };
+  }
+  if (regularProjectStatuses.includes(state.projectStatusFilter)) {
+    const labels = { idea:'Projektideen', active:'Aktive Projekte', paused:'Pausierte Projekte', completed:'Abgeschlossene Projekte' };
+    return { scopeType:'STATUS', projectStatus:state.projectStatusFilter, folderId:'', name:labels[state.projectStatusFilter], copy:`Alle Projekte mit dem Status „${projectStatusLabels[state.projectStatusFilter]}“ werden einschließlich ihrer sichtbaren Ordnerstruktur freigegeben.` };
+  }
+  return { scopeType:'ALL', projectStatus:'', folderId:'', name:'Alle Projekte', copy:'Alle Projekte mit den Status Idee, Aktiv, Pausiert und Abgeschlossen werden einschließlich ihrer Ordnerstruktur freigegeben.' };
+}
+
+async function copyPublicShareUrl(url, button) {
+  let copied = false;
+  try { await navigator.clipboard.writeText(url); copied = true; }
+  catch {
+    const field = document.createElement('textarea'); field.value = url; field.style.position = 'fixed'; field.style.opacity = '0'; document.body.append(field); field.select(); copied = document.execCommand('copy'); field.remove();
+  }
+  if (copied) { toast('Freigabelink kopiert'); if (button) { const previous = button.textContent; button.textContent = 'Kopiert'; setTimeout(() => { button.textContent = previous; }, 1200); } }
+  else window.prompt('Freigabelink kopieren:', url);
+}
+
+function renderProjectShareList(shares) {
+  const list = $('#project-share-list');
+  const activeCount = shares.filter(share => share.active && !share.expired).length;
+  $('#project-share-count').textContent = `${activeCount} aktiv`;
+  list.innerHTML = shares.length ? shares.map(share => {
+    const usable = share.active && !share.expired;
+    const stateLabel = !share.active ? 'Deaktiviert' : share.expired ? 'Abgelaufen' : 'Aktiv';
+    return `<article class="project-share-row${usable ? '' : ' inactive'}"><div class="project-share-row-main"><div><strong>${escapeHtml(share.name)}</strong><span class="project-share-state ${usable ? 'active' : ''}">${stateLabel}</span></div><p>${escapeHtml(share.scopeLabel)} · ${share.projectCount} ${share.projectCount === 1 ? 'Projekt' : 'Projekte'}${share.expiresAt ? ` · bis ${escapeHtml(formatDate(share.expiresAt))}` : ''}</p><small>${escapeHtml(share.url)}</small></div><div class="project-share-row-actions">${usable ? `<a class="button secondary compact" href="${escapeHtml(share.url)}" target="_blank" rel="noopener">Vorschau</a><button class="button secondary compact" type="button" data-project-share-copy="${escapeHtml(share.id)}">Kopieren</button><details class="action-menu"><summary aria-label="Freigabeaktionen">${iconSvg('ellipsis')}</summary><div class="action-menu-panel"><button class="menu-item" type="button" data-project-share-rotate="${escapeHtml(share.id)}">Neuen Link erzeugen</button><button class="menu-item danger" type="button" data-project-share-disable="${escapeHtml(share.id)}">Freigabe deaktivieren</button></div></details>` : ''}</div></article>`;
+  }).join('') : '<div class="empty"><strong>Noch keine öffentlichen Freigaben.</strong>Erstelle oben einen Link für die aktuell geöffnete Projektansicht.</div>';
+  document.querySelectorAll('[data-project-share-copy]').forEach(button => button.onclick = () => copyPublicShareUrl(shares.find(share => share.id === button.dataset.projectShareCopy)?.url || '', button));
+  document.querySelectorAll('[data-project-share-rotate]').forEach(button => button.onclick = async () => {
+    const share = shares.find(candidate => candidate.id === button.dataset.projectShareRotate);
+    if (!share || !await confirmAction(`Für „${share.name}“ einen neuen Link erzeugen? Der bisherige Link funktioniert danach nicht mehr.`, { title:'Freigabelink erneuern', confirmLabel:'Neuen Link erzeugen' })) return;
+    try { const updated = await api(`/project-shares/${encodeURIComponent(share.id)}/rotate`, { method:'POST', body:'{}' }); await copyPublicShareUrl(updated.url); toast('Neuer Freigabelink erstellt und kopiert'); await loadProjectShares(); }
+    catch (error) { $('#project-share-error').textContent = error.message; }
+  });
+  document.querySelectorAll('[data-project-share-disable]').forEach(button => button.onclick = async () => {
+    const share = shares.find(candidate => candidate.id === button.dataset.projectShareDisable);
+    if (!share || !await confirmAction(`Die öffentliche Freigabe „${share.name}“ deaktivieren? Der Link ist danach sofort nicht mehr erreichbar.`, { title:'Freigabe deaktivieren', confirmLabel:'Deaktivieren' })) return;
+    try { await api(`/project-shares/${encodeURIComponent(share.id)}`, { method:'DELETE' }); toast('Freigabe deaktiviert'); await loadProjectShares(); }
+    catch (error) { $('#project-share-error').textContent = error.message; }
+  });
+}
+
+async function loadProjectShares() {
+  try {
+    const data = await api('/project-shares');
+    $('#project-share-base-url').textContent = `Die Links verwenden die öffentliche Webadresse ${data.baseUrl}. Ist sie nur im Heimnetz erreichbar, gilt das auch für diese Freigaben.`;
+    renderProjectShareList(data.shares || []);
+    return data;
+  } catch (error) {
+    $('#project-share-error').textContent = error.message;
+    renderProjectShareList([]);
+    return null;
+  }
+}
+
+async function openProjectShareDialog() {
+  const dialog = $('#project-share-dialog');
+  const form = $('#project-share-form');
+  const scope = currentProjectShareScope();
+  form.elements.scopeType.value = scope.scopeType;
+  form.elements.projectStatus.value = scope.projectStatus;
+  form.elements.folderId.value = scope.folderId;
+  form.elements.name.value = scope.name;
+  form.elements.expiresAt.value = '';
+  $('#project-share-dialog-copy').textContent = scope.copy;
+  $('#project-share-error').textContent = '';
+  $('#project-share-list').innerHTML = '<div class="empty"><strong>Freigaben werden geladen …</strong></div>';
+  dialog.showModal();
+  await loadProjectShares();
+}
+
 async function renderProjects() {
   await loadProjectBrowser();
   if (state.currentFolderId && !folderById(state.currentFolderId)) state.currentFolderId = null;
@@ -3640,7 +3933,8 @@ async function renderProjects() {
   const folderGroup = collapsibleFolders && showFolders ? `<div class="project-group-head folder-group-head"><div class="project-status-divider project-list-divider folder-list-divider"><button class="project-divider-toggle" type="button" data-toggle-project-folder-group aria-expanded="${!state.collapsedProjectFolders}" aria-label="Ordner ${state.collapsedProjectFolders ? 'ausklappen' : 'einklappen'}" title="${state.collapsedProjectFolders ? 'Ausklappen' : 'Einklappen'}"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="m6 8 4 4 4-4"></path></svg><strong class="divider-label">Ordner <b>(${folders.length})</b></strong></button></div></div><div class="folder-grid${state.collapsedProjectFolders ? ' hidden' : ''}" data-project-folder-group>${folders.map(folderCard).join('')}</div>` : folders.length ? `<div class="folder-grid" data-project-folder-group>${folders.map(folderCard).join('')}</div>` : '';
   const groupedProjects = projectCards(projects, false, !showFolders, separateStatuses);
   const addButton = mayEditProjects() ? '<button class="button primary compact project-add-button project-browser-add-button" type="button" data-open-project-create aria-label="Projekt oder Ordner hinzufügen"><span aria-hidden="true">+</span><b>Hinzufügen</b></button>' : '';
-  const projectHead = standardPageHeader({ title, description:currentFolder?.description || 'Projekte nach Status und Ordnern verwalten.', icon:'box', actions:`${projectListControls(false, projects)}${addButton}`, breadcrumbs:folderBreadcrumbs(state.currentFolderId), className:'project-browser-page-head' });
+  const shareButton = state.user.admin ? `<button class="button secondary compact project-share-button" type="button" data-open-project-share>${publicShareIcon()}<b>Freigeben</b></button>` : '';
+  const projectHead = standardPageHeader({ title, description:currentFolder?.description || 'Projekte nach Status und Ordnern verwalten.', icon:'box', actions:`${projectListControls(false, projects)}${shareButton}${addButton}`, breadcrumbs:folderBreadcrumbs(state.currentFolderId), className:'project-browser-page-head' });
   $('#main').innerHTML = `${projectHead}<section class="project-page-content project-browser-page-content"><div id="active-tag-filters">${selectedTagFiltersMarkup(false)}</div>
     ${folderGroup || groupedProjects ? `<div class="project-grid project-list">${folderGroup}${groupedProjects}</div>${projects.length ? '<div id="project-no-results" class="empty hidden"><strong>Keine passenden Projekte gefunden.</strong>Versuche einen anderen Suchbegriff.</div>' : ''}` : `<div class="empty"><strong>${currentFolder ? 'Dieser Ordner enthält keine passenden Projekte.' : 'Noch keine Projekte vorhanden.'}</strong></div>`}</section>`;
   bindMobileProjectControls();
@@ -3651,6 +3945,7 @@ async function renderProjects() {
   bindProjectFolderGroup();
   bindProjectStatusGroups();
   bindProjectActions();
+  document.querySelector('[data-open-project-share]')?.addEventListener('click', openProjectShareDialog);
 }
 
 async function renderArchive() {
@@ -4724,6 +5019,7 @@ function currentInventoryMenuRoute() {
   const path = location.hash.replace(/^#\/?/, '').split('?')[0];
   if (path.startsWith('inventory/archive')) return 'archive';
   if (path.startsWith('inventory/replenishment')) return 'replenishment';
+  if (path.startsWith('inventory/audits')) return 'audits';
   if (path.startsWith('inventory/categories') || path.startsWith('inventory/category/')) return 'categories';
   if (path.startsWith('inventory/items') || path.startsWith('inventory/item/')) return 'items';
   return 'locations';
@@ -4773,6 +5069,9 @@ async function route() {
       setNav('inventory');
       if (parts[1] === 'replenishment') {
         await renderInventoryReplenishment(routeQuery);
+      } else if (parts[1] === 'audits') {
+        if (parts[2]) await renderInventoryAuditDetail(parts[2]);
+        else await renderInventoryAudits(routeQuery);
       } else if (parts[1] === 'archive') {
         await renderInventoryArchive();
       } else if (parts[1] === 'categories' || parts[1] === 'category') {
@@ -5576,6 +5875,417 @@ async function stableLink(path) {
   return new URL(path, `${baseUrl.replace(/\/$/, '')}/`).href;
 }
 
+const inventoryLabelSizes = {
+  small:{ label:'Klein', width:38, height:21 },
+  medium:{ label:'Mittel', width:62, height:29 },
+  large:{ label:'Groß', width:89, height:36 },
+};
+
+const inventoryBuiltinLabelProfiles = [
+  { id:'generic-38x21', name:'Kompakt · 38 × 21 mm', width:38, height:21, margin:1.5, offsetX:0, offsetY:0, layout:'auto', contentLevel:'title', border:false, builtin:true },
+  { id:'generic-54x25', name:'Kompakt · 54 × 25 mm', width:54, height:25, margin:1.5, offsetX:0, offsetY:0, layout:'auto', contentLevel:'compact', border:false, builtin:true },
+  { id:'generic-62x29', name:'Mittel · 62 × 29 mm', width:62, height:29, margin:1.5, offsetX:0, offsetY:0, layout:'auto', contentLevel:'full', border:false, builtin:true },
+  { id:'generic-89x28', name:'Breit · 89 × 28 mm', width:89, height:28, margin:1.5, offsetX:0, offsetY:0, layout:'auto', contentLevel:'full', border:false, builtin:true },
+  { id:'generic-89x36', name:'Groß · 89 × 36 mm', width:89, height:36, margin:1.5, offsetX:0, offsetY:0, layout:'auto', contentLevel:'full', border:false, builtin:true },
+];
+
+const inventoryLabelContentRank = { qr:0, title:1, compact:2, full:3 };
+
+function normalizedInventoryLabelProfile(profile) {
+  const number = (value, fallback) => Number.isFinite(Number(value)) ? Number(value) : fallback;
+  return {
+    id:String(profile?.id || 'generic-62x29'),
+    name:String(profile?.name || 'Etikett').slice(0, 80),
+    width:Math.min(310, Math.max(10, number(profile?.width, 62))),
+    height:Math.min(500, Math.max(10, number(profile?.height, 29))),
+    margin:Math.min(20, Math.max(0, number(profile?.margin, 1.5))),
+    offsetX:Math.min(10, Math.max(-10, number(profile?.offsetX, 0))),
+    offsetY:Math.min(10, Math.max(-10, number(profile?.offsetY, 0))),
+    layout:['auto','landscape','portrait','qr'].includes(profile?.layout) ? profile.layout : 'auto',
+    contentLevel:['qr','title','compact','full'].includes(profile?.contentLevel) ? profile.contentLevel : 'compact',
+    border:profile?.border === true,
+    builtin:profile?.builtin === true,
+  };
+}
+
+function inventoryLabelProfiles() {
+  const custom = Array.isArray(state.user?.inventoryLabelProfiles) ? state.user.inventoryLabelProfiles.map(normalizedInventoryLabelProfile) : [];
+  return [...inventoryBuiltinLabelProfiles, ...custom];
+}
+
+function selectedInventoryLabelProfile() {
+  const form = $('#inventory-label-form');
+  const id = form?.elements.profileId?.value || state.user?.inventoryLabelProfileId || 'generic-62x29';
+  return inventoryLabelProfiles().find(profile => profile.id === id) || inventoryBuiltinLabelProfiles[2];
+}
+
+function inventorySheetLabelProfile(sizeKey) {
+  const size = inventoryLabelSizes[sizeKey] || inventoryLabelSizes.medium;
+  return normalizedInventoryLabelProfile({ id:`sheet-${sizeKey}`, name:size.label, width:size.width, height:size.height, margin:1.5, layout:'auto', contentLevel:'full', border:true });
+}
+
+function inventoryLabelLayout(profile) {
+  const normalized = normalizedInventoryLabelProfile(profile);
+  const width = Math.max(1, normalized.width - normalized.margin * 2);
+  const height = Math.max(1, normalized.height - normalized.margin * 2);
+  const ratio = width / height;
+  const layout = normalized.layout === 'auto' ? (ratio >= 1.25 ? 'landscape' : ratio <= 0.8 ? 'portrait' : 'portrait') : normalized.layout;
+  let contentLevel = layout === 'qr' ? 'qr' : normalized.contentLevel;
+  const area = width * height;
+  if (Math.min(width, height) < 18 || area < 360) contentLevel = 'qr';
+  else if (area < 620 && inventoryLabelContentRank[contentLevel] > inventoryLabelContentRank.title) contentLevel = 'title';
+  else if (area < 1250 && inventoryLabelContentRank[contentLevel] > inventoryLabelContentRank.compact) contentLevel = 'compact';
+  const qrSize = layout === 'landscape' ? Math.min(height, Math.max(12, width * (contentLevel === 'qr' ? 1 : .42))) : Math.min(width, Math.max(12, height * (contentLevel === 'qr' ? 1 : .62)));
+  const warnings = [];
+  if (Math.min(width, height) < 18) warnings.push('Der QR-Code ist auf diesem Etikett möglicherweise zu klein für zuverlässiges Scannen.');
+  if (contentLevel !== normalized.contentLevel && normalized.layout !== 'qr') warnings.push('Der Informationsumfang wurde wegen der verfügbaren Fläche automatisch reduziert.');
+  return { ...normalized, printableWidth:width, printableHeight:height, layout, contentLevel, qrSize, warnings };
+}
+
+function inventoryCurrentLabelOutput() {
+  const form = $('#inventory-label-form');
+  const mode = form.elements.outputMode.value === 'roll' ? 'roll' : 'sheet';
+  const profile = mode === 'roll' ? selectedInventoryLabelProfile() : inventorySheetLabelProfile(form.elements.size.value);
+  return { mode, profile:inventoryLabelLayout(profile), orientation:form.elements.paper.value === 'landscape' ? 'landscape' : 'portrait' };
+}
+
+function qrCodeFor(value) {
+  if (typeof qrcode !== 'function') throw new Error('Die QR-Code-Bibliothek konnte nicht geladen werden.');
+  const code = qrcode(0, 'M');
+  code.addData(String(value), 'Byte');
+  code.make();
+  return code;
+}
+
+function qrSvgMarkup(value, { className = 'inventory-label-qr', xml = false } = {}) {
+  const code = qrCodeFor(value);
+  const quietZone = 4;
+  const moduleCount = code.getModuleCount();
+  const size = moduleCount + quietZone * 2;
+  const path = [];
+  for (let row = 0; row < moduleCount; row += 1) {
+    for (let column = 0; column < moduleCount; column += 1) {
+      if (code.isDark(row, column)) path.push(`M${column + quietZone} ${row + quietZone}h1v1h-1z`);
+    }
+  }
+  const prefix = xml ? '<?xml version="1.0" encoding="UTF-8"?>\n' : '';
+  return `${prefix}<svg xmlns="http://www.w3.org/2000/svg"${className ? ` class="${className}"` : ''} viewBox="0 0 ${size} ${size}" shape-rendering="crispEdges" role="img" aria-label="QR-Code"><rect width="${size}" height="${size}" fill="#fff"/><path d="${path.join('')}" fill="#000"/></svg>`;
+}
+
+function inventoryLabelEntry(kind, id, title, subtitle, path) {
+  return stableLink(path).then(url => ({ kind, id, title, subtitle, url }));
+}
+
+async function inventoryEntityLabel(kind, id) {
+  if (kind === 'item') {
+    const item = state.inventoryItems.find(candidate => candidate.id === id) || await api(`/inventory-items/${encodeURIComponent(id)}`);
+    const subtitle = [item.manufacturer, item.articleNumber].filter(Boolean).join(' · ') || item.stockUnit || 'Artikel';
+    return inventoryLabelEntry('Artikel', item.id, item.name, subtitle, permanentInventoryItemHref(item.id));
+  }
+  if (kind === 'category') {
+    const detail = await api(`/inventory-categories/${encodeURIComponent(id)}`);
+    const category = detail.category;
+    const subtitle = (detail.path || []).map(entry => entry.name).join(' › ') || 'Kategorie';
+    return inventoryLabelEntry('Kategorie', category.id, category.name, subtitle, permanentInventoryCategoryHref(category.id));
+  }
+  const detail = await api(`/storage-locations/${encodeURIComponent(id)}`);
+  const storageLocation = detail.location;
+  const subtitle = (detail.path || []).map(entry => entry.name).join(' › ') || 'Lagerort';
+  return inventoryLabelEntry('Lagerort', storageLocation.id, storageLocation.name, subtitle, permanentStorageLocationHref(storageLocation.id));
+}
+
+async function inventoryLocationItemLabels(locationId, subtree = false) {
+  const [locationData, itemData, stockData] = await Promise.all([
+    api('/storage-locations?includeArchived=1'),
+    api('/inventory-items'),
+    api('/stock-entries'),
+  ]);
+  const locations = locationData.locations || [];
+  const selectedIds = new Set([locationId]);
+  if (subtree) {
+    let changed = true;
+    while (changed) {
+      changed = false;
+      locations.forEach(location => {
+        if (!selectedIds.has(location.parentId) || selectedIds.has(location.id)) return;
+        selectedIds.add(location.id);
+        changed = true;
+      });
+    }
+  }
+  const itemsById = new Map((itemData.items || []).map(item => [item.id, item]));
+  const seen = new Set();
+  const entries = [];
+  for (const stockEntry of stockData.entries || []) {
+    if (!selectedIds.has(stockEntry.storageLocationId) || seen.has(stockEntry.itemId)) continue;
+    const item = itemsById.get(stockEntry.itemId);
+    if (!item) continue;
+    seen.add(item.id);
+    const details = [item.manufacturer, item.articleNumber].filter(Boolean).join(' · ') || item.stockUnit || 'Artikel';
+    entries.push(await inventoryLabelEntry('Artikel', item.id, item.name, details, permanentInventoryItemHref(item.id)));
+  }
+  return entries.sort((left, right) => left.title.localeCompare(right.title, 'de', { sensitivity:'base', numeric:true }));
+}
+
+function inventoryLabelCardMarkup(entry, profile, className = 'inventory-label-card') {
+  const details = inventoryLabelLayout(profile);
+  const showTitle = inventoryLabelContentRank[details.contentLevel] >= inventoryLabelContentRank.title;
+  const showDetails = inventoryLabelContentRank[details.contentLevel] >= inventoryLabelContentRank.compact;
+  const showFull = details.contentLevel === 'full';
+  const copy = showTitle ? `<span class="label-copy">${showDetails ? `<small>${escapeHtml(entry.kind)}</small>` : ''}<strong>${escapeHtml(entry.title)}</strong>${showDetails ? `<span>${escapeHtml(entry.subtitle)}</span>` : ''}${showFull ? `<i>${escapeHtml(state.appearance.displayName || 'Logbuch')}</i>` : ''}</span>` : '';
+  const style = `--label-ratio:${details.width}/${details.height};--label-width:${details.width}mm;--label-height:${details.height}mm;--label-margin:${details.margin}mm;--label-offset-x:${details.offsetX}mm;--label-offset-y:${details.offsetY}mm;--label-qr-size:${details.qrSize}mm`;
+  return `<article class="${className}" data-label-layout="${details.layout}" data-label-content="${details.contentLevel}" data-label-border="${details.border ? 'true' : 'false'}" style="${style}"><span class="label-content"><span class="label-qr">${qrSvgMarkup(entry.url)}</span>${copy}</span></article>`;
+}
+
+function renderInventoryLabelProfileOptions(selectedId = state.user?.inventoryLabelProfileId || 'generic-62x29') {
+  const select = $('#inventory-label-form').elements.profileId;
+  const profiles = inventoryLabelProfiles();
+  if (!profiles.some(profile => profile.id === selectedId)) selectedId = 'generic-62x29';
+  const builtin = profiles.filter(profile => profile.builtin).map(profile => `<option value="${escapeHtml(profile.id)}">${escapeHtml(profile.name)}</option>`).join('');
+  const customProfiles = profiles.filter(profile => !profile.builtin);
+  select.innerHTML = `<optgroup label="Standardgrößen">${builtin}</optgroup>${customProfiles.length ? `<optgroup label="Eigene Profile">${customProfiles.map(profile => `<option value="${escapeHtml(profile.id)}">${escapeHtml(profile.name)}</option>`).join('')}</optgroup>` : ''}`;
+  select.value = selectedId;
+  renderInventoryLabelProfileSummary();
+}
+
+function renderInventoryLabelProfileSummary() {
+  const profile = selectedInventoryLabelProfile();
+  $('[data-inventory-label-profile-name]').textContent = profile.name;
+  $('[data-inventory-label-profile-summary]').textContent = `${formatInventoryQuantity(profile.width)} × ${formatInventoryQuantity(profile.height)} mm · ${profile.layout === 'auto' ? 'automatisches Layout' : profile.layout === 'landscape' ? 'QR links' : profile.layout === 'portrait' ? 'QR oben' : 'nur QR-Code'}`;
+}
+
+function syncInventoryLabelOutputFields() {
+  const form = $('#inventory-label-form');
+  const roll = form.elements.outputMode.value === 'roll';
+  $('#inventory-label-sheet-size-field').hidden = roll;
+  $('#inventory-label-paper-field').hidden = roll;
+  $('#inventory-label-profile-field').hidden = !roll;
+  $('#inventory-label-profile-tools').hidden = !roll;
+  if (!roll) $('#inventory-label-profile-editor').hidden = true;
+  renderInventoryLabelProfileSummary();
+}
+
+function renderInventoryLabelPreview() {
+  const form = $('#inventory-label-form');
+  const entries = inventoryLabelModel?.entries || [];
+  const output = inventoryCurrentLabelOutput();
+  const profile = output.profile;
+  const preview = $('#inventory-label-preview');
+  $('#inventory-label-status').textContent = inventoryLabelModel
+    ? `${entries.length} ${entries.length === 1 ? 'Etikett' : 'Etiketten'} · ${formatInventoryQuantity(profile.width)} × ${formatInventoryQuantity(profile.height)} mm${output.mode === 'roll' ? ' · eine Druckseite je Etikett' : ' · A4-Bogen'}${profile.warnings.length ? ` · ${profile.warnings.join(' ')}` : ''}`
+    : 'Etikett wird vorbereitet …';
+  $('#inventory-label-status').classList.toggle('warning', profile.warnings.length > 0);
+  preview.innerHTML = entries.length
+    ? `${entries.slice(0, 12).map(entry => inventoryLabelCardMarkup(entry, profile)).join('')}${entries.length > 12 ? `<p class="inventory-label-more">Weitere ${entries.length - 12} Etiketten werden in der Druckausgabe vollständig ausgegeben.</p>` : ''}`
+    : inventoryLabelModel ? '<div class="empty"><strong>Keine Artikel für diesen Etikettenbogen.</strong>Wähle einen anderen Inhalt oder lege an diesem Lagerort zunächst Artikel ab.</div>' : '';
+  const single = entries.length === 1;
+  $('#inventory-label-download-svg').hidden = !single;
+  $('#inventory-label-download-png').hidden = !single;
+  $('#inventory-label-print').disabled = !entries.length;
+}
+
+async function refreshInventoryLabelDialog() {
+  const dialog = $('#inventory-label-dialog');
+  const form = $('#inventory-label-form');
+  const request = ++inventoryLabelRequest;
+  const kind = dialog.dataset.kind;
+  const id = dialog.dataset.id;
+  inventoryLabelModel = null;
+  $('#inventory-label-error').textContent = '';
+  renderInventoryLabelPreview();
+  try {
+    const scope = kind === 'location' ? form.elements.scope.value : 'entity';
+    const entity = await inventoryEntityLabel(kind, id);
+    const entries = scope === 'entity' ? [entity] : await inventoryLocationItemLabels(id, scope === 'subtree');
+    if (request !== inventoryLabelRequest) return;
+    inventoryLabelModel = { title:scope === 'entity' ? entity.title : `Artikel in ${entity.title}`, entries };
+    $('#inventory-label-dialog-title').textContent = scope === 'entity' ? 'QR-Code und Etikett' : 'QR-Etikettenbogen';
+    $('#inventory-label-dialog-copy').textContent = scope === 'entity'
+      ? 'Der QR-Code verwendet den dauerhaften, namensunabhängigen Link.'
+      : `Alle QR-Codes führen zu den dauerhaften Artikellinks. Doppelte Artikel werden nur einmal ausgegeben.`;
+    renderInventoryLabelPreview();
+  } catch (error) {
+    if (request !== inventoryLabelRequest) return;
+    inventoryLabelModel = { title:'Etiketten', entries:[] };
+    $('#inventory-label-error').textContent = error.message;
+    renderInventoryLabelPreview();
+  }
+}
+
+function openInventoryLabelDialog(kind, id) {
+  const dialog = $('#inventory-label-dialog');
+  const form = $('#inventory-label-form');
+  dialog.dataset.kind = kind;
+  dialog.dataset.id = id;
+  form.elements.scope.value = 'entity';
+  form.elements.outputMode.value = state.user?.inventoryLabelOutputMode === 'roll' ? 'roll' : 'sheet';
+  renderInventoryLabelProfileOptions();
+  syncInventoryLabelOutputFields();
+  $('#inventory-label-scope-field').hidden = kind !== 'location';
+  $('#inventory-label-dialog-title').textContent = 'QR-Code und Etikett';
+  $('#inventory-label-dialog-copy').textContent = 'Der QR-Code verwendet den dauerhaften, namensunabhängigen Link.';
+  inventoryLabelModel = null;
+  $('#inventory-label-error').textContent = '';
+  renderInventoryLabelPreview();
+  dialog.showModal();
+  refreshInventoryLabelDialog();
+}
+
+async function saveInventoryLabelPreferences(payload, successMessage = '') {
+  try {
+    const preferences = await api('/account/preferences', { method:'PATCH', body:JSON.stringify(payload) });
+    Object.assign(state.user, preferences);
+    if (successMessage) toast(successMessage);
+    return true;
+  } catch (error) {
+    $('#inventory-label-profile-error').textContent = error.message;
+    return false;
+  }
+}
+
+function fillInventoryLabelProfileEditor(profile, existingId = null) {
+  const form = $('#inventory-label-form');
+  const normalized = normalizedInventoryLabelProfile(profile);
+  inventoryLabelProfileDraftId = existingId;
+  form.elements.profileName.value = normalized.name;
+  form.elements.profileWidth.value = normalized.width;
+  form.elements.profileHeight.value = normalized.height;
+  form.elements.profileMargin.value = normalized.margin;
+  form.elements.profileOffsetX.value = normalized.offsetX;
+  form.elements.profileOffsetY.value = normalized.offsetY;
+  form.elements.profileLayout.value = normalized.layout;
+  form.elements.profileContent.value = normalized.contentLevel;
+  form.elements.profileBorder.checked = normalized.border;
+  $('[data-inventory-label-editor-title]').textContent = existingId ? 'Eigenes Profil bearbeiten' : 'Eigenes Profil anlegen';
+  $('[data-inventory-label-profile-delete]').hidden = !existingId;
+  $('#inventory-label-profile-error').textContent = '';
+  $('#inventory-label-profile-editor').hidden = false;
+  requestAnimationFrame(() => form.elements.profileName.focus());
+}
+
+function openInventoryLabelProfileEditor(create = false) {
+  const selected = selectedInventoryLabelProfile();
+  if (create) {
+    fillInventoryLabelProfileEditor({ ...selected, id:'', name:'Eigenes Etikett', builtin:false }, null);
+    return;
+  }
+  fillInventoryLabelProfileEditor({ ...selected, name:selected.builtin ? `${selected.name} – angepasst` : selected.name, builtin:false }, selected.builtin ? null : selected.id);
+}
+
+function inventoryLabelProfileFromEditor() {
+  const form = $('#inventory-label-form');
+  const profile = normalizedInventoryLabelProfile({
+    id:inventoryLabelProfileDraftId || `custom-${crypto.randomUUID()}`,
+    name:form.elements.profileName.value.trim(),
+    width:Number(form.elements.profileWidth.value),
+    height:Number(form.elements.profileHeight.value),
+    margin:Number(form.elements.profileMargin.value),
+    offsetX:Number(form.elements.profileOffsetX.value),
+    offsetY:Number(form.elements.profileOffsetY.value),
+    layout:form.elements.profileLayout.value,
+    contentLevel:form.elements.profileContent.value,
+    border:form.elements.profileBorder.checked,
+  });
+  if (!form.elements.profileName.value.trim()) throw new Error('Gib dem Etikettenprofil einen Namen.');
+  if (![form.elements.profileWidth, form.elements.profileHeight, form.elements.profileMargin, form.elements.profileOffsetX, form.elements.profileOffsetY].every(input => input.reportValidity())) throw new Error('Prüfe Maße, Innenabstand und Kalibrierung.');
+  if (profile.margin * 2 >= Math.min(profile.width, profile.height)) throw new Error('Der Innenabstand lässt keine bedruckbare Fläche übrig.');
+  return profile;
+}
+
+async function saveInventoryLabelProfile() {
+  $('#inventory-label-profile-error').textContent = '';
+  try {
+    const profile = inventoryLabelProfileFromEditor();
+    const profiles = (Array.isArray(state.user.inventoryLabelProfiles) ? state.user.inventoryLabelProfiles : []).map(normalizedInventoryLabelProfile).filter(candidate => candidate.id !== profile.id);
+    profiles.push(profile);
+    if (!await saveInventoryLabelPreferences({ inventoryLabelProfiles:profiles, inventoryLabelProfileId:profile.id, inventoryLabelOutputMode:'roll' }, 'Etikettenprofil gespeichert')) return;
+    renderInventoryLabelProfileOptions(profile.id);
+    $('#inventory-label-profile-editor').hidden = true;
+    $('#inventory-label-dialog').scrollTo({ top:0, behavior:'smooth' });
+    inventoryLabelProfileDraftId = null;
+    renderInventoryLabelPreview();
+  } catch (error) {
+    $('#inventory-label-profile-error').textContent = error.message;
+  }
+}
+
+async function deleteInventoryLabelProfile() {
+  if (!inventoryLabelProfileDraftId) return;
+  if (!await confirmAction('Dieses eigene Etikettenprofil löschen?', { title:'Etikettenprofil löschen', confirmLabel:'Profil löschen' })) return;
+  const profiles = (Array.isArray(state.user.inventoryLabelProfiles) ? state.user.inventoryLabelProfiles : []).filter(profile => profile.id !== inventoryLabelProfileDraftId);
+  const nextId = 'generic-62x29';
+  if (!await saveInventoryLabelPreferences({ inventoryLabelProfiles:profiles, inventoryLabelProfileId:nextId }, 'Etikettenprofil gelöscht')) return;
+  renderInventoryLabelProfileOptions(nextId);
+  $('#inventory-label-profile-editor').hidden = true;
+  $('#inventory-label-dialog').scrollTo({ top:0, behavior:'smooth' });
+  inventoryLabelProfileDraftId = null;
+  renderInventoryLabelPreview();
+}
+
+function inventoryLabelDownloadName(entry) {
+  return `logbuch-${safeDownloadName(entry.title || entry.kind || 'etikett')}-qr`;
+}
+
+function downloadInventoryLabelSvg() {
+  const entry = inventoryLabelModel?.entries?.[0];
+  if (!entry) return;
+  downloadBlob(new Blob([qrSvgMarkup(entry.url, { className:'', xml:true })], { type:'image/svg+xml;charset=utf-8' }), `${inventoryLabelDownloadName(entry)}.svg`);
+}
+
+function downloadInventoryLabelPng() {
+  const entry = inventoryLabelModel?.entries?.[0];
+  if (!entry) return;
+  const code = qrCodeFor(entry.url);
+  const quietZone = 4;
+  const modules = code.getModuleCount();
+  const moduleSize = Math.floor(1024 / (modules + quietZone * 2));
+  const size = moduleSize * (modules + quietZone * 2);
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const context = canvas.getContext('2d');
+  context.fillStyle = '#fff';
+  context.fillRect(0, 0, size, size);
+  context.fillStyle = '#000';
+  for (let row = 0; row < modules; row += 1) {
+    for (let column = 0; column < modules; column += 1) {
+      if (code.isDark(row, column)) context.fillRect((column + quietZone) * moduleSize, (row + quietZone) * moduleSize, moduleSize, moduleSize);
+    }
+  }
+  canvas.toBlob(blob => {
+    if (blob) downloadBlob(blob, `${inventoryLabelDownloadName(entry)}.png`);
+    else toast('PNG konnte nicht erzeugt werden.');
+  }, 'image/png');
+}
+
+function inventoryLabelPrintDocument(model, output) {
+  const profile = inventoryLabelLayout(output.profile);
+  const labels = model.entries.map(entry => inventoryLabelCardMarkup(entry, profile, 'label')).join('');
+  const roll = output.mode === 'roll';
+  const pageSize = roll ? `${profile.width}mm ${profile.height}mm` : `A4 ${output.orientation}`;
+  const sheetClass = roll ? 'sheet roll' : 'sheet page-sheet';
+  const sheetGrid = roll ? '' : `grid-template-columns:repeat(auto-fill,${profile.width}mm);grid-auto-rows:${profile.height}mm;gap:2mm`;
+  const titleSize = profile.layout === 'portrait'
+    ? Math.max(6.5, Math.min(10, profile.width * .3))
+    : Math.max(7, Math.min(13, profile.height * .34));
+  return `<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>${escapeHtml(model.title)} · QR-Etiketten</title><style>
+    @page{size:${pageSize};margin:${roll ? '0' : '8mm'}}*{box-sizing:border-box}html,body{margin:0}body{color:#17191d;background:#eef0f3;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.toolbar{position:sticky;top:0;z-index:2;padding:12px 18px;display:flex;align-items:center;justify-content:space-between;gap:16px;background:#fff;border-bottom:1px solid #d8dce1}.toolbar div{display:flex;gap:9px}.toolbar strong{display:block}.toolbar span{display:block;margin-top:2px;color:#6d737c;font-size:12px}.toolbar button{padding:9px 14px;border:1px solid #cfd4da;border-radius:9px;background:#fff;font:inherit;font-weight:700;cursor:pointer}.toolbar button.primary{color:#fff;background:#202327;border-color:#202327}.sheet{padding:8mm;align-content:start;justify-content:center}.page-sheet{display:grid;${sheetGrid}}.roll{display:grid;gap:8mm}.label{width:var(--label-width);height:var(--label-height);overflow:hidden;color:#111;background:#fff;break-inside:avoid}.roll .label{margin:auto}.label[data-label-border="true"]{border:.25mm solid #777}.page-sheet .label[data-label-border="true"]{border-style:dashed;border-color:#aeb3b9}.label-content{width:100%;height:100%;padding:var(--label-margin);display:flex;align-items:center;justify-content:center;gap:1.8mm;transform:translate(var(--label-offset-x),var(--label-offset-y))}.label[data-label-layout="portrait"] .label-content{flex-direction:column;gap:1mm}.label[data-label-layout="qr"] .label-content{padding:var(--label-margin)}.label-qr{width:var(--label-qr-size);height:var(--label-qr-size);flex:0 0 auto}.label-qr svg{width:100%;height:100%;display:block}.label-copy{min-width:0;max-width:100%;height:100%;display:flex;flex-direction:column;justify-content:center}.label[data-label-layout="portrait"] .label-copy{width:100%;height:auto;text-align:center}.label-copy small{font-size:${Math.max(5.5, titleSize * .58)}pt;font-weight:800;letter-spacing:.08em;text-transform:uppercase}.label-copy strong{margin-top:.4mm;overflow:hidden;font-size:${titleSize}pt;line-height:1.08;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}.label[data-label-layout="portrait"] .label-copy strong{-webkit-line-clamp:3}.label-copy span{margin-top:.6mm;overflow:hidden;color:#555b63;font-size:${Math.max(5.5, titleSize * .62)}pt;line-height:1.15;white-space:nowrap;text-overflow:ellipsis}.label-copy i{margin-top:auto;color:#777d84;font-size:${Math.max(5, titleSize * .5)}pt;font-style:normal}.label[data-label-content="title"] .label-copy{height:auto}.label[data-label-content="title"] .label-copy strong{margin:0}@media print{html,body{${roll ? `width:${profile.width}mm` : ''};background:#fff}.toolbar{display:none}.sheet{padding:0}.roll{display:block}.roll .label{margin:0;break-after:page}.roll .label:last-child{break-after:auto}}
+  </style></head><body><header class="toolbar"><section><strong>${escapeHtml(model.title)}</strong><span>${model.entries.length} ${model.entries.length === 1 ? 'Etikett' : 'Etiketten'} · ${formatInventoryQuantity(profile.width)} × ${formatInventoryQuantity(profile.height)} mm · ${roll ? 'Etikettendrucker' : `A4 ${output.orientation === 'landscape' ? 'Querformat' : 'Hochformat'}`}</span></section><div><button type="button" data-close>Schließen</button><button class="primary" type="button" data-print>Drucken / als PDF speichern</button></div></header><main class="${sheetClass}">${labels}</main></body></html>`;
+}
+
+function printInventoryLabels() {
+  if (!inventoryLabelModel?.entries?.length) return;
+  const output = inventoryCurrentLabelOutput();
+  const printWindow = window.open('', '_blank');
+  if (!printWindow) return toast('Die Druckansicht wurde vom Browser blockiert. Erlaube Pop-ups für das Logbuch.');
+  printWindow.document.open();
+  printWindow.document.write(inventoryLabelPrintDocument(inventoryLabelModel, output));
+  printWindow.document.close();
+  printWindow.document.querySelector('[data-print]').onclick = () => printWindow.print();
+  printWindow.document.querySelector('[data-close]').onclick = () => printWindow.close();
+  printWindow.focus();
+}
+
 async function copyLink(path, button) {
   const link = await stableLink(path);
   let copied = false;
@@ -5598,6 +6308,12 @@ async function copyLink(path, button) {
 }
 
 function bindInventoryPermanentLinks() {
+  document.querySelectorAll('[data-inventory-label-kind]').forEach(button => {
+    button.onclick = () => {
+      button.closest('details')?.removeAttribute('open');
+      openInventoryLabelDialog(button.dataset.inventoryLabelKind, button.dataset.inventoryLabelId);
+    };
+  });
   document.querySelectorAll('[data-inventory-item-copy-link]').forEach(button => {
     button.onclick = () => copyLink(permanentInventoryItemHref(button.dataset.inventoryItemCopyLink), button);
   });
@@ -6433,6 +7149,22 @@ $('#project-form [data-new-folder-from-project]').addEventListener('click', () =
   const parentId = $('#project-form').elements.folderId.value || null;
   openFolderDialog(null, { selectAfterCreate:true, parentId });
 });
+$('#project-share-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  if (!form.reportValidity()) return;
+  const submit = form.querySelector('button[type="submit"]');
+  submit.disabled = true;
+  $('#project-share-error').textContent = '';
+  try {
+    const share = await api('/project-shares', { method:'POST', body:JSON.stringify({ scopeType:form.elements.scopeType.value, projectStatus:form.elements.projectStatus.value, folderId:form.elements.folderId.value || null, name:form.elements.name.value, expiresAt:form.elements.expiresAt.value || '' }) });
+    await copyPublicShareUrl(share.url);
+    toast('Freigabelink erstellt und kopiert');
+    form.elements.expiresAt.value = '';
+    await loadProjectShares();
+  } catch (error) { $('#project-share-error').textContent = error.message; }
+  finally { submit.disabled = false; }
+});
 $('#folder-form').addEventListener('submit', async event => {
   event.preventDefault();
   const formElement = event.currentTarget;
@@ -6734,6 +7466,7 @@ async function inventoryBatchPayload() {
     storageLocationId:form.elements.storageLocationId.value,
     categoryIds:JSON.parse(form.dataset.categoryIds || '[]'),
     csv:state.inventoryBatchCsv,
+    sourceFilename:file.name,
   };
 }
 $('#inventory-batch-import-form').elements.csvFile.onchange = () => {
@@ -6800,11 +7533,39 @@ $('#inventory-batch-import-form').onsubmit = async event => {
     form.reset();
     state.inventoryBatchCsv = '';
     state.inventoryBatchPreview = null;
+    inventoryBulkStockEntryIds = new Set((result.created || []).map(item => item.stockEntryId));
+    inventoryLastImportId = result.batchId || '';
     toast(`${result.count} ${result.count === 1 ? 'Artikel wurde' : 'Artikel wurden'} importiert.`);
     location.href = storageLocationHref(storageLocationId);
     await route();
   } catch (cause) { error.textContent = cause.message; }
   finally { submit.textContent = 'Artikel importieren'; submit.disabled = !state.inventoryBatchPreview?.valid; }
+};
+$('#inventory-bulk-form').onsubmit = async event => {
+  event.preventDefault();
+  const form = event.currentTarget; const context = form.elements.context.value; const action = form.elements.action.value;
+  const itemAction = ['ADD_CATEGORIES','REMOVE_CATEGORIES','SET_GLOBAL_MINIMUM','REQUEST_AUDIT'].includes(action);
+  const payload = { action };
+  if (itemAction) payload.itemIds = selectedInventoryBulkItemIds(context); else payload.stockEntryIds = [...inventoryBulkStockEntryIds];
+  if (['ADD_CATEGORIES','REMOVE_CATEGORIES'].includes(action)) payload.categoryIds = inventoryBulkCategoryIds;
+  if (['SET_GLOBAL_MINIMUM','SET_LOCAL_MINIMUM'].includes(action)) payload.value = form.elements.minimum.value;
+  if (action === 'MOVE') { payload.destinationStorageLocationId = form.elements.destinationStorageLocationId.value; payload.note = form.elements.note.value; }
+  if (action === 'REQUEST_AUDIT') { payload.priority = form.elements.priority.value; payload.dueAt = form.elements.dueAt.value; payload.note = form.elements.note.value; }
+  try {
+    const result = await api(itemAction ? '/inventory-items/batch' : '/stock-entries/batch', { method:'POST', body:JSON.stringify(payload) });
+    $('#inventory-bulk-dialog').close();
+    (context === 'stock' ? inventoryBulkStockEntryIds : inventoryBulkItemIds).clear();
+    if (context === 'stock') inventoryLastImportId = '';
+    toast(`${result.changed} ${context === 'stock' ? 'Lagerpositionen' : 'Artikel'} wurden gemeinsam bearbeitet.`);
+    await route(); await loadInventoryMenuCounts();
+  } catch (error) { $('#inventory-bulk-error').textContent = error.message; }
+};
+$('#inventory-import-revert').onclick = async () => {
+  if (!inventoryLastImportId || !await confirmAction('Diesen vollständigen Import zurücknehmen? Alle dadurch angelegten, unveränderten Artikel werden gelöscht.', { title:'Import zurücknehmen', confirmLabel:'Import zurücknehmen' })) return;
+  try {
+    const result = await api(`/inventory-imports/${encodeURIComponent(inventoryLastImportId)}/revert`, { method:'POST', body:'{}' });
+    $('#inventory-import-detail-dialog').close(); inventoryBulkStockEntryIds.clear(); inventoryLastImportId = ''; toast(`${result.reverted} importierte Artikel wurden entfernt.`); await route(); await loadInventoryMenuCounts();
+  } catch (error) { $('#inventory-import-detail-error').textContent = error.message; }
 };
 $('#inventory-item-form').onsubmit = async event => {
   event.preventDefault();
@@ -6848,6 +7609,29 @@ $('#inventory-item-form').onsubmit = async event => {
     if (id && location.hash.includes(`/item/${encodeURIComponent(id)}`)) await route();
     else location.href = storageLocationId ? storageContextItemHref(storageLocationId, saved.id, false) : categoryContextId ? inventoryCategoryHref(categoryContextId, saved.id) : inventoryItemHref(saved.id, false, '');
   } catch (error) { $('#inventory-item-error').textContent = error.message; }
+};
+$('#inventory-audit-request-form').onsubmit = async event => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  if (!form.reportValidity()) return;
+  try {
+    await api('/inventory-audit-requests', { method:'POST', body:JSON.stringify({ itemId:form.elements.itemId.value, stockEntryId:form.elements.stockEntryId.value || null, priority:form.elements.priority.value, dueAt:form.elements.dueAt.value || null, note:form.elements.note.value }) });
+    $('#inventory-audit-request-dialog').close();
+    toast(form.elements.priority.value === 'URGENT' ? 'Dringende Inventur vorgemerkt.' : 'Inventur vorgemerkt.');
+    if (location.hash.startsWith('#/inventory/audits')) await route();
+  } catch (error) { $('#inventory-audit-request-error').textContent = error.message; }
+};
+$('#inventory-audit-create-form').onsubmit = async event => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  if (!form.reportValidity()) return;
+  const payload = { name:form.elements.name.value, locationId:form.elements.locationId.value || null, includeLocationDescendants:form.elements.includeLocationDescendants.checked, categoryIds:[...form.elements.categoryIds.selectedOptions].map(option => option.value), includeCategoryDescendants:form.elements.includeCategoryDescendants.checked, requestMode:form.elements.requestMode.value };
+  try {
+    const audit = await api('/inventory-audits', { method:'POST', body:JSON.stringify(payload) });
+    $('#inventory-audit-create-dialog').close();
+    toast(`Inventurlauf mit ${audit.summary.total} Positionen angelegt.`);
+    location.href = inventoryAuditHref(audit.id);
+  } catch (error) { $('#inventory-audit-create-error').textContent = error.message; }
 };
 [...$('#inventory-item-form').elements.trackingMode].forEach(input => input.onchange = syncInventoryItemTrackingMode);
 document.querySelectorAll('[data-inventory-initial-step]').forEach(button => button.onclick = () => stepInventoryQuantity(
@@ -7125,6 +7909,44 @@ $('#inventory-toggle').onclick = () => {
   }
   setInventoryMenu(true, currentInventoryMenuRoute());
 };
+$('#inventory-label-form').elements.scope.onchange = refreshInventoryLabelDialog;
+$('#inventory-label-form').elements.size.onchange = renderInventoryLabelPreview;
+$('#inventory-label-form').elements.paper.onchange = renderInventoryLabelPreview;
+$('#inventory-label-form').elements.outputMode.onchange = event => {
+  syncInventoryLabelOutputFields();
+  renderInventoryLabelPreview();
+  saveInventoryLabelPreferences({ inventoryLabelOutputMode:event.currentTarget.value });
+};
+$('#inventory-label-form').elements.profileId.onchange = event => {
+  $('#inventory-label-profile-editor').hidden = true;
+  inventoryLabelProfileDraftId = null;
+  renderInventoryLabelProfileSummary();
+  renderInventoryLabelPreview();
+  saveInventoryLabelPreferences({ inventoryLabelProfileId:event.currentTarget.value });
+};
+$('[data-inventory-label-profile-edit]').onclick = () => openInventoryLabelProfileEditor(false);
+$('[data-inventory-label-profile-new]').onclick = () => openInventoryLabelProfileEditor(true);
+$('[data-inventory-label-profile-editor-close]').onclick = () => {
+  $('#inventory-label-profile-editor').hidden = true;
+  inventoryLabelProfileDraftId = null;
+};
+$('[data-inventory-label-profile-rotate]').onclick = () => {
+  const form = $('#inventory-label-form');
+  const width = form.elements.profileWidth.value;
+  form.elements.profileWidth.value = form.elements.profileHeight.value;
+  form.elements.profileHeight.value = width;
+};
+$('[data-inventory-label-profile-save]').onclick = saveInventoryLabelProfile;
+$('[data-inventory-label-profile-delete]').onclick = deleteInventoryLabelProfile;
+$('#inventory-label-download-svg').onclick = downloadInventoryLabelSvg;
+$('#inventory-label-download-png').onclick = downloadInventoryLabelPng;
+$('#inventory-label-print').onclick = printInventoryLabels;
+$('#inventory-label-dialog').addEventListener('close', () => {
+  inventoryLabelRequest += 1;
+  inventoryLabelModel = null;
+  inventoryLabelProfileDraftId = null;
+  $('#inventory-label-profile-editor').hidden = true;
+});
 $('#menu-button').onclick = () => {
   const open = $('.sidebar').classList.toggle('open');
   $('#menu-button').setAttribute('aria-expanded', String(open));

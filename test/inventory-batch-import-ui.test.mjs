@@ -35,3 +35,11 @@ test('CSV wird vor dem atomaren Import als Tabelle validiert', () => {
   assert.match(html, /id="inventory-batch-import-submit"[^>]+disabled/);
   assert.match(styles, /\.inventory-batch-preview table/);
 });
+
+test('Importabschluss bietet Auswahl, Historie und sichere Rücknahme', () => {
+  assert.match(script, /inventoryBulkStockEntryIds = new Set/);
+  assert.match(script, /openInventoryImportHistory/);
+  assert.match(script, /\/inventory-imports\/\$\{encodeURIComponent\(inventoryLastImportId\)\}\/revert/);
+  assert.match(html, /id="inventory-import-detail-dialog"/);
+  assert.match(styles, /\.inventory-import-history/);
+});

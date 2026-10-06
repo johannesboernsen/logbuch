@@ -42,6 +42,15 @@ try {
         $application->handle(strtoupper($_SERVER['REQUEST_METHOD'] ?? 'GET'), $path);
     }
 
+    if (preg_match('#^/share/projects/[a-f0-9]{64}$#', $path)) {
+        header('Content-Type: text/html; charset=utf-8');
+        header('Cache-Control: no-store');
+        header('Referrer-Policy: no-referrer');
+        header('X-Robots-Tag: noindex, nofollow, noarchive');
+        readfile(__DIR__ . '/project-share.html');
+        exit;
+    }
+
     $page = $application->installed() ? __DIR__ . '/app.html' : __DIR__ . '/install.html';
     header('Content-Type: text/html; charset=utf-8');
     header('Cache-Control: no-store');

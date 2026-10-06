@@ -65,9 +65,10 @@ test('Import legt Artikel, Bestände, Anfangsbuchungen und mehrere Kategorien at
   const categoryB = await request('/api/inventory-categories', { method:'POST', body:JSON.stringify({ name:'Verzinkt' }) });
   const header = 'Name;Anfangsbestand;Einheit;Lokaler Mindestbestand;Globaler Mindestbestand;Hersteller;Artikelnummer;Barcode / EAN;Beschreibung;Händlerlink;Lagerortnotiz';
   const csv = `${header}\nBlechschraube 3x16;40;Stück;8;12;FixCo;BS316;4012345678901;Selbstschneidend;https://example.com/bs316;Fach A\nBlechschraube 4x20;0;Stück;;;FixCo;BS420;;;;Fach B`;
-  const imported = await request('/api/inventory-items/import', { method:'POST', body:JSON.stringify({ storageLocationId:location.data.id, categoryIds:[categoryA.data.id, categoryB.data.id], csv }) });
+  const imported = await request('/api/inventory-items/import', { method:'POST', body:JSON.stringify({ storageLocationId:location.data.id, categoryIds:[categoryA.data.id, categoryB.data.id], csv, sourceFilename:'schrauben.csv' }) });
   assert.equal(imported.response.status, 201, JSON.stringify(imported.data));
   assert.equal(imported.data.count, 2);
+  assert.match(imported.data.batchId, /^inventory-import-/);
 
   const items = await request('/api/inventory-items');
   assert.equal(items.data.items.length, 2);
@@ -86,4 +87,29 @@ test('Import legt Artikel, Bestände, Anfangsbuchungen und mehrere Kategorien at
   const rejected = await request('/api/inventory-items/import', { method:'POST', body:JSON.stringify({ storageLocationId:location.data.id, categoryIds:[], csv:invalid }) });
   assert.equal(rejected.response.status, 422);
   assert.equal((await request('/api/inventory-items')).data.items.length, 2);
+
+  const history = await request(`/api/inventory-imports?storageLocationId=${location.data.id}`);
+  assert.equal(history.response.status, 200);
+  assert.equal(history.data.imports[0].sourceFilename, 'schrauben.csv');
+  const detail = await request(`/api/inventory-imports/${imported.data.batchId}`);
+  assert.equal(detail.data.canRevert, true);
+  assert.equal(detail.data.items.length, 2);
+  const reverted = await request(`/api/inventory-imports/${imported.data.batchId}/revert`, { method:'POST', body:'{}' });
+  assert.equal(reverted.response.status, 200, JSON.stringify(reverted.data));
+  assert.equal(reverted.data.reverted, 2);
+  assert.equal((await request('/api/inventory-items')).data.items.length, 0);
+});
+
+test('Eine spätere Änderung blockiert die vollständige Rücknahme', async () => {
+  const location = await request('/api/storage-locations', { method:'POST', body:JSON.stringify({ name:'Geänderter Import' }) });
+  const header = 'Name;Anfangsbestand;Einheit;Lokaler Mindestbestand;Globaler Mindestbestand;Hersteller;Artikelnummer;Barcode / EAN;Beschreibung;Händlerlink;Lagerortnotiz';
+  const imported = await request('/api/inventory-items/import', { method:'POST', body:JSON.stringify({ storageLocationId:location.data.id, categoryIds:[], csv:`${header}\nTestartikel;2;Stück;;;;;;;;`, sourceFilename:'test.csv' }) });
+  const item = imported.data.created[0];
+  const changed = await request(`/api/inventory-items/${item.id}`, { method:'PATCH', body:JSON.stringify({ name:'Testartikel geändert', stockUnit:'Stück', trackingMode:'QUANTITY' }) });
+  assert.equal(changed.response.status, 200);
+  const detail = await request(`/api/inventory-imports/${imported.data.batchId}`);
+  assert.equal(detail.data.canRevert, false);
+  assert.ok(detail.data.rollbackBlockers.some(reason => reason.includes('Stammdaten')));
+  const reverted = await request(`/api/inventory-imports/${imported.data.batchId}/revert`, { method:'POST', body:'{}' });
+  assert.equal(reverted.response.status, 409);
 });

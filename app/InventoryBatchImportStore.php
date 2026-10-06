@@ -49,14 +49,21 @@ final class InventoryBatchImportStore
     {
         $preview = $this->preview($input);
         $created = [];
+        $batchId = randomId('inventory-import-');
+        $sourceFilename = $this->text($input['sourceFilename'] ?? '', 255, 'Der Dateiname');
         $this->db->exec('BEGIN IMMEDIATE');
         $active = true;
         try {
             // Validate mutable references again while holding the write lock.
             $location = $this->activeLocation($input['storageLocationId'] ?? null);
             $categoryIds = $this->categoryIds($input['categoryIds'] ?? []);
+            $batch = $this->db->prepare("INSERT INTO inventory_import_batches (id, source_filename, storage_location_id, category_ids_json, status, created_by, created_at) VALUES (:id, :filename, :location, :categories, 'ACTIVE', :actor, :created)");
+            $batch->execute(['id' => $batchId, 'filename' => $sourceFilename, 'location' => $location['id'], 'categories' => json_encode($categoryIds, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), 'actor' => $actor, 'created' => nowIso()]);
+            $batchItem = $this->db->prepare('INSERT INTO inventory_import_batch_items (batch_id, item_id, original_item_id, stock_entry_id, initial_transaction_id, row_number, item_name, snapshot_json) VALUES (:batch, :item, :original, :stock, :transaction, :row, :name, :snapshot)');
             foreach ($preview['rows'] as $row) {
-                $created[] = $this->insertRow($row, (string) $location['id'], $categoryIds, $actor);
+                $createdItem = $this->insertRow($row, (string) $location['id'], $categoryIds, $actor);
+                $created[] = $createdItem;
+                $batchItem->execute(['batch' => $batchId, 'item' => $createdItem['id'], 'original' => $createdItem['id'], 'stock' => $createdItem['stockEntryId'], 'transaction' => $createdItem['initialTransactionId'], 'row' => $row['rowNumber'], 'name' => $row['name'], 'snapshot' => json_encode(['row' => $row, 'categoryIds' => $categoryIds], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)]);
             }
             $this->db->exec('COMMIT');
             $active = false;
@@ -70,9 +77,64 @@ final class InventoryBatchImportStore
         return [
             'created' => $created,
             'count' => count($created),
+            'batchId' => $batchId,
             'storageLocationId' => (string) $preview['storageLocation']['id'],
             'categoryIds' => $preview['categoryIds'],
         ];
+    }
+
+    public function list(?string $locationId = null): array
+    {
+        $parameters = [];
+        $where = '';
+        if ($locationId !== null && $locationId !== '') {
+            if (!validId($locationId)) throw new HttpError(422, 'Der Lagerort ist ungültig.');
+            $where = 'WHERE batch.storage_location_id = :location';
+            $parameters['location'] = $locationId;
+        }
+        $statement = $this->db->prepare("SELECT batch.*, location.name AS location_name, COUNT(link.original_item_id) AS item_count, SUM(CASE WHEN link.item_id IS NOT NULL THEN 1 ELSE 0 END) AS present_count FROM inventory_import_batches AS batch JOIN storage_locations AS location ON location.id = batch.storage_location_id LEFT JOIN inventory_import_batch_items AS link ON link.batch_id = batch.id {$where} GROUP BY batch.id ORDER BY batch.created_at DESC");
+        $statement->execute($parameters);
+        return array_map(fn(array $row): array => $this->publicBatch($row), $statement->fetchAll());
+    }
+
+    public function detail(string $id): array
+    {
+        if (!validId($id)) throw new HttpError(404, 'Import nicht gefunden.');
+        $statement = $this->db->prepare('SELECT batch.*, location.name AS location_name, COUNT(link.original_item_id) AS item_count, SUM(CASE WHEN link.item_id IS NOT NULL THEN 1 ELSE 0 END) AS present_count FROM inventory_import_batches AS batch JOIN storage_locations AS location ON location.id = batch.storage_location_id LEFT JOIN inventory_import_batch_items AS link ON link.batch_id = batch.id WHERE batch.id = :id GROUP BY batch.id');
+        $statement->execute(['id' => $id]);
+        $row = $statement->fetch();
+        if (!$row) throw new HttpError(404, 'Import nicht gefunden.');
+        $items = $this->db->prepare('SELECT original_item_id, item_id, stock_entry_id, initial_transaction_id, row_number, item_name, snapshot_json FROM inventory_import_batch_items WHERE batch_id = :id ORDER BY row_number');
+        $items->execute(['id' => $id]);
+        $batch = $this->publicBatch($row);
+        $batch['items'] = array_map(function (array $item): array {
+            $blockers = $item['item_id'] === null ? ['Artikel wurde bereits gelöscht.'] : $this->rollbackBlockers($item);
+            return ['itemId' => $item['item_id'], 'originalItemId' => (string) $item['original_item_id'], 'name' => (string) $item['item_name'], 'rowNumber' => (int) $item['row_number'], 'rollbackBlockers' => $blockers];
+        }, $items->fetchAll());
+        $batch['rollbackBlockers'] = array_values(array_merge(...array_map(static fn(array $item): array => array_map(static fn(string $reason): string => $item['name'] . ': ' . $reason, $item['rollbackBlockers']), $batch['items'])));
+        $batch['canRevert'] = $batch['status'] === 'ACTIVE' && !$batch['rollbackBlockers'];
+        return $batch;
+    }
+
+    public function revert(string $id, string $actor): array
+    {
+        $detail = $this->detail($id);
+        if ($detail['status'] !== 'ACTIVE') throw new HttpError(409, 'Dieser Import wurde bereits zurückgenommen.');
+        if (!$detail['canRevert']) throw new HttpError(409, 'Der Import kann nicht zurückgenommen werden, weil mindestens ein Artikel danach verändert wurde.');
+        $this->db->exec('BEGIN IMMEDIATE');
+        try {
+            $links = $this->db->prepare('SELECT item_id, stock_entry_id, initial_transaction_id FROM inventory_import_batch_items WHERE batch_id = :id');
+            $links->execute(['id' => $id]);
+            foreach ($links->fetchAll() as $link) {
+                if ($link['initial_transaction_id']) $this->db->prepare('DELETE FROM stock_transactions WHERE id = :id')->execute(['id' => $link['initial_transaction_id']]);
+                $this->db->prepare('DELETE FROM inventory_item_categories WHERE item_id = :id')->execute(['id' => $link['item_id']]);
+                $this->db->prepare('DELETE FROM stock_entries WHERE id = :id')->execute(['id' => $link['stock_entry_id']]);
+                $this->db->prepare('DELETE FROM inventory_items WHERE id = :id')->execute(['id' => $link['item_id']]);
+            }
+            $this->db->prepare("UPDATE inventory_import_batches SET status = 'REVERTED', reverted_by = :actor, reverted_at = :reverted WHERE id = :id")->execute(['actor' => $actor, 'reverted' => nowIso(), 'id' => $id]);
+            $this->db->exec('COMMIT');
+        } catch (\Throwable $error) { try { $this->db->exec('ROLLBACK'); } catch (\Throwable) {} throw $error; }
+        return ['reverted' => count($detail['items']), 'batchId' => $id];
     }
 
     private function parse(string $csv): array
@@ -200,16 +262,45 @@ final class InventoryBatchImportStore
         $entry->execute(['id' => $stockId, 'item' => $itemId, 'location' => $locationId, 'quantity' => $row['initialQuantity'], 'minimum' => $row['localMinimumQuantity'], 'note' => $row['locationNote'], 'created' => $created]);
         $link = $this->db->prepare('INSERT INTO inventory_item_categories (item_id, category_id, created_at) VALUES (:item, :category, :created)');
         foreach ($categoryIds as $categoryId) $link->execute(['item' => $itemId, 'category' => $categoryId, 'created' => $created]);
+        $transactionId = null;
         if ($row['initialQuantity'] > 0) {
+            $transactionId = randomId('transaction-');
             $transaction = $this->db->prepare("INSERT INTO stock_transactions (id, item_id, type, quantity, source_storage_location_id, destination_storage_location_id, reservation_id, reversal_of_transaction_id, note, recorded_by, occurred_at, created_at) VALUES (:id, :item, 'RECEIPT', :quantity, NULL, :location, NULL, NULL, :note, :actor, :occurred, :created)");
             $transaction->execute([
-                'id' => randomId('transaction-'), 'item' => $itemId, 'quantity' => $row['initialQuantity'], 'location' => $locationId,
+                'id' => $transactionId, 'item' => $itemId, 'quantity' => $row['initialQuantity'], 'location' => $locationId,
                 'note' => $row['locationNote'] !== '' ? $row['locationNote'] : 'Anfangsbestand · Stapelimport', 'actor' => $actor,
                 'occurred' => $created, 'created' => $created,
             ]);
         }
-        return ['id' => $itemId, 'name' => $row['name'], 'stockEntryId' => $stockId];
+        return ['id' => $itemId, 'name' => $row['name'], 'stockEntryId' => $stockId, 'initialTransactionId' => $transactionId];
     }
+
+    private function rollbackBlockers(array $link): array
+    {
+        $snapshot = json_decode((string) $link['snapshot_json'], true);
+        $row = is_array($snapshot['row'] ?? null) ? $snapshot['row'] : [];
+        $item = $this->db->prepare('SELECT * FROM inventory_items WHERE id = :id'); $item->execute(['id' => $link['item_id']]); $current = $item->fetch();
+        if (!$current) return ['Artikel wurde bereits gelöscht.'];
+        $blockers = [];
+        $expected = ['name' => $row['name'] ?? '', 'description' => $row['description'] ?? '', 'stock_unit' => $row['stockUnit'] ?? '', 'manufacturer' => $row['manufacturer'] ?? '', 'article_number' => $row['articleNumber'] ?? '', 'barcode' => $row['barcode'] ?? '', 'merchant_url' => $row['merchantUrl'] ?? ''];
+        foreach ($expected as $key => $value) if ((string) $current[$key] !== (string) $value) { $blockers[] = 'Stammdaten wurden geändert.'; break; }
+        if ($current['status'] !== 'ACTIVE' || (string) $current['updated_at'] !== '' || abs((float) ($current['default_minimum_quantity'] ?? 0) - (float) ($row['defaultMinimumQuantity'] ?? 0)) > .000001 || (($current['default_minimum_quantity'] === null) !== (($row['defaultMinimumQuantity'] ?? null) === null))) $blockers[] = 'Artikelstatus oder globaler Mindestbestand wurde geändert.';
+        $entry = $this->db->prepare('SELECT * FROM stock_entries WHERE id = :id'); $entry->execute(['id' => $link['stock_entry_id']]); $stock = $entry->fetch();
+        $localMinimumChanged = $stock && (abs((float) ($stock['minimum_quantity'] ?? 0) - (float) ($row['localMinimumQuantity'] ?? 0)) > .000001 || (($stock['minimum_quantity'] === null) !== (($row['localMinimumQuantity'] ?? null) === null)));
+        if (!$stock || $stock['status'] !== 'ACTIVE' || (string) $stock['storage_location_id'] !== (string) $this->batchLocationForItem((string) $link['original_item_id']) || (string) $stock['updated_at'] !== '' || abs((float) $stock['quantity'] - (float) ($row['initialQuantity'] ?? 0)) > .000001 || $localMinimumChanged || (string) $stock['note'] !== (string) ($row['locationNote'] ?? '')) $blockers[] = 'Lagerort oder Bestand wurde verändert.';
+        $categories = $this->db->prepare('SELECT category_id FROM inventory_item_categories WHERE item_id = :id ORDER BY category_id'); $categories->execute(['id' => $link['item_id']]); $actualCategories = array_map('strval', $categories->fetchAll(PDO::FETCH_COLUMN)); $expectedCategories = array_map('strval', $snapshot['categoryIds'] ?? []); sort($actualCategories); sort($expectedCategories); if ($actualCategories !== $expectedCategories) $blockers[] = 'Kategoriezuordnungen wurden geändert.';
+        $transactions = $this->db->prepare('SELECT id FROM stock_transactions WHERE item_id = :id ORDER BY id'); $transactions->execute(['id' => $link['item_id']]); $actualTransactions = array_map('strval', $transactions->fetchAll(PDO::FETCH_COLUMN)); $expectedTransactions = $link['initial_transaction_id'] ? [(string) $link['initial_transaction_id']] : []; if ($actualTransactions !== $expectedTransactions) $blockers[] = 'Es liegen spätere Bestandsbuchungen vor.';
+        foreach (['reservations' => 'Reservierungen oder Projektbuchungen', 'inventory_item_notes' => 'Notizen', 'inventory_audit_requests' => 'Inventurvormerkungen', 'inventory_audit_entries' => 'Inventurprüfungen'] as $table => $label) { $check = $this->db->prepare("SELECT COUNT(*) FROM {$table} WHERE item_id = :id"); $check->execute(['id' => $link['item_id']]); if ((int) $check->fetchColumn() > 0) $blockers[] = "{$label} wurden angelegt."; }
+        return array_values(array_unique($blockers));
+    }
+
+    private function publicBatch(array $row): array
+    {
+        $categoryIds = json_decode((string) $row['category_ids_json'], true);
+        return ['id' => (string) $row['id'], 'sourceFilename' => (string) $row['source_filename'], 'storageLocationId' => (string) $row['storage_location_id'], 'storageLocationName' => (string) $row['location_name'], 'categoryIds' => is_array($categoryIds) ? $categoryIds : [], 'status' => (string) $row['status'], 'createdBy' => (string) $row['created_by'], 'createdAt' => (string) $row['created_at'], 'revertedBy' => (string) $row['reverted_by'], 'revertedAt' => (string) $row['reverted_at'], 'itemCount' => (int) $row['item_count'], 'presentCount' => (int) $row['present_count']];
+    }
+
+    private function batchLocationForItem(string $itemId): string { $statement = $this->db->prepare('SELECT batch.storage_location_id FROM inventory_import_batch_items AS link JOIN inventory_import_batches AS batch ON batch.id = link.batch_id WHERE link.original_item_id = :item LIMIT 1'); $statement->execute(['item' => $itemId]); return (string) ($statement->fetchColumn() ?: ''); }
 
     private function activeLocation(mixed $value): array
     {

@@ -29,6 +29,10 @@ final class InventoryPurgeStore
     {
         $preview = $this->itemPreview($id);
         return $this->transaction(function () use ($id, $preview): array {
+            $this->db->prepare('UPDATE inventory_import_batch_items SET item_id = NULL WHERE item_id = :id')->execute(['id' => $id]);
+            $this->db->prepare('DELETE FROM inventory_audit_entries WHERE item_id = :id')->execute(['id' => $id]);
+            $this->db->prepare('DELETE FROM inventory_audit_requests WHERE item_id = :id')->execute(['id' => $id]);
+            $this->db->exec("DELETE FROM inventory_audits WHERE NOT EXISTS (SELECT 1 FROM inventory_audit_entries WHERE audit_id = inventory_audits.id)");
             $this->db->prepare('UPDATE stock_transactions SET reversal_of_transaction_id = NULL WHERE item_id <> :id AND reversal_of_transaction_id IN (SELECT id FROM stock_transactions WHERE item_id = :id)')->execute(['id' => $id]);
             $this->db->prepare('UPDATE stock_transactions SET reservation_id = NULL WHERE item_id <> :id AND reservation_id IN (SELECT id FROM reservations WHERE item_id = :id)')->execute(['id' => $id]);
             foreach (['stock_transactions', 'reservations', 'stock_entries', 'inventory_item_notes', 'inventory_item_categories'] as $table) {
@@ -68,6 +72,16 @@ final class InventoryPurgeStore
         return $this->transaction(function () use ($id, $preview): array {
             $ids = $this->locationSubtree($id);
             $placeholders = implode(',', array_fill(0, count($ids), '?'));
+            $this->db->prepare("DELETE FROM inventory_import_batches WHERE storage_location_id IN ({$placeholders})")->execute($ids);
+            $auditEntryIds = $this->db->prepare("SELECT id FROM stock_entries WHERE storage_location_id IN ({$placeholders})");
+            $auditEntryIds->execute($ids);
+            $stockEntryIds = array_map('strval', $auditEntryIds->fetchAll(PDO::FETCH_COLUMN));
+            if ($stockEntryIds) {
+                $entryPlaceholders = implode(',', array_fill(0, count($stockEntryIds), '?'));
+                $this->db->prepare("DELETE FROM inventory_audit_requests WHERE stock_entry_id IN ({$entryPlaceholders})")->execute($stockEntryIds);
+            }
+            $this->db->prepare("DELETE FROM inventory_audit_entries WHERE storage_location_id IN ({$placeholders})")->execute($ids);
+            $this->db->exec("DELETE FROM inventory_audits WHERE NOT EXISTS (SELECT 1 FROM inventory_audit_entries WHERE audit_id = inventory_audits.id)");
             $transactionIds = $this->db->prepare("SELECT id FROM stock_transactions WHERE source_storage_location_id IN ({$placeholders}) OR destination_storage_location_id IN ({$placeholders})");
             $transactionIds->execute([...$ids, ...$ids]);
             $movementIds = array_map('strval', $transactionIds->fetchAll(PDO::FETCH_COLUMN));

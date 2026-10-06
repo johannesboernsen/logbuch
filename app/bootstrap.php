@@ -6,6 +6,7 @@ require_once __DIR__ . '/Support.php';
 require_once __DIR__ . '/Database.php';
 require_once __DIR__ . '/Auth.php';
 require_once __DIR__ . '/ProjectStore.php';
+require_once __DIR__ . '/ProjectShareStore.php';
 require_once __DIR__ . '/FolderStore.php';
 require_once __DIR__ . '/TodoStore.php';
 require_once __DIR__ . '/StorageLocationStore.php';
@@ -15,6 +16,8 @@ require_once __DIR__ . '/InventoryPurgeStore.php';
 require_once __DIR__ . '/InventoryStockStore.php';
 require_once __DIR__ . '/InventoryBatchImportStore.php';
 require_once __DIR__ . '/InventoryReservationStore.php';
+require_once __DIR__ . '/InventoryAuditStore.php';
+require_once __DIR__ . '/InventoryBulkStore.php';
 require_once __DIR__ . '/UpdateService.php';
 require_once __DIR__ . '/Application.php';
 

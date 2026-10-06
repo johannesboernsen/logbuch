@@ -7,7 +7,7 @@
   <meta name="color-scheme" content="light dark">
   <title>Logbuch</title>
   <link rel="icon" href="/favicon.svg?v=20260824-1" type="image/svg+xml">
-  <link rel="stylesheet" href="/styles.css?v=20260904-004">
+  <link rel="stylesheet" href="/styles.css?v=20261006-001">
 </head>
 <body>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
@@ -56,6 +56,7 @@
             <a href="/#/inventory/categories" data-inventory-route="categories"><span>Kategorien</span><small class="project-nav-count" data-inventory-count="categories">0</small></a>
             <a href="/#/inventory" data-inventory-route="locations"><span>Lagerorte</span><small class="project-nav-count" data-inventory-count="locations">0</small></a>
             <a href="/#/inventory/replenishment" data-inventory-route="replenishment"><span>Nachbestellen</span><small class="project-nav-count" data-inventory-count="replenishment">0</small></a>
+            <a href="/#/inventory/audits" data-inventory-route="audits"><span>Inventur</span><small class="project-nav-count" data-inventory-count="audits">0</small></a>
             <a href="/#/inventory/archive" data-inventory-route="archive"><span>Archiv</span><small class="project-nav-count" data-inventory-count="archive">0</small></a>
           </div>
         </div>
@@ -371,6 +372,27 @@
     </form>
   </dialog>
 
+  <dialog id="inventory-bulk-dialog" class="inventory-stock-dialog inventory-bulk-dialog">
+    <form id="inventory-bulk-form" method="dialog" novalidate>
+      <input type="hidden" name="context"><input type="hidden" name="action">
+      <div class="dialog-head"><div><h2 id="inventory-bulk-title">Mehrere Artikel bearbeiten</h2><p id="inventory-bulk-copy" class="dialog-copy"></p></div><button class="icon-button" type="button" value="cancel" aria-label="Schließen">×</button></div>
+      <fieldset data-bulk-categories hidden><legend>Kategorien</legend><p class="field-hint">Die gewählten Kategorien werden allen ausgewählten Artikeln hinzugefügt oder von ihnen entfernt.</p><div id="inventory-bulk-category-options"></div></fieldset>
+      <label data-bulk-minimum hidden><span class="field-label-line" data-bulk-minimum-label>Mindestbestand</span><input name="minimum" type="number" min="0" max="1000000000000" step="any"><small class="field-hint">Leer lassen, um den Mindestbestand zu entfernen.</small></label>
+      <fieldset data-bulk-location hidden><legend>Ziellagerort</legend><p class="field-hint">Es wird jeweils die vollständige Lagerposition verschoben.</p><div id="inventory-bulk-location-options"></div><input type="hidden" name="destinationStorageLocationId"></fieldset>
+      <div data-bulk-audit hidden><label>Priorität<select name="priority"><option value="NORMAL">Normal</option><option value="URGENT">Dringend</option></select></label><label>Gewünschtes Prüfdatum <span class="optional">optional</span><input name="dueAt" type="date" data-calendar-only></label></div>
+      <label data-bulk-note hidden>Notiz <span class="optional">optional</span><textarea name="note" maxlength="2000" rows="3"></textarea></label>
+      <p id="inventory-bulk-error" class="form-error"></p>
+      <div class="dialog-actions"><button class="button secondary" type="button" value="cancel">Abbrechen</button><button class="button primary" type="submit">Auf Auswahl anwenden</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="inventory-import-detail-dialog" class="inventory-stock-dialog inventory-import-detail-dialog">
+    <div class="dialog-head"><div><h2 id="inventory-import-detail-title">Importdetails</h2><p id="inventory-import-detail-copy" class="dialog-copy"></p></div><button class="icon-button" type="button" value="cancel" aria-label="Schließen">×</button></div>
+    <div id="inventory-import-detail-content"></div>
+    <p id="inventory-import-detail-error" class="form-error"></p>
+    <div class="dialog-actions"><button class="button secondary" type="button" value="cancel">Schließen</button><button id="inventory-import-revert" class="button danger-button" type="button">Import zurücknehmen</button></div>
+  </dialog>
+
   <dialog id="inventory-item-dialog" class="inventory-item-dialog">
     <form id="inventory-item-form" method="dialog" novalidate>
       <input type="hidden" name="itemId">
@@ -471,9 +493,91 @@
     </form>
   </dialog>
 
+  <dialog id="project-share-dialog" class="project-share-dialog">
+    <form id="project-share-form" method="dialog" novalidate>
+      <input type="hidden" name="scopeType">
+      <input type="hidden" name="projectStatus">
+      <input type="hidden" name="folderId">
+      <div class="dialog-head"><div><h2>Öffentliche Projektübersicht</h2><p id="project-share-dialog-copy" class="dialog-copy"></p></div><button class="icon-button" type="button" value="cancel" aria-label="Schließen">×</button></div>
+      <section class="project-share-explanation"><strong>Ohne Anmeldung sichtbar</strong><p>Veröffentlicht werden ausschließlich Projektname, Beschreibung, Status, Fälligkeit und die benötigte Ordnerstruktur. Projektinhalte und Dateien bleiben geschützt.</p></section>
+      <div class="project-share-create-fields"><label>Bezeichnung<input name="name" maxlength="160" required></label><label>Ablaufdatum <span class="optional">optional</span><input name="expiresAt" type="date" data-calendar-only></label></div>
+      <p id="project-share-base-url" class="field-hint"></p>
+      <p id="project-share-error" class="form-error"></p>
+      <div class="project-share-create-actions"><button class="button primary" type="submit">Freigabelink erstellen</button></div>
+      <section class="project-share-list-section"><div class="project-share-list-head"><h3>Bestehende Freigaben</h3><span id="project-share-count"></span></div><div id="project-share-list" class="project-share-list"></div></section>
+      <div class="dialog-actions"><button class="button secondary" type="button" value="cancel">Schließen</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="inventory-audit-request-dialog" class="inventory-stock-dialog">
+    <form id="inventory-audit-request-form" method="dialog" novalidate>
+      <input type="hidden" name="itemId">
+      <div class="dialog-head"><div><h2>Zur Inventur vormerken</h2><p id="inventory-audit-request-copy" class="dialog-copy"></p></div><button class="icon-button" type="button" value="cancel" aria-label="Schließen">×</button></div>
+      <label>Prüfumfang<select name="stockEntryId"><option value="">Artikel an allen Lagerorten</option></select></label>
+      <label>Priorität<select name="priority"><option value="NORMAL">Normal</option><option value="URGENT">Dringend</option></select></label>
+      <label>Gewünschtes Prüfdatum <span class="optional">optional</span><input name="dueAt" type="date" data-calendar-only></label>
+      <label>Vermerk <span class="optional">optional</span><textarea name="note" maxlength="2000" rows="4" placeholder="Warum sollte der Bestand geprüft werden?"></textarea></label>
+      <p id="inventory-audit-request-error" class="form-error"></p>
+      <div class="dialog-actions"><button class="button secondary" type="button" value="cancel">Abbrechen</button><button class="button primary" type="submit">Vormerken</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="inventory-audit-create-dialog" class="inventory-audit-dialog">
+    <form id="inventory-audit-create-form" method="dialog" novalidate>
+      <div class="dialog-head"><div><h2>Inventur starten</h2><p class="dialog-copy">Lagerort und Kategorien werden als Schnittmenge angewendet. Ohne Einschränkung wird das gesamte Lager aufgenommen.</p></div><button class="icon-button" type="button" value="cancel" aria-label="Schließen">×</button></div>
+      <label>Name<input name="name" maxlength="160" required></label>
+      <label>Lagerort<select name="locationId"><option value="">Alle Lagerorte</option></select></label>
+      <label class="checkbox-setting"><input name="includeLocationDescendants" type="checkbox" checked><span>Unterlagerorte einschließen</span></label>
+      <label>Kategorien <span class="optional">optional, Mehrfachauswahl</span><select name="categoryIds" multiple size="6"></select></label>
+      <label class="checkbox-setting"><input name="includeCategoryDescendants" type="checkbox" checked><span>Unterkategorien einschließen</span></label>
+      <label>Vormerkungen<select name="requestMode"><option value="ALL">Alle passenden Lagerpositionen</option><option value="REQUESTED">Nur vorgemerkte Artikel</option><option value="URGENT">Nur dringend vorgemerkte Artikel</option></select></label>
+      <p id="inventory-audit-create-error" class="form-error"></p>
+      <div class="dialog-actions"><button class="button secondary" type="button" value="cancel">Abbrechen</button><button class="button primary" type="submit">Inventurlauf anlegen</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="inventory-label-dialog" class="inventory-label-dialog" aria-labelledby="inventory-label-dialog-title">
+    <form id="inventory-label-form" method="dialog">
+      <div class="dialog-head"><div><h2 id="inventory-label-dialog-title">QR-Code und Etikett</h2><p id="inventory-label-dialog-copy" class="dialog-copy">Der QR-Code verwendet den dauerhaften, namensunabhängigen Link.</p></div><button class="icon-button" type="button" value="cancel" aria-label="Schließen">×</button></div>
+      <div class="inventory-label-options">
+        <label>Ausgabe<select name="outputMode"><option value="sheet">A4-Etikettenbogen</option><option value="roll">Etikettendrucker</option></select></label>
+        <label id="inventory-label-scope-field" hidden>Inhalt<select name="scope"><option value="entity">Nur dieser Lagerort</option><option value="direct">Direkt enthaltene Artikel</option><option value="subtree">Artikel im gesamten Unterbaum</option></select></label>
+        <label id="inventory-label-sheet-size-field">Etikettengröße<select name="size"><option value="small">Klein · 38 × 21 mm</option><option value="medium" selected>Mittel · 62 × 29 mm</option><option value="large">Groß · 89 × 36 mm</option></select></label>
+        <label id="inventory-label-paper-field">Papierausrichtung<select name="paper"><option value="portrait" selected>A4 Hochformat</option><option value="landscape">A4 Querformat</option></select></label>
+        <label id="inventory-label-profile-field" hidden>Etikettenprofil<select name="profileId"></select></label>
+      </div>
+      <section id="inventory-label-profile-tools" class="inventory-label-profile-tools" hidden>
+        <div class="inventory-label-profile-summary"><div><strong data-inventory-label-profile-name></strong><span data-inventory-label-profile-summary></span></div><div><button class="button secondary compact" type="button" data-inventory-label-profile-edit>Profil bearbeiten</button><button class="button secondary compact" type="button" data-inventory-label-profile-new>Neues Profil</button></div></div>
+        <p class="field-hint">Wähle im Systemdruckdialog den Etikettendrucker, dieselbe Papiergröße und 100 % Skalierung ohne zusätzliche Seitenränder.</p>
+        <div id="inventory-label-profile-editor" class="inventory-label-profile-editor" hidden>
+          <div class="inventory-label-profile-editor-head"><div><strong data-inventory-label-editor-title>Etikettenprofil</strong><span>Maße und Kalibrierung gelten für eine einzelne Rolle beziehungsweise Etikettenform.</span></div><button class="icon-button" type="button" data-inventory-label-profile-editor-close aria-label="Profilbearbeitung schließen">×</button></div>
+          <div class="inventory-label-profile-fields">
+            <label>Profilname<input name="profileName" maxlength="80" required></label>
+            <label>Breite in mm<input name="profileWidth" type="number" min="10" max="310" step="0.1" required></label>
+            <label>Höhe in mm<input name="profileHeight" type="number" min="10" max="500" step="0.1" required></label>
+            <button class="button secondary compact inventory-label-rotate" type="button" data-inventory-label-profile-rotate>Breite und Höhe tauschen</button>
+            <label>Innenabstand in mm<input name="profileMargin" type="number" min="0" max="20" step="0.1" required></label>
+            <label>Horizontal verschieben<input name="profileOffsetX" type="number" min="-10" max="10" step="0.1" required></label>
+            <label>Vertikal verschieben<input name="profileOffsetY" type="number" min="-10" max="10" step="0.1" required></label>
+            <label>Layout<select name="profileLayout"><option value="auto">Automatisch</option><option value="landscape">QR links, Text rechts</option><option value="portrait">QR oben, Text unten</option><option value="qr">Nur QR-Code zentriert</option></select></label>
+            <label>Informationsumfang<select name="profileContent"><option value="qr">Nur QR-Code</option><option value="title">QR-Code und Titel</option><option value="compact">Kompakte Details</option><option value="full">Vollständiges Etikett</option></select></label>
+            <label class="inventory-label-border-setting"><input name="profileBorder" type="checkbox"><span>Rahmen mitdrucken</span></label>
+          </div>
+          <p id="inventory-label-profile-error" class="form-error"></p>
+          <div class="inventory-label-profile-editor-actions"><button class="button danger-button compact" type="button" data-inventory-label-profile-delete hidden>Profil löschen</button><button class="button primary compact" type="button" data-inventory-label-profile-save>Profil speichern</button></div>
+        </div>
+      </section>
+      <div id="inventory-label-status" class="inventory-label-status" aria-live="polite">Etikett wird vorbereitet …</div>
+      <div id="inventory-label-preview" class="inventory-label-preview" aria-label="Etikettenvorschau"></div>
+      <p id="inventory-label-error" class="form-error"></p>
+      <div class="dialog-actions inventory-label-actions"><button class="button secondary" type="button" value="cancel">Abbrechen</button><button class="button secondary" id="inventory-label-download-svg" type="button">QR als SVG</button><button class="button secondary" id="inventory-label-download-png" type="button">QR als PNG</button><button class="button primary" id="inventory-label-print" type="button">Etiketten drucken / PDF</button></div>
+    </form>
+  </dialog>
+
   <script src="/backup-format.js?v=20260823-142" defer></script>
   <script src="/ai-project-format.js?v=20260830-005" defer></script>
   <script src="/update-monitor.js?v=20260822-001" defer></script>
+  <script src="/vendor/qrcode-generator.js?v=1.4.4" defer></script>
   <dialog id="confirmation-dialog" class="confirmation-dialog" aria-labelledby="confirmation-dialog-title" aria-describedby="confirmation-dialog-copy">
     <form id="confirmation-form" method="dialog">
       <div class="dialog-head"><div><h2 id="confirmation-dialog-title">Bitte bestätigen</h2><p id="confirmation-dialog-copy" class="dialog-copy"></p></div><button class="icon-button" type="button" value="cancel" aria-label="Schließen">×</button></div>
@@ -481,6 +585,6 @@
     </form>
   </dialog>
 
-  <script src="/app.js?v=20260904-004" defer></script>
+  <script src="/app.js?v=20261006-001" defer></script>
 </body>
 </html>

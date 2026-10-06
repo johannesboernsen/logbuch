@@ -133,7 +133,7 @@ test('Projekt- und Ordnergruppen sind in der Alle-Ansicht einklappbar', async ()
   assert.doesNotMatch(ui, /data-new-project-status/);
   assert.doesNotMatch(ui, /project-divider-add/);
   assert.match(ui, /data-open-project-create/);
-  assert.match(ui, /actions:`\$\{projectListControls\(false, projects\)\}\$\{addButton\}`/);
+  assert.match(ui, /actions:`\$\{projectListControls\(false, projects\)\}\$\{shareButton\}\$\{addButton\}`/);
   assert.match(ui, /Projekt oder Ordner hinzufügen/);
   assert.match(html, /id="project-create-dialog"[\s\S]+data-project-create-choice="project"[\s\S]+data-project-create-choice="folder"/);
   assert.match(ui, /openProjectDialog\(null, \{ status \}\)/);
