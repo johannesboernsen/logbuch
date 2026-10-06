@@ -58,10 +58,33 @@ test('Erscheinungsbild ist öffentlich lesbar und administrativ veränderbar', a
   assert.equal((await request('/api/appearance')).data.displayName, 'Meine Werkstatt');
 });
 
+test('Ein optionales Bibliothekssymbol lässt sich speichern, öffentlich lesen und entfernen', async () => {
+  const login = await request('/api/login', { method:'POST', body:JSON.stringify({ user:'admin', password:'ein-langes-Testpasswort' }) });
+  cookie = login.response.headers.get('set-cookie').split(';', 1)[0];
+  csrf = login.data.csrfToken;
+  assert.equal((await request('/api/appearance')).data.icon, '');
+  const selected = await request('/api/settings/appearance', {method:'PATCH',body:JSON.stringify({icon:'star'})});
+  assert.equal(selected.response.status, 200);
+  assert.equal(selected.data.icon, 'star');
+  assert.match(selected.data.iconBody, /<path/);
+  const publicData = await (await fetch(`${baseUrl}/api/appearance`)).json();
+  assert.equal(publicData.iconBody, selected.data.iconBody);
+  const preserved = await request('/api/settings/appearance', {method:'PATCH',body:JSON.stringify({accentColor:'#333333'})});
+  assert.equal(preserved.data.icon, 'star');
+  for (const icon of ['not-an-existing-library-icon', '<svg onload="alert(1)">', '../../file', {}]) {
+    assert.equal((await request('/api/settings/appearance', {method:'PATCH',body:JSON.stringify({icon})})).response.status, 422);
+  }
+  const cleared = await request('/api/settings/appearance', {method:'PATCH',body:JSON.stringify({icon:''})});
+  assert.equal(cleared.response.status, 200);
+  assert.equal(cleared.data.icon, '');
+  assert.equal(cleared.data.iconBody, null);
+});
+
 test('Ein Bildlogo lässt sich hochladen, öffentlich abrufen und entfernen', async () => {
   const login = await request('/api/login', { method:'POST', body:JSON.stringify({ user:'admin', password:'ein-langes-Testpasswort' }) });
   cookie = login.response.headers.get('set-cookie').split(';', 1)[0];
   csrf = login.data.csrfToken;
+  await request('/api/settings/appearance', {method:'PATCH',body:JSON.stringify({icon:'camera'})});
   const logoBytes = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64');
   const form = new FormData();
   form.append('logo', new Blob([logoBytes], { type:'image/png' }), 'werkstatt.png');
@@ -69,6 +92,7 @@ test('Ein Bildlogo lässt sich hochladen, öffentlich abrufen und entfernen', as
   const uploadedData = await uploaded.json();
   assert.equal(uploaded.status, 201, JSON.stringify(uploadedData));
   assert.equal(uploadedData.hasLogo, true);
+  assert.equal(uploadedData.icon, 'camera');
   assert.match(uploadedData.logoUrl, /^\/api\/appearance\/logo\?v=/);
 
   const logo = await fetch(`${baseUrl}/api/appearance/logo`);
@@ -78,5 +102,6 @@ test('Ein Bildlogo lässt sich hochladen, öffentlich abrufen und entfernen', as
   const removed = await request('/api/settings/appearance/logo', { method:'DELETE', body:'{}' });
   assert.equal(removed.response.status, 200);
   assert.equal(removed.data.hasLogo, false);
+  assert.equal(removed.data.icon, 'camera');
   assert.equal((await fetch(`${baseUrl}/api/appearance/logo`)).status, 404);
 });

@@ -14,6 +14,10 @@ function applyAppearance(appearance) {
   document.documentElement.dataset.theme = dark ? 'dark' : 'light';
   document.documentElement.style.colorScheme = dark ? 'dark' : 'light';
   document.documentElement.style.setProperty('--accent', accent);
+  LogbuchFavicon.apply(accent, null, appearance?.iconBody);
+  const brandIcon = document.querySelector('[data-brand-icon]');
+  brandIcon.hidden = !appearance?.iconBody || appearance?.hasLogo;
+  brandIcon.innerHTML = appearance?.iconBody ? `<svg viewBox="0 0 24 24">${appearance.iconBody}</svg>` : '';
   document.querySelector('[data-theme-color]').content = dark ? '#111317' : '#f6f7f9';
   document.querySelector('[data-brand-name]').textContent = appearance?.displayName || 'Logbuch';
   const subtitle = document.querySelector('[data-brand-subtitle]');

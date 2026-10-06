@@ -6,8 +6,8 @@
   <meta name="theme-color" content="#f6f7f9" data-theme-color>
   <meta name="color-scheme" content="light dark">
   <title>Logbuch</title>
-  <link rel="icon" href="/favicon.svg?v=20260824-1" type="image/svg+xml">
-  <link rel="stylesheet" href="/styles.css?v=20261006-001">
+  <link rel="icon" href="/favicon.svg?v=20261006-2" type="image/svg+xml">
+  <link rel="stylesheet" href="/styles.css?v=20261006-020">
 </head>
 <body>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
@@ -31,66 +31,43 @@
   </section>
 
   <div id="app" class="app hidden">
-    <aside class="sidebar">
+    <header class="app-header">
       <a class="brand" href="/#/" aria-label="Logbuch" data-brand><img class="brand-custom-logo" data-brand-logo alt="" hidden><span class="brand-wordmark" data-brand-wordmark><strong data-brand-name>Logbuch</strong><small data-brand-subtitle hidden></small></span></a>
-      <nav aria-label="Hauptnavigation">
+      <div id="mobile-header-actions" class="mobile-header-actions"></div>
+      <button id="menu-button" class="icon-button" type="button" aria-label="Menü öffnen" aria-expanded="false" aria-controls="main-navigation">☰</button>
+      <nav id="main-navigation" aria-label="Hauptnavigation">
         <a class="nav-item active" href="/#/" data-route="home"><span aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="8.5"></circle><path d="m8.2 12.2 2.5 2.5 5.4-5.6"></path></svg></span> Übersicht</a>
         <a class="nav-item" href="/#/todos" data-route="todos"><span aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M9 6h11M9 12h11M9 18h11"></path><path d="m3.5 6 1 1 2-2M3.5 12l1 1 2-2M3.5 18l1 1 2-2"></path></svg></span> Erinnerungen <i id="todo-nav-count" class="todo-nav-count" title="Anzahl der offenen Erinnerungen" aria-label="Anzahl der offenen Erinnerungen">0</i></a>
         <div class="projects-menu">
-          <button id="projects-toggle" class="nav-item bare" type="button" data-route="projects" aria-expanded="false" aria-controls="projects-subnav"><span data-project-nav-icon aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M12 3 20 7.5v9L12 21l-8-4.5v-9L12 3Z"></path><path d="m4 7.5 8 4.5 8-4.5M12 12v9"></path></svg></span><b>Projekte</b><i id="project-nav-count" class="todo-nav-count" title="Anzahl der aktiven Projekte" aria-label="Anzahl der aktiven Projekte">0</i></button>
+          <a id="projects-link" aria-expanded="false" aria-controls="projects-subnav" class="nav-item" href="/#/projects?view=columns" data-route="projects" aria-label="Projekte" title="Ordnerstruktur öffnen"><span data-project-nav-icon aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M12 3 20 7.5v9L12 21l-8-4.5v-9L12 3Z"></path><path d="m4 7.5 8 4.5 8-4.5M12 12v9"></path></svg></span><b>Projekte</b><i id="project-nav-count" class="todo-nav-count" title="Anzahl der aktiven Projekte" aria-label="Anzahl der aktiven Projekte">0</i></a>
           <div id="projects-subnav" class="settings-subnav projects-subnav" hidden>
-            <a href="/#/projects" data-projects-route="all"><span>Alle</span><small class="project-nav-count" data-project-count="all">0</small></a>
-            <a href="/#/projects?status=idea" data-projects-route="idea"><span>Idee</span><small class="project-nav-count" data-project-count="idea">0</small></a>
-            <a href="/#/projects?status=active" data-projects-route="active"><span>Aktiv</span><small class="project-nav-count" data-project-count="active">0</small></a>
-            <a href="/#/projects?status=paused" data-projects-route="paused"><span>Pausiert</span><small class="project-nav-count" data-project-count="paused">0</small></a>
-            <a href="/#/projects?status=completed" data-projects-route="completed"><span>Abgeschlossen</span><small class="project-nav-count" data-project-count="completed">0</small></a>
-            <span class="projects-subnav-divider" aria-hidden="true"></span>
             <a href="/#/archive" data-projects-route="archived"><span>Archiv</span><small class="project-nav-count" data-project-count="archived">0</small></a>
             <a href="/#/trash" data-projects-route="trashed"><span>Papierkorb</span><small class="project-nav-count" data-project-count="trashed">0</small></a>
           </div>
         </div>
         <div class="inventory-menu">
-          <button id="inventory-toggle" class="nav-item bare" type="button" data-route="inventory" aria-expanded="false" aria-controls="inventory-subnav"><span aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M18 21V10a1 1 0 0 0-1-1H7a1 1 0 0 0-1 1v11"></path><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8a2 2 0 0 1 1.132-1.803l7.95-3.974a2 2 0 0 1 1.837 0l7.948 3.974A2 2 0 0 1 22 8zM6 13h12M6 17h12"></path></svg></span><b>Lager</b><i id="inventory-nav-count" class="todo-nav-count" title="Anzahl unterschiedlicher Artikel im Lager" aria-label="Anzahl unterschiedlicher Artikel im Lager">0</i></button>
+          <a id="inventory-link" aria-expanded="false" aria-controls="inventory-subnav" class="nav-item" href="/#/inventory" data-route="inventory" aria-label="Lager" title="Lagerort-Übersicht öffnen"><span aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M18 21V10a1 1 0 0 0-1-1H7a1 1 0 0 0-1 1v11"></path><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8a2 2 0 0 1 1.132-1.803l7.95-3.974a2 2 0 0 1 1.837 0l7.948 3.974A2 2 0 0 1 22 8zM6 13h12M6 17h12"></path></svg></span><b>Lager</b><i id="inventory-nav-count" class="todo-nav-count" title="Anzahl unterschiedlicher Artikel im Lager" aria-label="Anzahl unterschiedlicher Artikel im Lager">0</i></a>
           <div id="inventory-subnav" class="settings-subnav inventory-subnav" hidden>
             <a href="/#/inventory/items" data-inventory-route="items"><span>Artikel</span><small class="project-nav-count" data-inventory-count="items">0</small></a>
             <a href="/#/inventory/categories" data-inventory-route="categories"><span>Kategorien</span><small class="project-nav-count" data-inventory-count="categories">0</small></a>
-            <a href="/#/inventory" data-inventory-route="locations"><span>Lagerorte</span><small class="project-nav-count" data-inventory-count="locations">0</small></a>
             <a href="/#/inventory/replenishment" data-inventory-route="replenishment"><span>Nachbestellen</span><small class="project-nav-count" data-inventory-count="replenishment">0</small></a>
             <a href="/#/inventory/audits" data-inventory-route="audits"><span>Inventur</span><small class="project-nav-count" data-inventory-count="audits">0</small></a>
             <a href="/#/inventory/archive" data-inventory-route="archive"><span>Archiv</span><small class="project-nav-count" data-inventory-count="archive">0</small></a>
           </div>
         </div>
-        <div class="settings-menu">
-          <button id="settings-toggle" class="nav-item bare settings-toggle" type="button" data-route="settings" aria-expanded="false" aria-controls="settings-subnav"><span aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.09a2 2 0 0 1 1 1.74v.5a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.38a2 2 0 0 0-.73-2.73l-.15-.09a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2Z"></path><circle cx="12" cy="12" r="3"></circle></svg></span><b>Einstellungen</b><i id="update-badge" class="update-nav-badge" hidden>Update</i></button>
-          <div id="settings-subnav" class="settings-subnav" hidden>
-            <a href="/#/settings/general" data-settings-route="general">Allgemein</a>
-            <a href="/#/settings/tags" data-settings-route="tags" data-admin-setting>Tags</a>
-            <a href="/#/settings/profile" data-settings-route="profile">Profil</a>
-            <a href="/#/settings/users" data-settings-route="users" data-admin-setting>Benutzerverwaltung</a>
-            <a href="/#/settings/data" data-settings-route="data" data-admin-setting>Backup</a>
-            <a href="/#/settings/appearance" data-settings-route="appearance" data-admin-setting>Erscheinungsbild</a>
-            <a href="/#/settings/server" data-settings-route="server" data-admin-setting>Server</a>
-            <a href="/#/settings/security" data-settings-route="security" data-admin-setting>Sicherheit</a>
-            <a href="/#/settings/system" data-settings-route="system" data-admin-setting><span>System</span><i id="system-update-badge" class="update-nav-badge" hidden>Update</i></a>
-          </div>
-        </div>
+        <a id="settings-link" class="nav-item" href="/#/settings/general" data-route="settings"><span aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.09a2 2 0 0 1 1 1.74v.5a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.38a2 2 0 0 0-.73-2.73l-.15-.09a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2Z"></path><circle cx="12" cy="12" r="3"></circle></svg></span><b>Einstellungen</b><i id="update-badge" class="update-nav-badge" hidden>Update</i></a>
         <button id="logout" class="nav-item bare"><span aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><path d="m16 17 5-5-5-5M21 12H9"></path></svg></span> Abmelden</button>
       </nav>
-      <div class="sidebar-bottom">
+      <div class="header-search">
+        <button id="global-search-toggle" class="icon-button" type="button" aria-label="Suche öffnen" title="Alles durchsuchen" aria-expanded="false" aria-controls="global-search-panel"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"></circle><path d="m15.5 15.5 5 5"></path></svg></button>
+        <div id="global-search-panel" class="header-search-panel" hidden>
         <form id="global-search-form" class="sidebar-search" role="search">
           <button class="sidebar-search-submit" type="submit" aria-label="Suche starten" title="Suche starten"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"></circle><path d="m15.5 15.5 5 5"></path></svg></button>
           <input id="global-search-input" name="q" type="search" maxlength="200" placeholder="Alles durchsuchen" aria-label="Logbuch durchsuchen" autocomplete="off">
           <button class="sidebar-search-clear" type="button" aria-label="Suchbegriff löschen" title="Suchbegriff löschen" hidden>×</button>
         </form>
+        </div>
       </div>
-    </aside>
-
-    <header class="mobile-header">
-      <div class="mobile-header-main">
-        <button id="menu-button" class="icon-button" aria-label="Menü öffnen" aria-expanded="false">☰</button>
-        <a class="brand" href="/#/" aria-label="Logbuch" data-brand><img class="brand-custom-logo" data-brand-logo alt="" hidden><span class="brand-wordmark" data-brand-wordmark><strong data-brand-name>Logbuch</strong><small data-brand-subtitle hidden></small></span></a>
-      </div>
-      <div id="mobile-header-actions" class="mobile-header-actions"></div>
     </header>
 
     <main id="main" tabindex="-1"></main>
@@ -145,9 +122,9 @@
       <input type="hidden" name="entryId">
       <div class="dialog-head"><div><h2 id="entry-dialog-title">Fortschritt festhalten</h2></div><button class="icon-button" type="button" value="cancel" aria-label="Schließen">×</button></div>
       <label>Datum des Arbeitsschritts<input name="date" type="date" required></label>
-      <label>Titel <span class="optional">optional</span><input name="title" maxlength="100" placeholder="z. B. Halterung montiert"></label>
-      <label><span>Was hast du gemacht? <span class="optional">optional</span></span><textarea name="body" rows="5" placeholder="Beschreibe Änderungen, Entscheidungen und Ergebnisse …"></textarea></label>
-      <label class="dialog-attachments">Dateien anhängen <span class="optional">optional · jeweils maximal 50 MB</span><input name="attachments" type="file" multiple><span class="dialog-attachment-summary" data-attachment-summary>Keine Dateien ausgewählt</span></label>
+      <label><span class="field-label-line">Titel <span class="optional">optional</span></span><input name="title" maxlength="100" placeholder="z. B. Halterung montiert"></label>
+      <label><span class="field-label-line">Was hast du gemacht? <span class="optional">optional</span></span><textarea name="body" rows="5" placeholder="Beschreibe Änderungen, Entscheidungen und Ergebnisse …"></textarea></label>
+      <label class="dialog-attachments"><span class="field-label-line">Dateien anhängen <span class="optional">optional · jeweils maximal 50 MB</span></span><input name="attachments" type="file" multiple><span class="dialog-attachment-summary" data-attachment-summary>Keine Dateien ausgewählt</span></label>
       <div class="dialog-actions"><button class="button secondary" type="button" value="cancel">Abbrechen</button><button class="button primary" id="entry-submit" type="submit">Arbeitsschritt speichern</button></div>
     </form>
   </dialog>
@@ -203,7 +180,7 @@
       <input type="hidden" name="itemId">
       <div class="dialog-head"><div><h2 id="item-dialog-title">Projektinhalt anlegen</h2></div><button class="icon-button" type="button" value="cancel" aria-label="Schließen">×</button></div>
       <div id="item-fields" class="item-fields"></div>
-      <label class="dialog-attachments">Dateien anhängen <span class="optional">optional · jeweils maximal 50 MB</span><input name="attachments" type="file" multiple><span class="dialog-attachment-summary" data-attachment-summary>Keine Dateien ausgewählt</span></label>
+      <label class="dialog-attachments"><span class="field-label-line">Dateien anhängen <span class="optional">optional · jeweils maximal 50 MB</span></span><input name="attachments" type="file" multiple><span class="dialog-attachment-summary" data-attachment-summary>Keine Dateien ausgewählt</span></label>
       <div class="dialog-actions"><button class="button secondary" type="button" value="cancel">Abbrechen</button><button class="button primary" id="item-submit" type="submit">Speichern</button></div>
     </form>
   </dialog>
@@ -215,9 +192,9 @@
       <input type="hidden" name="associationCollection">
       <input type="hidden" name="associationItemId">
       <div class="dialog-head"><div><h2 id="file-dialog-title">Datei hochladen</h2><p id="file-dialog-context" class="dialog-copy"></p></div><button class="icon-button" type="button" value="cancel" aria-label="Schließen">×</button></div>
-      <label id="file-input-label">Datei <span class="optional">Maximal 50 MB</span><input name="file" type="file" required></label>
-      <label>Anzeigename <span class="optional">optional</span><input name="displayName" maxlength="160" placeholder="Wird sonst aus dem Dateinamen übernommen"></label>
-      <label>Beschreibung <span class="optional">optional</span><textarea name="description" rows="4" maxlength="4000" placeholder="Inhalt, Version oder Verwendungszweck der Datei …"></textarea></label>
+      <label id="file-input-label"><span class="field-label-line">Datei <span class="optional">Maximal 50 MB</span></span><input name="file" type="file" required></label>
+      <label><span class="field-label-line">Anzeigename <span class="optional">optional</span></span><input name="displayName" maxlength="160" placeholder="Wird sonst aus dem Dateinamen übernommen"></label>
+      <label><span class="field-label-line">Beschreibung <span class="optional">optional</span></span><textarea name="description" rows="4" maxlength="4000" placeholder="Inhalt, Version oder Verwendungszweck der Datei …"></textarea></label>
       <p class="file-storage-hint">Die Originaldatei wird im Ordner dieses Projekts gespeichert. Office-, CAD- und andere Dokumente werden nur abgelegt, nicht im Logbuch bearbeitet.</p>
       <div class="dialog-actions"><button class="button secondary" type="button" value="cancel">Abbrechen</button><button class="button primary" id="file-submit" type="submit">Datei hochladen</button></div>
     </form>
@@ -239,7 +216,7 @@
         <aside class="file-viewer-details" aria-label="Dateiinformationen">
           <div class="file-viewer-details-head"><h3>Informationen</h3><span id="file-viewer-size"></span></div>
           <label>Anzeigename<input name="displayName" maxlength="160"></label>
-          <label>Beschreibung <span class="optional">optional</span><textarea name="description" rows="7" maxlength="4000"></textarea></label>
+          <label><span class="field-label-line">Beschreibung <span class="optional">optional</span></span><textarea name="description" rows="7" maxlength="4000"></textarea></label>
           <div id="file-viewer-association" class="file-viewer-association"></div>
           <div class="file-viewer-meta" id="file-viewer-meta"></div>
           <button class="button primary" id="file-viewer-save" type="submit">Informationen speichern</button>
@@ -332,7 +309,7 @@
       </div>
       <div class="icon-picker" data-icon-picker="storage-location"></div>
       <label>Übergeordneter Lagerort<select name="parentId"><option value="">Oberste Ebene</option></select><small class="field-hint">Eigene Unterorte werden beim Umplatzieren vollständig mitgenommen.</small></label>
-      <label>Beschreibung <span class="optional">optional</span><textarea name="description" maxlength="2000" rows="4" placeholder="Hinweise zum Ort, Zugriff oder Inhalt"></textarea></label>
+      <label><span class="field-label-line">Beschreibung <span class="optional">optional</span></span><textarea name="description" maxlength="2000" rows="4" placeholder="Hinweise zum Ort, Zugriff oder Inhalt"></textarea></label>
       <p id="storage-location-error" class="form-error"></p>
       <div class="dialog-actions"><button class="button secondary" type="button" value="cancel">Abbrechen</button><button id="storage-location-submit" class="button primary" type="submit">Speichern</button></div>
     </form>
@@ -346,7 +323,7 @@
       <label>Name<input name="name" minlength="1" maxlength="160" placeholder="z. B. Schrauben" required></label>
       <div class="icon-picker" data-icon-picker="inventory-category"></div>
       <label>Übergeordnete Kategorie<select name="parentId"><option value="">Oberste Ebene</option></select><small class="field-hint">Unterkategorien werden beim Verschieben vollständig mitgenommen.</small></label>
-      <label>Beschreibung <span class="optional">optional</span><textarea name="description" maxlength="2000" rows="4"></textarea></label>
+      <label><span class="field-label-line">Beschreibung <span class="optional">optional</span></span><textarea name="description" maxlength="2000" rows="4"></textarea></label>
       <p id="inventory-category-error" class="form-error"></p>
       <div class="dialog-actions"><button class="button secondary" type="button" value="cancel">Abbrechen</button><button class="button primary" type="submit">Speichern</button></div>
       <section id="inventory-category-delete-zone" class="dialog-danger" hidden><div><strong>Kategorie löschen</strong><p>Nur leere Kategorien ohne Unterkategorien können gelöscht werden.</p></div><button class="button danger-button" id="inventory-category-delete" type="button">Kategorie löschen</button></section>
@@ -379,8 +356,8 @@
       <fieldset data-bulk-categories hidden><legend>Kategorien</legend><p class="field-hint">Die gewählten Kategorien werden allen ausgewählten Artikeln hinzugefügt oder von ihnen entfernt.</p><div id="inventory-bulk-category-options"></div></fieldset>
       <label data-bulk-minimum hidden><span class="field-label-line" data-bulk-minimum-label>Mindestbestand</span><input name="minimum" type="number" min="0" max="1000000000000" step="any"><small class="field-hint">Leer lassen, um den Mindestbestand zu entfernen.</small></label>
       <fieldset data-bulk-location hidden><legend>Ziellagerort</legend><p class="field-hint">Es wird jeweils die vollständige Lagerposition verschoben.</p><div id="inventory-bulk-location-options"></div><input type="hidden" name="destinationStorageLocationId"></fieldset>
-      <div data-bulk-audit hidden><label>Priorität<select name="priority"><option value="NORMAL">Normal</option><option value="URGENT">Dringend</option></select></label><label>Gewünschtes Prüfdatum <span class="optional">optional</span><input name="dueAt" type="date" data-calendar-only></label></div>
-      <label data-bulk-note hidden>Notiz <span class="optional">optional</span><textarea name="note" maxlength="2000" rows="3"></textarea></label>
+      <div data-bulk-audit hidden><label><span class="field-label-line">Priorität</span><select name="priority"><option value="NORMAL">Normal</option><option value="URGENT">Dringend</option></select></label><label><span class="field-label-line">Gewünschtes Prüfdatum <span class="optional">optional</span></span><input name="dueAt" type="date" data-calendar-only></label></div>
+      <label data-bulk-note hidden><span class="field-label-line">Notiz <span class="optional">optional</span></span><textarea name="note" maxlength="2000" rows="3"></textarea></label>
       <p id="inventory-bulk-error" class="form-error"></p>
       <div class="dialog-actions"><button class="button secondary" type="button" value="cancel">Abbrechen</button><button class="button primary" type="submit">Auf Auswahl anwenden</button></div>
     </form>
@@ -427,7 +404,7 @@
       <div class="dialog-head"><div><h2 id="stock-entry-dialog-title">Lagerort zuordnen</h2><p id="stock-entry-dialog-copy" class="dialog-copy"></p></div><button class="icon-button" type="button" value="cancel" aria-label="Schließen">×</button></div>
       <fieldset class="stock-entry-location-picker" data-stock-entry-location-field><legend>Lagerort</legend><p class="field-hint">Auswahlkreis ordnet den Lagerort zu; Titel öffnen die nächste Spalte.</p><div id="stock-entry-location-options"></div><input type="hidden" name="storageLocationId"></fieldset>
       <div class="inventory-item-meta-fields"><label data-stock-entry-initial-field><span class="field-label-line">Anfangsbestand</span><div class="number-stepper stock-entry-quantity-stepper"><input name="initialQuantity" type="number" min="0" max="1000000000000" step="any" value="0" required><button type="button" data-stock-entry-initial-step="-1" aria-label="Anfangsbestand um eins verringern">−</button><button type="button" data-stock-entry-initial-step="1" aria-label="Anfangsbestand um eins erhöhen">+</button></div><small class="field-hint">Ein positiver Anfangsbestand wird als Zugang protokolliert.</small></label><label data-stock-entry-minimum-field><span class="field-label-line">Lokaler Mindestbestand <span class="optional">optional</span></span><div class="number-stepper stock-entry-quantity-stepper"><input name="minimumQuantity" type="number" min="0" max="1000000000000" step="any"><button type="button" data-stock-entry-minimum-step="-1" aria-label="Mindestbestand um eins verringern">−</button><button type="button" data-stock-entry-minimum-step="1" aria-label="Mindestbestand um eins erhöhen">+</button></div></label></div>
-      <label>Notiz <span class="optional">optional</span><textarea name="note" maxlength="2000" rows="3" placeholder="Hinweise zu diesem Lagerort"></textarea></label>
+      <label><span class="field-label-line">Notiz <span class="optional">optional</span></span><textarea name="note" maxlength="2000" rows="3" placeholder="Hinweise zu diesem Lagerort"></textarea></label>
       <p id="stock-entry-error" class="form-error"></p>
       <div class="dialog-actions"><button class="button secondary" type="button" value="cancel">Abbrechen</button><button class="button primary" type="submit">Speichern</button></div>
     </form>
@@ -443,7 +420,7 @@
       <label data-stock-correction-location-field>Lagerort<select name="storageLocationId"></select></label>
       <label data-stock-quantity-field>Menge<div class="stock-quantity-stepper"><input name="quantity" type="number" min="0.000001" max="1000000000000" step="any"><button type="button" data-stock-quantity-step="-1" aria-label="Menge um eins verringern">−</button><button type="button" data-stock-quantity-step="1" aria-label="Menge um eins erhöhen">+</button></div><small id="stock-movement-quantity-hint" class="field-hint" hidden></small></label>
       <label data-stock-counted-field>Gezählte Gesamtmenge<div class="stock-quantity-stepper"><input name="countedQuantity" type="number" min="0" max="1000000000000" step="any"><button type="button" data-stock-counted-step="-1" aria-label="Gezählte Menge um eins verringern">−</button><button type="button" data-stock-counted-step="1" aria-label="Gezählte Menge um eins erhöhen">+</button></div></label>
-      <label>Buchungsnotiz <span class="optional">optional</span><textarea name="note" maxlength="2000" rows="3" placeholder="Grund oder Referenz"></textarea></label>
+      <label><span class="field-label-line">Buchungsnotiz <span class="optional">optional</span></span><textarea name="note" maxlength="2000" rows="3" placeholder="Grund oder Referenz"></textarea></label>
       <p id="stock-movement-error" class="form-error"></p>
       <div class="dialog-actions"><button class="button secondary" type="button" value="cancel">Abbrechen</button><button id="stock-movement-submit" class="button primary" type="submit">Verbindlich buchen</button></div>
     </form>
@@ -461,7 +438,7 @@
       </fieldset>
       <label id="stock-transfer-quantity-field" hidden>Menge<div class="stock-transfer-quantity-stepper"><input name="quantity" type="number" min="0.000001" step="any"><button type="button" data-stock-transfer-quantity-step="-1" aria-label="Menge um eins verringern" hidden>−</button><button type="button" data-stock-transfer-quantity-step="1" aria-label="Menge um eins erhöhen" hidden>+</button></div><small id="stock-transfer-limit" class="field-hint"></small></label>
       <p class="stock-transfer-note" data-stock-transfer-note>Bei „Alle verschieben“ verschwindet der Artikel am bisherigen Lagerort. Verlauf und lokale Einstellungen bleiben historisch erhalten.</p>
-      <label>Notiz <span class="optional">optional</span><textarea name="note" maxlength="2000" rows="3" placeholder="Grund oder Hinweis zur Umlagerung"></textarea></label>
+      <label><span class="field-label-line">Notiz <span class="optional">optional</span></span><textarea name="note" maxlength="2000" rows="3" placeholder="Grund oder Hinweis zur Umlagerung"></textarea></label>
       <p id="stock-transfer-error" class="form-error"></p>
       <div class="dialog-actions"><button class="button secondary" type="button" value="cancel">Abbrechen</button><button class="button primary" type="submit">Umlagern</button></div>
     </form>
@@ -473,9 +450,9 @@
       <div class="dialog-head"><div><h2 id="reservation-dialog-title">Für Projekt reservieren</h2><p id="reservation-dialog-copy" class="dialog-copy">Die Reservierung plant Bedarf, ohne den physischen Bestand zu verändern.</p></div><button class="icon-button" type="button" value="cancel" aria-label="Schließen">×</button></div>
       <label data-reservation-item-field>Artikel<select name="itemId" required></select></label>
       <label data-reservation-project-field>Projekt<select name="projectId" required></select></label>
-      <label>Arbeitsschritt <span class="optional">optional</span><select name="projectEntryId"><option value="">Gesamtes Projekt</option></select></label>
+      <label><span class="field-label-line">Arbeitsschritt <span class="optional">optional</span></span><select name="projectEntryId"><option value="">Gesamtes Projekt</option></select></label>
       <label data-reservation-quantity-field>Benötigte Menge<div class="stock-entry-quantity-stepper reservation-quantity-stepper"><input name="requestedQuantity" type="number" min="0.000001" max="1000000000000" step="any" required><button type="button" data-reservation-quantity-step="-1" aria-label="Menge um eins verringern" hidden>−</button><button type="button" data-reservation-quantity-step="1" aria-label="Menge um eins erhöhen" hidden>+</button></div><small id="reservation-availability-hint" class="field-hint"></small></label>
-      <label>Notiz <span class="optional">optional</span><textarea name="note" maxlength="2000" rows="3" placeholder="Verwendungszweck oder Hinweis"></textarea></label>
+      <label><span class="field-label-line">Notiz <span class="optional">optional</span></span><textarea name="note" maxlength="2000" rows="3" placeholder="Verwendungszweck oder Hinweis"></textarea></label>
       <p id="reservation-error" class="form-error"></p>
       <div class="dialog-actions"><button class="button secondary" type="button" value="cancel">Abbrechen</button><button class="button primary" id="reservation-submit" type="submit">Reservieren</button></div>
     </form>
@@ -487,7 +464,7 @@
       <div class="dialog-head"><div><h2>Reservierung entnehmen</h2><p id="reservation-fulfill-copy" class="dialog-copy"></p></div><button class="icon-button" type="button" value="cancel" aria-label="Schließen">×</button></div>
       <label>Quelllagerort<select name="sourceStorageLocationId" required></select></label>
       <label>Menge<div class="number-stepper"><input name="quantity" type="number" min="0.000001" max="1000000000000" step="any" required><button type="button" data-reservation-fulfill-step="-1" aria-label="Menge um eins verringern">−</button><button type="button" data-reservation-fulfill-step="1" aria-label="Menge um eins erhöhen">+</button></div><small class="field-hint">Die Entnahme reduziert den physischen Bestand und erfüllt den Projektbedarf.</small></label>
-      <label>Buchungsnotiz <span class="optional">optional</span><textarea name="note" maxlength="2000" rows="3" placeholder="Verwendung oder Referenz"></textarea></label>
+      <label><span class="field-label-line">Buchungsnotiz <span class="optional">optional</span></span><textarea name="note" maxlength="2000" rows="3" placeholder="Verwendung oder Referenz"></textarea></label>
       <p id="reservation-fulfill-error" class="form-error"></p>
       <div class="dialog-actions"><button class="button secondary" type="button" value="cancel">Abbrechen</button><button class="button primary" type="submit">Entnahme buchen</button></div>
     </form>
@@ -500,7 +477,7 @@
       <input type="hidden" name="folderId">
       <div class="dialog-head"><div><h2>Öffentliche Projektübersicht</h2><p id="project-share-dialog-copy" class="dialog-copy"></p></div><button class="icon-button" type="button" value="cancel" aria-label="Schließen">×</button></div>
       <section class="project-share-explanation"><strong>Ohne Anmeldung sichtbar</strong><p>Veröffentlicht werden ausschließlich Projektname, Beschreibung, Status, Fälligkeit und die benötigte Ordnerstruktur. Projektinhalte und Dateien bleiben geschützt.</p></section>
-      <div class="project-share-create-fields"><label>Bezeichnung<input name="name" maxlength="160" required></label><label>Ablaufdatum <span class="optional">optional</span><input name="expiresAt" type="date" data-calendar-only></label></div>
+      <div class="project-share-create-fields"><label><span class="field-label-line">Bezeichnung</span><input name="name" maxlength="160" required></label><label><span class="field-label-line">Ablaufdatum <span class="optional">optional</span></span><input name="expiresAt" type="date" data-calendar-only></label></div>
       <p id="project-share-base-url" class="field-hint"></p>
       <p id="project-share-error" class="form-error"></p>
       <div class="project-share-create-actions"><button class="button primary" type="submit">Freigabelink erstellen</button></div>
@@ -515,8 +492,8 @@
       <div class="dialog-head"><div><h2>Zur Inventur vormerken</h2><p id="inventory-audit-request-copy" class="dialog-copy"></p></div><button class="icon-button" type="button" value="cancel" aria-label="Schließen">×</button></div>
       <label>Prüfumfang<select name="stockEntryId"><option value="">Artikel an allen Lagerorten</option></select></label>
       <label>Priorität<select name="priority"><option value="NORMAL">Normal</option><option value="URGENT">Dringend</option></select></label>
-      <label>Gewünschtes Prüfdatum <span class="optional">optional</span><input name="dueAt" type="date" data-calendar-only></label>
-      <label>Vermerk <span class="optional">optional</span><textarea name="note" maxlength="2000" rows="4" placeholder="Warum sollte der Bestand geprüft werden?"></textarea></label>
+      <label><span class="field-label-line">Gewünschtes Prüfdatum <span class="optional">optional</span></span><input name="dueAt" type="date" data-calendar-only></label>
+      <label><span class="field-label-line">Vermerk <span class="optional">optional</span></span><textarea name="note" maxlength="2000" rows="4" placeholder="Warum sollte der Bestand geprüft werden?"></textarea></label>
       <p id="inventory-audit-request-error" class="form-error"></p>
       <div class="dialog-actions"><button class="button secondary" type="button" value="cancel">Abbrechen</button><button class="button primary" type="submit">Vormerken</button></div>
     </form>
@@ -528,7 +505,7 @@
       <label>Name<input name="name" maxlength="160" required></label>
       <label>Lagerort<select name="locationId"><option value="">Alle Lagerorte</option></select></label>
       <label class="checkbox-setting"><input name="includeLocationDescendants" type="checkbox" checked><span>Unterlagerorte einschließen</span></label>
-      <label>Kategorien <span class="optional">optional, Mehrfachauswahl</span><select name="categoryIds" multiple size="6"></select></label>
+      <label><span class="field-label-line">Kategorien <span class="optional">optional, Mehrfachauswahl</span></span><select name="categoryIds" multiple size="6"></select></label>
       <label class="checkbox-setting"><input name="includeCategoryDescendants" type="checkbox" checked><span>Unterkategorien einschließen</span></label>
       <label>Vormerkungen<select name="requestMode"><option value="ALL">Alle passenden Lagerpositionen</option><option value="REQUESTED">Nur vorgemerkte Artikel</option><option value="URGENT">Nur dringend vorgemerkte Artikel</option></select></label>
       <p id="inventory-audit-create-error" class="form-error"></p>
@@ -585,6 +562,10 @@
     </form>
   </dialog>
 
-  <script src="/app.js?v=20261006-001" defer></script>
+  <script src="/project-navigation.js?v=20261006-002" defer></script>
+  <script src="/project-browser.js?v=20261006-006" defer></script>
+  <script src="/header-navigation.js?v=20261006-005" defer></script>
+  <script src="/favicon.js?v=20261006-003" defer></script>
+  <script src="/app.js?v=20261006-017" defer></script>
 </body>
 </html>

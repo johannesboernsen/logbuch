@@ -12,7 +12,8 @@ test('Projektansichten bieten eine verwaltete öffentliche Freigabe', async () =
   ]);
   assert.match(html, /id="project-share-dialog"/);
   assert.match(html, /Ohne Anmeldung sichtbar/);
-  assert.match(js, /data-open-project-share/);
+  const browser = await readFile(new URL('public/project-browser.js', root), 'utf8');
+  assert.match(browser, /data-open-project-share/);
   assert.match(js, /scopeType:'FOLDER'/);
   assert.match(js, /scopeType:'STATUS'/);
   assert.match(js, /api\('\/project-shares'/);

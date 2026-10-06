@@ -1434,6 +1434,7 @@ final class Application
 
     private function updatePreferences(array $user, array $input): array
     {
+        $this->validateProjectNavigationPreferences($input);
         $allowed = ['home', 'projects', 'archive'];
         if (isset($input['startPage']) && !in_array($input['startPage'], $allowed, true)) {
             throw new HttpError(422, 'Ungültige Startseite.');
@@ -1979,10 +1980,20 @@ final class Application
         ];
     }
 
+    private function appearanceIconBody(string $icon): ?string
+    {
+        if (!preg_match('/^[a-z0-9][a-z0-9-]{0,63}$/', $icon)) return null;
+        static $library = null;
+        $library ??= readJsonFile(dirname(__DIR__) . '/public/lucide-icons.json');
+        return $library['icons'][$icon]['body'] ?? null;
+    }
+
     private function appearanceSettings(): array
     {
         $general = $this->getSetting('general', []);
         $appearance = $this->getSetting('appearance', []);
+        $icon = (string) ($appearance['icon'] ?? '');
+        $iconBody = $this->appearanceIconBody($icon);
         $accentColor = strtolower((string) ($appearance['accentColor'] ?? '#e5322c'));
         if (preg_match('/^#[0-9a-f]{6}$/', $accentColor) !== 1) $accentColor = '#e5322c';
         $themeMode = (string) ($appearance['themeMode'] ?? 'light');
@@ -1992,6 +2003,8 @@ final class Application
         return [
             'displayName' => (string) ($appearance['displayName'] ?? $general['siteName'] ?? 'Logbuch'),
             'subtitle' => (string) ($appearance['subtitle'] ?? ''),
+            'icon' => $iconBody !== null ? $icon : '',
+            'iconBody' => $iconBody,
             'accentColor' => $accentColor,
             'themeMode' => $themeMode,
             'hasLogo' => $hasLogo,
@@ -2003,6 +2016,8 @@ final class Application
     private function updateAppearanceSettings(array $actor, array $input): array
     {
         $current = $this->appearanceSettings();
+        $icon = $input['icon'] ?? $current['icon'];
+        if (!is_string($icon) || ($icon !== '' && $this->appearanceIconBody($icon) === null)) throw new HttpError(422, 'Bitte ein Symbol aus der Iconbibliothek auswählen.');
         $displayName = trim(preg_replace('/\s+/u', ' ', (string) ($input['displayName'] ?? $current['displayName'])) ?? '');
         $subtitle = trim(preg_replace('/\s+/u', ' ', (string) ($input['subtitle'] ?? $current['subtitle'])) ?? '');
         $accentColor = strtolower(trim((string) ($input['accentColor'] ?? $current['accentColor'])));
@@ -2011,7 +2026,7 @@ final class Application
         if (mb_strlen($subtitle) > 120) throw new HttpError(422, 'Der Untertitel darf höchstens 120 Zeichen lang sein.');
         if (preg_match('/^#[0-9a-f]{6}$/', $accentColor) !== 1) throw new HttpError(422, 'Die Akzentfarbe muss als sechsstelliger Hex-Code angegeben werden.');
         if (!in_array($themeMode, ['light', 'dark', 'auto'], true)) throw new HttpError(422, 'Der Darstellungsmodus muss hell, dunkel oder automatisch sein.');
-        $this->setSetting('appearance', ['displayName' => $displayName, 'subtitle' => $subtitle, 'accentColor' => $accentColor, 'themeMode' => $themeMode]);
+        $this->setSetting('appearance', ['displayName' => $displayName, 'subtitle' => $subtitle, 'accentColor' => $accentColor, 'themeMode' => $themeMode, 'icon' => $icon]);
         $this->audit($actor['id'], 'appearance.settings_updated', $displayName, 'accentColor=' . $accentColor . '; themeMode=' . $themeMode);
         return ['saved' => true, ...$this->appearanceSettings()];
     }
@@ -2540,11 +2555,37 @@ final class Application
         foreach ($parents as $id => $parent) if ($parent !== null && $parent !== '') $statement->execute(['parent' => $parent, 'id' => $id]);
     }
 
+    private function validateProjectNavigationPreferences(array $input): void
+    {
+        if (array_key_exists('projectBrowserView', $input) && !in_array($input['projectBrowserView'], ['columns', 'list'], true)) {
+            throw new HttpError(422, 'Ungültige Projektansicht.');
+        }
+        if (array_key_exists('projectStatuses', $input)) {
+            $statuses = $input['projectStatuses'];
+            if (!is_array($statuses) || !array_is_list($statuses) || count($statuses) > 4
+                || count(array_filter($statuses, 'is_string')) !== count($statuses)
+                || array_diff($statuses, ['idea', 'active', 'paused', 'completed'])
+                || count(array_unique($statuses)) !== count($statuses)) {
+                throw new HttpError(422, 'Ungültiger Projektstatusfilter.');
+            }
+        }
+        foreach (['pinnedProjectFolders' => 5, 'recentProjectFolders' => 10] as $key => $limit) {
+            if (!array_key_exists($key, $input)) continue;
+            $ids = $input[$key];
+            if (!is_array($ids) || !array_is_list($ids) || count($ids) > $limit
+                || count(array_filter($ids, static fn(mixed $id): bool => is_string($id) && preg_match('/^[a-zA-Z0-9_-]{1,120}$/', $id))) !== count($ids)
+                || count(array_unique($ids)) !== count($ids)) {
+                throw new HttpError(422, 'Ungültige Ordnerzugriffe für das Projektmenü.');
+            }
+        }
+    }
+
     private function importedPreferences(mixed $input): array
     {
         $defaults = $this->auth->defaultPreferences();
         if ($input === null) return $defaults;
         if (!is_array($input)) throw new HttpError(422, 'Ungültige Benutzereinstellungen im Backup.');
+        $this->validateProjectNavigationPreferences($input);
         $preferences = $defaults;
         $allowedStartPages = ['home', 'projects', 'archive'];
         $projectSorts = ['status:asc', 'priority:desc', 'priority:asc', 'dueDate:asc', 'dueDate:desc', 'createdAt:desc', 'createdAt:asc', 'latestEntryDate:desc', 'latestEntryDate:asc', 'title:asc', 'title:desc'];

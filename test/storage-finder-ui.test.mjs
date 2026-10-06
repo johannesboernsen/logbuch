@@ -9,17 +9,18 @@ const [html, script, styles] = await Promise.all([
   readFile(new URL('public/styles.css', root), 'utf8'),
 ]);
 
-test('Lager ist unter Projekte über ein Untermenü und stabile Location-Routen erreichbar', () => {
-  assert.match(html, /id="inventory-toggle"[\s\S]*<b>Lager<\/b>/);
-  assert.match(html, /href="\/#\/inventory" data-inventory-route="locations"><span>Lagerorte<\/span><small[^>]+data-inventory-count="locations">0<\/small><\/a>/);
-  assert.match(html, /projects-menu[\s\S]*inventory-menu[\s\S]*settings-menu/);
+test('Lager öffnet direkt die Lagerorte und bietet weitere Bereiche im Untermenü', () => {
+  assert.match(html, /id="inventory-link"[^>]*href="\/#\/inventory"[^>]*>[\s\S]*?<b>Lager<\/b>/);
+  assert.match(html, /<a id="inventory-link"[^>]*aria-controls="inventory-subnav"/);
+  assert.match(html, /projects-menu[\s\S]*inventory-menu[\s\S]*settings-link/);
   assert.match(script, /`\/location\/\$\{encodeURIComponent\(id\)\}`/);
   assert.match(script, /parts\[1\] === 'location'/);
-  assert.match(html, /inventory-subnav[\s\S]*data-inventory-route="items"[\s\S]*data-inventory-route="categories"[\s\S]*data-inventory-route="locations"[\s\S]*data-inventory-route="replenishment"[\s\S]*data-inventory-route="archive"/);
+  const menu = html.split('<div id="inventory-subnav"')[1].split('</div>')[0];
+  assert.deepEqual([...menu.matchAll(/data-inventory-route="([^"]+)"/g)].map(match => match[1]), ['items', 'categories', 'replenishment', 'audits', 'archive']);
 });
 
 test('Das Lagermenü zeigt aktuelle Zähler für alle Bereiche', () => {
-  for (const area of ['locations', 'items', 'replenishment', 'archive']) assert.match(html, new RegExp(`data-inventory-count="${area}"`));
+  for (const area of ['items', 'categories', 'replenishment', 'audits', 'archive']) assert.match(html, new RegExp(`data-inventory-count="${area}"`));
   assert.match(html, /id="inventory-nav-count"[^>]*title="Anzahl unterschiedlicher Artikel im Lager"[^>]*>0<\/i>/);
   assert.doesNotMatch(html, /id="inventory-nav-count"[^>]*\shidden[^>]*>/);
   assert.match(script, /async function loadInventoryMenuCounts\(\)/);
@@ -29,7 +30,7 @@ test('Das Lagermenü zeigt aktuelle Zähler für alle Bereiche', () => {
   assert.match(script, /archive:locations\.filter[\s\S]+items\.filter/);
   assert.match(script, /badge\.textContent = String\(counts\.items\)/);
   assert.match(script, /badge\.title = 'Anzahl unterschiedlicher Artikel im Lager'/);
-  assert.match(script, /badge\.hidden = menuOpen;/);
+  assert.match(script, /badge\.hidden = false;/);
 });
 
 test('Finder-Spalten werden aus dem rekonstruierten Parent-Pfad aufgebaut', () => {
@@ -45,17 +46,26 @@ test('Finder-Spalten werden aus dem rekonstruierten Parent-Pfad aufgebaut', () =
   assert.doesNotMatch(script, /Direkt enthalten|Oberste Ebene<\/small>/);
 });
 
-test('Der Lagerrahmen reicht inklusive Statusleiste dynamisch bis zum unteren Browserrand', () => {
+test('Der Lagerrahmen passt inklusive Statusleiste und Außenabstand in die Fensterhöhe', () => {
   assert.match(styles, /\.storage-finder-frame \{[^}]*height:calc\(100dvh - 235px\);[^}]*grid-template-rows:minmax\(0,1fr\) auto;/);
   assert.match(styles, /\.storage-finder-shell \{[^}]*min-height:0;/);
   assert.doesNotMatch(styles, /\.storage-finder-shell \{[^}]*height:clamp/);
   assert.match(script, /\['\.storage-finder-frame', '\.inventory-item-shell'\]/);
 });
 
-test('Die Desktop-Spaltenansicht nutzt den Raum zwischen Seitenkopf und Browserrand vollständig', () => {
-  assert.match(script, /storage-finder-frame storage-finder-edge-to-edge/);
-  assert.match(styles, /@media \(min-width:781px\)[\s\S]*\.storage-finder-edge-to-edge \{[^}]*margin:-22px calc\(var\(--main-gutter\) \* -1\) -70px;[^}]*border:0;[^}]*border-radius:0;[^}]*box-shadow:none;/);
-  assert.match(script, /workspace\.classList\.contains\('storage-finder-edge-to-edge'\) \? 0/);
+test('Lager und Projekte nutzen den gemeinsamen abgerundeten Rahmen mit Außenabstand', async () => {
+  const projects = await readFile(new URL('public/project-browser.js', root), 'utf8');
+  assert.doesNotMatch(script + projects + styles, /storage-finder-edge-to-edge/);
+  assert.match(styles, /\.storage-finder-frame \{[^}]*border:1px solid var\(--line\);[^}]*border-radius:18px;[^}]*box-shadow:/);
+  assert.match(projects, /class="storage-finder-frame project-browser-frame"/);
+  assert.match(styles, /\.project-browser-frame \{ margin-top:22px; \}/);
+  assert.match(script, /const bottomGap = main \? Number.parseFloat\(getComputedStyle\(main\).paddingBottom\)/);
+});
+
+test('Spaltenköpfe laufen über die Leerfläche weiter und die Vorschau hat einen rechten Abschluss', () => {
+  assert.match(styles, /\.storage-finder-shell \{[^}]*background:linear-gradient\(to bottom,var\(--surface-subtle\) 0 51px,var\(--line\) 51px 52px,var\(--surface-muted\) 52px\);/);
+  assert.match(styles, /\.storage-finder-detail \{[^}]*border-right:1px solid var\(--line\);/);
+  assert.match(styles, /\.storage-finder-shell \{[^}]*flex-direction:column;[^}]*background:transparent;/);
 });
 
 test('Die Lageransicht besitzt dieselbe themenfähige Kopffläche wie die Hauptbereiche', () => {

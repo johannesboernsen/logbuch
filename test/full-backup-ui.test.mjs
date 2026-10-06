@@ -18,5 +18,5 @@ test('Backup-Oberfläche bietet Vollbackup und kennzeichnet seine Reichweite', a
   assert.match(js, /api\('\/import\/full-archive'/);
   assert.match(js, /Alle angemeldeten Geräte/);
   assert.match(css, /\.full-backup-card\s*\{[^}]*grid-column:1\s*\/\s*-1/);
-  assert.match(html, /app\.js\?v=20261006-001/);
+  assert.match(html, /app\.js\?v=\d{8}-\d+/);
 });

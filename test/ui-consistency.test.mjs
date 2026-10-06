@@ -35,10 +35,21 @@ test('Zahlenfelder nutzen denselben großen Stepper', () => {
   assert.match(styles, /\.number-stepper,[^\n]+grid-template-columns:minmax\(0,1fr\) auto auto/);
 });
 
+test('Optionale Feldhinweise stehen zusammen mit dem Titel in einer Beschriftungszeile', () => {
+  for (const source of [html, script]) {
+    assert.doesNotMatch(source, /<label\b[^>]*>[^<\n]+<span class="optional">/);
+    assert.doesNotMatch(source, /<label\b[^>]*><span>[^<\n]+<span class="optional">/);
+  }
+  assert.match(script, /<span class="field-label-line">Untertitel <span class="optional">optional<\/span><\/span><input name="subtitle"/);
+  assert.match(script, /<span class="field-label-line">Anzeigename<\/span><input name="displayName"/);
+  assert.match(html, /<span class="field-label-line">Bezeichnung<\/span><input name="name"/);
+  assert.match(styles, /\.field-label-line \{[^}]*display:flex;[^}]*align-items:baseline;/);
+});
+
 test('Seitenköpfe und primäre Anlageaktionen kommen aus dem gemeinsamen Raster', () => {
   assert.doesNotMatch(script, /normalizeCommonPageHeader/);
   assert.match(script, /standardPageHeader\(\{ title:'Suche'/);
-  assert.match(script, /standardPageHeader\(\{ title, description, icon:'settings'/);
+  assert.match(script, /standardPageHeader\(\{ title:'Einstellungen'[^\n]+icon:'settings'/);
   assert.match(script, /data-category-create="">Kategorie anlegen/);
   assert.match(script, /data-storage-create-single="">Lagerort anlegen/);
 });

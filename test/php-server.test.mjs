@@ -216,6 +216,26 @@ test('Übersichtsbereiche werden in Zeilen konfiguriert', async () => {
   assert.deepEqual(updated.data.overviewOrder, overviewOrder);
 });
 
+test('Projektfilter und kompakte Ordnerzugriffe werden persönlich gespeichert und validiert', async () => {
+  const preferences = { projectBrowserView:'list', projectStatuses:['idea', 'active'], pinnedProjectFolders:['folder-a'], recentProjectFolders:['folder-b', 'folder-a'] };
+  const updated = await request('/api/account/preferences', { method:'PATCH', body:JSON.stringify(preferences) });
+  assert.equal(updated.response.status, 200);
+  const me = await request('/api/me');
+  for (const [key, value] of Object.entries(preferences)) assert.deepEqual(me.data[key], value);
+  for (const input of [
+    { projectBrowserView:'tree' }, { projectBrowserView:null },
+    { projectStatuses:['archived'] }, { projectStatuses:['active', 'active'] }, { projectStatuses:[{}] },
+    { pinnedProjectFolders:Array.from({ length:6 }, (_, index) => `folder-${index}`) },
+    { recentProjectFolders:[{}] }, { pinnedProjectFolders:['folder-a', 'folder-a'] },
+  ]) {
+    const invalid = await request('/api/account/preferences', { method:'PATCH', body:JSON.stringify(input) });
+    assert.equal(invalid.response.status, 422);
+  }
+  const cleared = await request('/api/account/preferences', { method:'PATCH', body:JSON.stringify({ projectStatuses:[], pinnedProjectFolders:[], recentProjectFolders:[] }) });
+  assert.equal(cleared.response.status, 200);
+  assert.deepEqual(cleared.data.projectStatuses, []);
+});
+
 test('Eigene Etikettenprofile werden als validierte Benutzerpräferenz gespeichert', async () => {
   const profile = { id:'custom-dymo-89x28', name:'DYMO breit', width:89, height:28, margin:1.5, offsetX:0.4, offsetY:-0.2, layout:'auto', contentLevel:'full', border:false };
   const updated = await request('/api/account/preferences', { method:'PATCH', body:JSON.stringify({ inventoryLabelOutputMode:'roll', inventoryLabelProfileId:profile.id, inventoryLabelProfiles:[profile] }) });
@@ -542,6 +562,18 @@ test('Projektordner können verschachtelt und nur leer gelöscht werden', async 
 
   const assigned = await request(`/api/projects/${projectId}`, { method: 'PATCH', body: JSON.stringify({ folderId: child.data.id }) });
   assert.equal(assigned.data.folderId, child.data.id);
+  const movedProject = await request(`/api/projects/${projectId}`, { method:'PATCH', body:JSON.stringify({ folderId:parent.data.id }) });
+  assert.equal(movedProject.response.status, 200);
+  for (const key of ['id', 'title', 'description', 'status', 'dueDate', 'tagIds', 'entries']) assert.deepEqual(movedProject.data[key], assigned.data[key]);
+  assert.equal(movedProject.data.folderId, parent.data.id);
+  await request(`/api/projects/${projectId}`, { method:'PATCH', body:JSON.stringify({ folderId:child.data.id }) });
+  const movedFolder = await request(`/api/folders/${child.data.id}`, { method:'PATCH', body:JSON.stringify({ parentId:null }) });
+  assert.equal(movedFolder.response.status, 200);
+  assert.equal(movedFolder.data.parentId, null);
+  assert.equal(movedFolder.data.name, child.data.name);
+  assert.equal((await request(`/api/projects/${projectId}`)).data.folderId, child.data.id);
+  await request(`/api/folders/${child.data.id}`, { method:'PATCH', body:JSON.stringify({ parentId:parent.data.id }) });
+  assert.equal((await request(`/api/folders/${parent.data.id}`, { method:'PATCH', body:JSON.stringify({ parentId:child.data.id }) })).response.status, 422);
   assert.equal((await request(`/api/folders/${child.data.id}`, { method: 'DELETE' })).response.status, 409);
   assert.equal((await request(`/api/folders/${parent.data.id}`, { method: 'DELETE' })).response.status, 409);
 

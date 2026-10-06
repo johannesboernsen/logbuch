@@ -4,7 +4,30 @@ Hier werden die wichtigen Änderungen des Logbuchs festgehalten. Die Einträge s
 
 ## [Unveröffentlicht]
 
-Noch keine Änderungen.
+## [0.9.0] - 2026-10-06
+
+Eine neue horizontale Navigation und die Projekt-Spaltenansicht vereinheitlichen die Bedienung. Erscheinungsbild, Einstellungen und Lageransichten wurden weiter verfeinert.
+
+### Wichtigste Änderungen
+
+- Die Hauptnavigation sitzt oben rechts statt in einer Seitenleiste. Untermenüs öffnen beim Darüberfahren; die globale Suche ist über die Lupe ganz rechts erreichbar. Kleine Bildschirme erhalten ein kompaktes Menü.
+- Projekte werden in einer Ordner-Spaltenansicht mit Vorschau, Status, Fälligkeit und Markierung dargestellt. Ein Doppelklick oder die Lupe öffnet das vollständige Projekt.
+- Die Statussortierung zeigt zuerst Ordner, dann Ideen, aktive, pausierte und abgeschlossene Projekte. Über das Augensymbol lassen sich sichtbare Status frei kombinieren und dauerhaft speichern.
+- Projekte und Ordner lassen sich per Ziehen oder über „Verschieben …“ umordnen. Das Plus einer Spalte legt Projekte und Unterordner direkt am passenden Ort an.
+- Die Einstellungsbereiche stehen in einer linken Navigationsspalte statt im Hauptmenü-Dropdown; auf kleinen Bildschirmen ist die Bereichsleiste horizontal scrollbar.
+- Das Seitenlayout ist auf 1600 Pixel begrenzt und zentriert. Die Spaltenansichten für Projekte, Lagerorte und Kategorien haben wieder einen abgerundeten Rahmen, durchgehende Kopfzeilen und klare Trennlinien.
+- Ein optionales Symbol aus der Iconbibliothek kann vor dem Namen und als Favicon verwendet werden. Das Favicon übernimmt die Oberflächenfarben; ohne ausgewähltes Symbol zeigt es den Projektwürfel.
+- Artikel lassen sich in den Spaltenansichten von Lagerorten und Kategorien per Doppelklick vollständig öffnen. Der einfache Klick zeigt weiterhin die Vorschau.
+- Optionale Feldhinweise stehen direkt hinter der Beschriftung, damit Eingabefelder bündig bleiben. Logo-Schriftzüge und Vorschauen schneiden Unterlängen wie beim „g“ nicht mehr ab.
+- Das Entfernen eines eigenen Logos funktioniert nach Bestätigung wieder zuverlässig. Hauptmenü, Untermenüs und Suche verwenden einheitliche Hover-Farben.
+
+### Weitere Details
+
+- „Projekte“ öffnet direkt die Ordnerstruktur; sein Untermenü enthält Archiv und Papierkorb. Die zusätzliche Ansicht „Alle Projekte“ entfällt.
+- „Lager“ öffnet direkt die Lagerort-Übersicht. Im Untermenü stehen Artikel, Kategorien, Nachbestellen, Inventur und Archiv.
+- Auf Touch-Geräten öffnet das erste Tippen ein Hauptmenü-Untermenü, das zweite folgt dem Direktlink. Die Dropdowns öffnen linksbündig nach rechts; eine unsichtbare Brücke hält sie beim Überqueren des Abstands offen. Beim Verlassen schließen sie ohne Zeitverzögerung.
+- Die Symbolauswahl kann über „Kein Symbol“ zurückgesetzt werden. Ein hochgeladenes Bildlogo hat im Menü Vorrang; das gewählte Symbol bleibt für das Favicon erhalten. Die Favicon-Farben gelten auch auf der Anmeldeseite und in öffentlichen Projektfreigaben.
+- Das Entfernen eines Logos gibt auch eine eventuell offene lokale Bildvorschau frei. Fehler beim Entfernen werden angezeigt und erlauben einen erneuten Versuch.
 
 ## [0.8.2] - 2026-10-06
 

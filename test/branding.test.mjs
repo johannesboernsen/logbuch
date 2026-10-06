@@ -35,52 +35,59 @@ test('Logbuch ist in den UI-Texten grammatikalisch eingebunden', async () => {
   assert.doesNotMatch(ui, bareAfterPreposition);
 });
 
-test('Das Favicon zeigt ausschließlich ein einzelnes L', async () => {
+test('Das Favicon zeigt den Projektwürfel statt eines Buchstabens', async () => {
   const favicon = await readFile(join(root, 'public', 'favicon.svg'), 'utf8');
   const app = await readFile(join(root, 'public', 'app.html'), 'utf8');
   const installer = await readFile(join(root, 'public', 'install.html'), 'utf8');
-  assert.match(favicon, /<path fill="#ffffff"/);
-  assert.doesNotMatch(favicon, /<text|>ML</);
-  assert.match(app, /favicon\.svg\?v=20260824-1/);
-  assert.match(installer, /favicon\.svg\?v=20260824-1/);
+  assert.match(favicon, /stroke="#ffffff"/);
+  assert.doesNotMatch(favicon, /<text|>ML<|M158 106h82/);
+  assert.match(app, /favicon\.svg\?v=20261006-2/);
+  assert.match(installer, /favicon\.svg\?v=20261006-2/);
 });
 
-test('Der Update-Hinweis folgt dem geöffneten Einstellungsmenü bis System', async () => {
+test('Logo-Schriftzug und Untertitel haben Platz für Unterlängen trotz horizontaler Kürzung', async () => {
+  const css = await readFile(join(root, 'public', 'styles.css'), 'utf8');
+  assert.match(css, /\.brand-wordmark strong \{[^}]*line-height:1\.25;[^}]*text-overflow:ellipsis;/);
+  assert.match(css, /\.brand-wordmark small \{[^}]*line-height:1\.3;[^}]*text-overflow:ellipsis;/);
+  assert.match(css, /\.appearance-preview-wordmark strong \{[^}]*line-height:1\.25;[^}]*text-overflow:ellipsis;/);
+  assert.match(css, /\.appearance-preview-wordmark small \{[^}]*line-height:1\.3;[^}]*text-overflow:ellipsis;/);
+});
+
+test('Der Update-Hinweis erscheint am Einstellungslink und in der Systemnavigation', async () => {
   const html = await readFile(join(root, 'public', 'app.html'), 'utf8');
   const ui = await readFile(join(root, 'public', 'app.js'), 'utf8');
   const css = await readFile(join(root, 'public', 'styles.css'), 'utf8');
-  assert.match(html, /id="settings-toggle"[\s\S]+id="update-badge"[\s\S]+data-settings-route="system"[\s\S]+id="system-update-badge"/);
-  assert.match(ui, /settingsBadge\.hidden = !available \|\| menuOpen/);
-  assert.match(ui, /systemBadge\.hidden = !available \|\| !menuOpen/);
-  assert.match(ui, /subnav\.hidden = !open;\s+updateUpdateBadge\(\)/);
-  assert.match(css, /\.settings-toggle \{[^}]+padding-right:8px;[^}]+gap:10px;/);
+  assert.match(html, /id="settings-link"[\s\S]+id="update-badge"/);
+  assert.match(ui, /id === 'system'[^\n]+id="system-update-badge"/);
+  assert.match(ui, /settingsBadge\.hidden = !available;/);
+  assert.match(ui, /systemBadge\.hidden = !available;/);
+  assert.doesNotMatch(ui, /menuOpen|setSettingsMenu/);
   assert.match(css, /\.update-nav-badge \{[^}]+flex:none;/);
-  assert.match(css, /\.settings-subnav \.update-nav-badge/);
+  assert.match(css, /\.settings-nav-link\.active \.update-nav-badge/);
 });
 
-test('Der eingeklappte Projekt-Menüpunkt zeigt die Anzahl aktiver Projekte', async () => {
+test('Die Projektanzahl bleibt auch bei geöffnetem Dropdown sichtbar', async () => {
   const html = await readFile(join(root, 'public', 'app.html'), 'utf8');
   const ui = await readFile(join(root, 'public', 'app.js'), 'utf8');
   const css = await readFile(join(root, 'public', 'styles.css'), 'utf8');
-  assert.match(html, /id="projects-toggle"[\s\S]+id="project-nav-count"/);
+  assert.match(html, /id="projects-link"[\s\S]+id="project-nav-count"/);
   assert.match(html, /id="project-nav-count"[^>]*title="Anzahl der aktiven Projekte"[^>]*>0<\/i>/);
   assert.doesNotMatch(html, /id="project-nav-count"[^>]*\shidden[^>]*>/);
   assert.match(ui, /badge\.textContent = String\(counts\.active\)/);
   assert.match(ui, /badge\.title = 'Anzahl der aktiven Projekte'/);
-  assert.match(ui, /badge\.hidden = menuOpen;/);
+  assert.match(ui, /badge\.hidden = false;/);
   assert.match(ui, /loadProjects\(\)\.catch\(\(\) => \{\}\)/);
   assert.match(ui, /badge\.dataset\.count = String\(counts\.active\)/);
-  assert.match(ui, /badge\.hidden = open;/);
+  assert.doesNotMatch(ui, /badge\.hidden = open;/);
   assert.match(css, /\.project-nav-count \{[^}]+line-height:1;/);
 });
 
-test('Projekt- und Einstellungsmenü bleiben im aktiven Bereich geöffnet', async () => {
+test('Die aktive Seite öffnet Dropdowns nicht automatisch', async () => {
   const ui = await readFile(join(root, 'public', 'app.js'), 'utf8');
-  assert.match(ui, /\$\('#settings-toggle'\)\.onclick = \(\) => \{\s+if \(\$\('#settings-toggle'\)\.getAttribute\('aria-expanded'\) === 'true'\) return;/);
-  assert.match(ui, /\$\('#projects-toggle'\)\.onclick = async \(\) => \{\s+if \(\$\('#projects-toggle'\)\.getAttribute\('aria-expanded'\) === 'true'\) return;/);
-  assert.match(ui, /const settingsActive = routeName === 'settings';[\s\S]+setSettingsMenu\(settingsActive\);[\s\S]+setProjectsMenu\(projectsActive, projectStatus\);/);
-  assert.match(ui, /toggle\.title = open \? 'Projekte' : 'Projektmenü aufklappen'/);
-  assert.doesNotMatch(ui, /Projektmenü zuklappen/);
+  assert.match(ui, /bindHeaderNavigation\(\)/);
+  assert.match(ui, /setProjectsMenu\(false, projectsActive/);
+  assert.match(ui, /async function route\(\) \{[\s\S]+closeHeaderNavigation\(\)/);
+  assert.doesNotMatch(ui, /setProjectsMenu\(true/);
 });
 
 test('Projektkarten kollidieren nicht mit Statusaktions-Selektoren', async () => {
@@ -96,7 +103,6 @@ test('Weiße Seitenköpfe verwenden ein gemeinsames Höhen- und Ausrichtungsrast
   assert.match(ui, /project-page-head standard-page-head standard-plain-page-head/);
   assert.match(ui, /standardPageHeader\(\{ title:'Übersicht'/);
   assert.match(ui, /standardPageHeader\(\{ title:'Erinnerungen'/);
-  assert.match(ui, /standardPageHeader\(\{ title, description:currentFolder/);
   assert.match(ui, /standardPageHeader\(\{ title:'Archiv'/);
   assert.match(ui, /standardPageHeader\(\{ title:'Papierkorb'/);
   assert.match(ui, /standardPageHeader\(\{ title:'Artikel'[^\n]+icon:'tag'/);
@@ -105,7 +111,7 @@ test('Weiße Seitenköpfe verwenden ein gemeinsames Höhen- und Ausrichtungsrast
   assert.match(ui, /standardPageHeader\(\{ title:'Archiv'[^\n]+icon:'archive'/);
   assert.doesNotMatch(ui, /function normalizePlainPageHeader/);
   assert.match(ui, /standardPageHeader\(\{ title:'Suche'/);
-  assert.match(ui, /standardPageHeader\(\{ title, description, icon:'settings'/);
+  assert.match(ui, /standardPageHeader\(\{ title:'Einstellungen'[^\n]+icon:'settings'/);
   assert.doesNotMatch(ui, /normalizeCommonPageHeader/);
   assert.match(css, /\.standard-page-head \{[^}]+height:154px;[^}]+min-height:154px;/);
   assert.match(css, /\.standard-page-breadcrumbs \{[^}]+height:20px;/);
@@ -117,36 +123,25 @@ test('Weiße Seitenköpfe verwenden ein gemeinsames Höhen- und Ausrichtungsrast
   assert.doesNotMatch(ui, /<div class="project-page-breadcrumbs">\$\{breadcrumbs\}<\/div><div class="project-page-head standard-page-head">/);
 });
 
-test('Projekt- und Ordnergruppen sind in der Alle-Ansicht einklappbar', async () => {
+test('Projektgruppen bleiben in der ordnerübergreifenden Liste einklappbar', async () => {
   const html = await readFile(join(root, 'public', 'app.html'), 'utf8');
   const ui = await readFile(join(root, 'public', 'app.js'), 'utf8');
   const css = await readFile(join(root, 'public', 'styles.css'), 'utf8');
   assert.match(ui, /data-toggle-project-status-group/);
-  assert.match(ui, /data-toggle-project-folder-group/);
-  assert.match(ui, /data-project-folder-group/);
   assert.match(ui, /project-status-divider project-list-divider/);
-  assert.match(ui, /project-list-divider folder-list-divider/);
-  assert.match(ui, /data-toggle-project-folder-group[\s\S]+?divider-label">Ordner <b>\(\$\{folders\.length\}\)<\/b><\/strong><\/button>/);
   assert.match(ui, /data-project-status-count/);
   assert.match(ui, /project-divider-toggle[\s\S]+divider-label[\s\S]+data-project-status-count/);
   assert.match(ui, /button\.querySelector\('\.divider-label'\)/);
   assert.doesNotMatch(ui, /data-new-project-status/);
   assert.doesNotMatch(ui, /project-divider-add/);
   assert.match(ui, /data-open-project-create/);
-  assert.match(ui, /actions:`\$\{projectListControls\(false, projects\)\}\$\{shareButton\}\$\{addButton\}`/);
-  assert.match(ui, /Projekt oder Ordner hinzufügen/);
   assert.match(html, /id="project-create-dialog"[\s\S]+data-project-create-choice="project"[\s\S]+data-project-create-choice="folder"/);
   assert.match(ui, /openProjectDialog\(null, \{ status \}\)/);
   assert.match(ui, /form\.elements\.status\.value = project\?\.status \|\| \(regularProjectStatuses\.includes\(status\) \? status : 'active'\)/);
   assert.match(ui, /openFolderDialog\(\)/);
   assert.match(ui, /count\.textContent = `\(\$\{statusCards\.length\}\)`/);
-  assert.match(ui, /dedicatedStatusSection = regularProjectStatuses\.includes\(state\.projectStatusFilter\)/);
-  assert.match(ui, /separateStatuses = dedicatedStatusSection \|\|/);
-  assert.match(ui, /collapsibleFolders = dedicatedStatusSection \|\| state\.projectStatusFilter === 'all'/);
-  assert.match(ui, /breadcrumbs:folderBreadcrumbs\(state\.currentFolderId\)/);
-  assert.match(ui, /className:'project-browser-page-head'/);
   assert.match(ui, /function standardPageHeader/);
-  assert.match(ui, /groupedByStatus = !archived && \(\(state\.projectStatusFilter === 'all'[\s\S]+regularProjectStatuses\.includes\(state\.projectStatusFilter\)\)/);
+  assert.match(ui, /groupedByStatus = !archived && \(state\.projectSort\.field === 'status' \|\| selectedProjectStatuses\(\)\.length === 1\)/);
   assert.match(css, /\.project-list-divider \.divider-label,\.log-section-divider \.divider-label \{[^}]+font-size:15px;[^}]+font-weight:750;/);
   assert.match(css, /\.project-divider-toggle::after,\.log-divider-toggle::after \{[^}]+width:14px;[^}]+content:'';/);
   assert.match(css, /\.project-status-divider button:hover \{ color:var\(--red\); background:transparent; \}/);
@@ -180,7 +175,7 @@ test('Projektseiten besitzen eine eigenständige kompakte Smartphone-Bedienung',
   const html = await readFile(join(root, 'public', 'app.html'), 'utf8');
   const ui = await readFile(join(root, 'public', 'app.js'), 'utf8');
   const css = await readFile(join(root, 'public', 'styles.css'), 'utf8');
-  assert.match(html, /mobile-header-main[\s\S]+id="menu-button"[\s\S]+class="brand"/);
+  assert.match(html, /class="app-header"[\s\S]+class="brand"[\s\S]+id="menu-button"/);
   assert.match(html, /id="mobile-header-actions"/);
   assert.match(ui, /bindMobileProjectControls/);
   assert.match(ui, /data-mobile-status-panel/);
@@ -189,7 +184,7 @@ test('Projektseiten besitzen eine eigenständige kompakte Smartphone-Bedienung',
   assert.match(ui, /mobile-workstep-menu/);
   assert.match(ui, /mobile-overview-config/);
   assert.match(ui, /standardPageHeader\(\{ title:'Übersicht'/);
-  assert.match(ui, /standardPageHeader\(\{ title, description, icon:'settings'/);
+  assert.match(ui, /standardPageHeader\(\{ title:'Einstellungen'[^\n]+icon:'settings'/);
   assert.match(ui, /className:'settings-page-head'/);
   assert.match(ui, /project-add-button/);
   assert.match(ui, /aria-label="Projektinhalt hinzufügen"/);
@@ -212,7 +207,7 @@ test('Globale Suche ist im Hauptmenü erreichbar und filterbar', async () => {
   assert.match(html, /id="global-search-form"[\s\S]+id="global-search-input"/);
   assert.match(html, /id="global-search-form"[\s\S]+type="submit"[\s\S]+Suche starten/);
   assert.match(html, /class="sidebar-search-clear"[\s\S]+Suchbegriff löschen/);
-  assert.match(html, /class="sidebar-bottom"[\s\S]+id="global-search-form"/);
+  assert.match(html, /class="header-search"[\s\S]+id="global-search-toggle"[\s\S]+id="global-search-form"/);
   assert.doesNotMatch(html, /device-state|device-host|Logbuch online/);
   assert.match(ui, /async function renderGlobalSearch/);
   assert.match(ui, /standardPageHeader\(\{ title:'Suche'/);

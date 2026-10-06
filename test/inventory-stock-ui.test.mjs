@@ -120,7 +120,7 @@ test('Artikel zeigen physischen Gesamtbestand, Lagerplätze und unveränderliche
 });
 
 test('Lagerortspalten zeigen lokale Artikelmengen und öffnen kontextuelle Artikeldetails', () => {
-  assert.match(html, /id="inventory-toggle"[\s\S]+M18 21V10/);
+  assert.match(html, /id="inventory-link"[\s\S]+M18 21V10/);
   assert.match(script, /storage-finder-item-icon[^\n]+iconSvg\('tag'\)/);
   assert.match(styles, /\.storage-finder-icon \{[^}]+border:1px solid var\(--line\)[^}]+color:var\(--muted\);[^}]+background:transparent;/);
   assert.doesNotMatch(script, /inventory-item-row-icon/);

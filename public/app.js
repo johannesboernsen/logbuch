@@ -1,6 +1,68 @@
 const $ = (selector, root = document) => root.querySelector(selector);
 const state = { user: null, users: [], sessions: [], audit: [], tags: [], folders: [], storageLocations:[], storageLocationsIncludeArchived:false, storageLocationSort:'name', storageLocationSortDirection:'asc', storageLocationsShowEmpty:true, inventoryCategories:[], inventoryItems:[], inventoryItemsIncludeArchived:false, inventoryItemQuery:'', inventoryItemCategoryFilter:'', inventoryItemSort:'name', inventoryItemSortDirection:'asc', inventoryItemNotes:[], inventoryStockEntries:[], inventoryStockTransactions:[], inventoryStockItem:null, inventoryBatchCsv:'', inventoryBatchPreview:null, inventoryReservations:[], projectReservations:[], reservationProjects:[], todos:[], todosOpenOpen:true, todosCompletedOpen:false, collapsedTodoGroups:{}, editingTodoId:null, todoRepeatTimer:null, iconLibrary:null, currentFolderId:null, projectStatusFilter:'all', appearance:{ displayName:'Logbuch', subtitle:'', accentColor:'#e5322c', themeMode:'light', hasLogo:false, logoUrl:null }, server: null, system: null, storage:null, update:null, projects: [], current: null, activeTab: 'entries', activeSettings:'general', fileViewerId:null, visibleProjectFiles:50, activityObserver:null, timelineObserver:null, overviewGridObservers:[], projectSort: { field:'status', direction:'asc' }, archiveSort: { field:'createdAt', direction:'desc' }, projectSearch: { active:'', archived:'' }, projectTagFilter:{ active:{ ids:[], mode:'all' }, archived:{ ids:[], mode:'all' } }, projectDialogTagIds:[], projectTagDraftOpen:false, projectTagSearchOpen:false, collapsedProjectFolders:false, collapsedProjectStatusGroups:{ idea:false, active:false, paused:false, completed:false }, collapsedLogSections:{ tasks:false, entries:false }, collapsedProjectSections:{} };
 let iconLibraryPromise = null;
+const projectNavigation = globalThis.LogbuchProjectNavigation;
+let projectNavigationSave = Promise.resolve();
+const selectedProjectStatuses = () => projectNavigation.statusSelection(state.projectStatusFilter, []);
+const matchesProjectStatus = project => selectedProjectStatuses().includes(project.status);
+const projectStatusValue = statuses => statuses.length === 4 ? 'all' : statuses.join(',') || 'none';
+
+async function saveProjectNavigationPreferences(payload) {
+  const save = projectNavigationSave.catch(() => {}).then(async () => {
+    const result = await api('/account/preferences', { method:'PATCH', body:JSON.stringify(payload) });
+    for (const key of Object.keys(payload)) state.user[key] = result[key];
+  });
+  projectNavigationSave = save;
+  return save;
+}
+
+
+function updateProjectNavigationLink() {
+  const link = $('#projects-link');
+  if (link) link.href = projectBrowserHref(null, '', 'columns');
+}
+
+function projectStatusFilterMarkup() {
+  const selected = selectedProjectStatuses();
+  return `<div class="project-filter-control${selected.length !== regularProjectStatuses.length ? ' has-value' : ''}" data-status-control><button class="project-tool-toggle" type="button" data-toggle-status aria-label="Status-Sichtbarkeit" title="Status-Sichtbarkeit" aria-expanded="false" aria-controls="project-status-panel"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"></path><circle cx="12" cy="12" r="3"></circle></svg></button><div id="project-status-panel" class="tag-filter-panel" hidden><div class="tag-filter-head"><strong>Sichtbare Projekte</strong><button type="button" data-all-project-statuses>Alle anzeigen</button></div><div class="tag-filter-options" role="group" aria-label="Projekte nach Status filtern">${regularProjectStatuses.map(status => `<label><input type="checkbox" data-filter-project-status value="${status}"${selected.includes(status) ? ' checked' : ''}><span>${projectStatusLabels[status]}</span></label>`).join('')}</div></div></div>`;
+}
+
+function bindProjectStatusFilter() {
+  const toggle = $('[data-toggle-status]');
+  const panel = $('#project-status-panel');
+  if (!toggle || !panel) return;
+  toggle.onclick = () => {
+    const open = panel.hidden;
+    for (const selector of ['[data-toggle-sort]', '[data-toggle-filter]']) {
+      const other = $(selector);
+      if (other?.getAttribute('aria-expanded') === 'true') other.click();
+    }
+    if ($('[data-toggle-search]')?.getAttribute('aria-expanded') === 'true') $('[data-toggle-search]').click();
+    panel.hidden = !open;
+    toggle.setAttribute('aria-expanded', String(open));
+  };
+  $('[data-status-control]').onkeydown = event => {
+    if (event.key === 'Escape') { event.stopPropagation(); panel.hidden = true; toggle.setAttribute('aria-expanded', 'false'); toggle.focus(); }
+    if (event.target === toggle && event.key === 'ArrowDown') { event.preventDefault(); if (panel.hidden) toggle.onclick(); $('[data-filter-project-status]')?.focus(); }
+  };
+  const change = async (statuses, focusSelector) => {
+    document.querySelectorAll('[data-filter-project-status], [data-all-project-statuses]').forEach(node => { node.disabled = true; });
+    state.projectStatusFilter = projectStatusValue(statuses);
+    updateTagFilterUrl(false);
+    const viewHash = location.hash;
+    try { await saveProjectNavigationPreferences({ projectStatuses:statuses }); } catch (error) { toast(error.message); }
+    if (location.hash !== viewHash) return;
+    try {
+      await renderProjects();
+      $('#project-status-panel').hidden = false;
+      $('[data-toggle-status]').setAttribute('aria-expanded', 'true');
+      document.querySelector(focusSelector)?.focus();
+    }
+    catch (error) { toast(error.message); document.querySelectorAll('[data-filter-project-status], [data-all-project-statuses]').forEach(node => { node.disabled = false; }); }
+  };
+  document.querySelectorAll('[data-filter-project-status]').forEach(input => input.onchange = () => change([...document.querySelectorAll('[data-filter-project-status]:checked')].map(node => node.value), `[data-filter-project-status][value="${input.value}"]`));
+  $('[data-all-project-statuses]')?.addEventListener('click', () => change([...regularProjectStatuses], '[data-all-project-statuses]'));
+}
 let storageDragEntry = null;
 let storageLocationDrag = null;
 let inventoryCategoryDrag = null;
@@ -91,6 +153,7 @@ function applyAccentColor(value, root = document.documentElement) {
     properties[`--${name}-border`] = mixHex(harmonized, surface, dark ? .5 : .62);
   });
   Object.entries(properties).forEach(([property, propertyValue]) => root.style.setProperty(property, propertyValue));
+  if (root === document.documentElement) LogbuchFavicon.apply(accent, contrast, state.appearance.iconBody);
 }
 function resolvedThemeMode(mode = state.appearance.themeMode) {
   return mode === 'dark' || (mode === 'auto' && systemDarkMode.matches) ? 'dark' : 'light';
@@ -112,6 +175,10 @@ function applyAppearance(appearance) {
     const subtitle = brand.querySelector('[data-brand-subtitle]');
     const wordmark = brand.querySelector('[data-brand-wordmark]');
     const logo = brand.querySelector('[data-brand-logo]');
+    let brandIcon = brand.querySelector('[data-brand-icon]');
+    if (!brandIcon) { brandIcon = document.createElement('span'); brandIcon.className = 'brand-icon'; brandIcon.dataset.brandIcon = ''; brandIcon.setAttribute('aria-hidden', 'true'); brand.prepend(brandIcon); }
+    brandIcon.hidden = !state.appearance.iconBody || state.appearance.hasLogo;
+    brandIcon.innerHTML = state.appearance.iconBody ? `<svg viewBox="0 0 24 24">${state.appearance.iconBody}</svg>` : '';
     brand.setAttribute('aria-label', state.appearance.displayName || 'Logbuch');
     if (name) name.textContent = state.appearance.displayName || 'Logbuch';
     if (subtitle) { subtitle.textContent = state.appearance.subtitle || ''; subtitle.hidden = !state.appearance.subtitle; }
@@ -119,7 +186,7 @@ function applyAppearance(appearance) {
       logo.hidden = !state.appearance.hasLogo;
       if (state.appearance.hasLogo && state.appearance.logoUrl) logo.src = state.appearance.logoUrl;
       else logo.removeAttribute('src');
-      logo.onerror = () => { logo.hidden = true; if (wordmark) wordmark.hidden = false; };
+      logo.onerror = () => { logo.hidden = true; if (wordmark) wordmark.hidden = false; brandIcon.hidden = !state.appearance.iconBody; };
     }
     if (wordmark) wordmark.hidden = Boolean(state.appearance.hasLogo);
   });
@@ -504,14 +571,15 @@ const sections = {
 const startPageHref = value => ({ home:'/#/', projects:'/#/projects', archive:'/#/archive' }[value] || '/#/');
 
 function showApp(afterLogin = false) {
+  state.projectStatusFilter = projectStatusValue(projectNavigation.statusSelection(state.user.projectStatuses));
   state.projectSort = sortFromPreference(state.user?.projectSort, true, 'status:asc');
   state.archiveSort = sortFromPreference(state.user?.archiveSort, false, 'createdAt:desc');
   loadIconLibrary().then(updateProjectNavigationIcon).catch(() => {});
   $('#login-view').classList.add('hidden');
   $('#app').classList.remove('hidden');
-  document.querySelectorAll('[data-admin-setting]').forEach(node => node.hidden = !state.user.admin);
   if (!state.user.mustChangePassword) loadTodos().catch(() => {});
   if (!state.user.mustChangePassword) loadProjects().catch(() => {});
+  if (!state.user.mustChangePassword) loadFolders().then(updateProjectNavigationLink).catch(() => {});
   if (!state.user.mustChangePassword) loadInventoryMenuCounts().catch(() => {});
   if (state.user.admin && !state.user.mustChangePassword) loadUpdateStatus().catch(() => {});
   if (state.user.mustChangePassword) {
@@ -618,8 +686,8 @@ function inventoryItemEditButton(item, archived = item.status === 'ARCHIVED') {
   return mayEditProjects() && !archived ? `<button class="edit-action" type="button" data-inventory-item-edit="${escapeHtml(item.id)}" aria-label="${escapeHtml(item.name)} bearbeiten" title="Artikel bearbeiten">${editIcon()}</button>` : '';
 }
 
-function standardPageHeader({ title, description = '', icon = 'circle', iconMarkup = '', actions = '', breadcrumbs = '', className = '' }) {
-  return `<div class="project-page-head standard-page-head standard-plain-page-head${className ? ` ${className}` : ''}"><div class="standard-page-breadcrumbs${breadcrumbs ? '' : ' empty'}">${breadcrumbs}</div><span class="project-hero-icon" aria-hidden="true">${iconMarkup || iconSvg(icon)}</span><div class="project-heading-content"><div class="project-title-line"><h1>${escapeHtml(title)}</h1></div><p class="project-description">${escapeHtml(description)}</p></div><div class="standard-page-head-actions">${actions}</div></div>`;
+function standardPageHeader({ title, description = '', icon = 'circle', iconMarkup = '', actions = '', breadcrumbs = '', className = '', toolbar = '' }) {
+  return `<div class="project-page-head standard-page-head standard-plain-page-head${toolbar ? ' has-page-toolbar' : ''}${className ? ` ${className}` : ''}"><div class="standard-page-breadcrumbs${breadcrumbs ? '' : ' empty'}">${breadcrumbs}</div><span class="project-hero-icon" aria-hidden="true">${iconMarkup || iconSvg(icon)}</span><div class="project-heading-content"><div class="project-title-line"><h1>${escapeHtml(title)}</h1></div><p class="project-description">${escapeHtml(description)}</p></div><div class="standard-page-head-actions">${actions}</div>${toolbar ? `<div class="standard-page-toolbar">${toolbar}</div>` : ''} </div>`;
 }
 
 function confirmAction(message, { title = 'Bitte bestätigen', confirmLabel = 'Bestätigen', danger = true } = {}) {
@@ -655,6 +723,7 @@ function confirmAction(message, { title = 'Bitte bestätigen', confirmLabel = 'B
 }
 
 function updateProjectMenuCounts() {
+  updateProjectNavigationLink();
   const counts = state.projects.reduce((result, project) => {
     if (Object.hasOwn(result, project.status)) result[project.status] += 1;
     return result;
@@ -662,10 +731,9 @@ function updateProjectMenuCounts() {
   counts.all = counts.idea + counts.active + counts.paused + counts.completed;
   document.querySelectorAll('[data-project-count]').forEach(node => { node.textContent = counts[node.dataset.projectCount] ?? 0; });
   const badge = $('#project-nav-count');
-  const menuOpen = $('#projects-toggle').getAttribute('aria-expanded') === 'true';
   badge.dataset.count = String(counts.active);
   badge.textContent = String(counts.active);
-  badge.hidden = menuOpen;
+  badge.hidden = false;
   badge.title = 'Anzahl der aktiven Projekte';
   badge.setAttribute('aria-label', `Anzahl der aktiven Projekte: ${counts.active}`);
 }
@@ -690,10 +758,9 @@ async function loadInventoryMenuCounts() {
   };
   document.querySelectorAll('[data-inventory-count]').forEach(node => { node.textContent = counts[node.dataset.inventoryCount] ?? 0; });
   const badge = $('#inventory-nav-count');
-  const menuOpen = $('#inventory-toggle').getAttribute('aria-expanded') === 'true';
   badge.dataset.count = String(counts.items);
   badge.textContent = String(counts.items);
-  badge.hidden = menuOpen;
+  badge.hidden = false;
   badge.title = 'Anzahl unterschiedlicher Artikel im Lager';
   badge.setAttribute('aria-label', `Anzahl unterschiedlicher Artikel im Lager: ${counts.items}`);
   return counts;
@@ -707,7 +774,7 @@ function rememberProject(project) {
 }
 
 const tagById = id => state.tags.find(tag => tag.id === id);
-const tagLink = (tag, archived = false) => `/#/${archived ? 'archive' : 'projects'}?${!archived && state.projectStatusFilter !== 'all' ? `status=${encodeURIComponent(state.projectStatusFilter)}&` : ''}tags=${encodeURIComponent(tag.id)}`;
+const tagLink = (tag, archived = false) => `/#/${archived ? 'archive' : 'projects'}?${!archived ? `view=list&status=${encodeURIComponent(state.projectStatusFilter)}&` : ''}tags=${encodeURIComponent(tag.id)}`;
 function tagChips(tagIds = [], { limit = 5, linked = true, archived = false } = {}) {
   const tags = tagIds.map(tagById).filter(Boolean);
   if (!tags.length) return '';
@@ -735,7 +802,7 @@ function projectCard(project, archived = false, showFolder = false) {
 function projectCards(projects, archived = false, showFolder = false, separateStatuses = false) {
   if (!separateStatuses) return projects.map(project => projectCard(project, archived, showFolder)).join('');
   const statusGroupLabels = { idea:'Projektideen', active:'Aktive Projekte', paused:'Pausierte Projekte', completed:'Abgeschlossene Projekte' };
-  const statuses = state.projectStatusFilter === 'all' ? regularProjectStatuses : [state.projectStatusFilter];
+  const statuses = selectedProjectStatuses();
   return statuses.map(status => {
     const groupedProjects = projects.filter(project => project.status === status);
     const collapsed = state.collapsedProjectStatusGroups[status] === true;
@@ -772,10 +839,7 @@ function descendantFolderIds(folderId) {
   return descendants;
 }
 const folderHref = id => {
-  const params = new URLSearchParams();
-  if (id) params.set('folder', id);
-  if (state.projectStatusFilter !== 'all') params.set('status', state.projectStatusFilter);
-  return `/#/projects${params.size ? `?${params}` : ''}`;
+  return projectBrowserHref(id);
 };
 function folderProjectCount(folderId) {
   const descendants = new Set([folderId]);
@@ -789,7 +853,7 @@ function folderProjectCount(folderId) {
       }
     });
   }
-  return state.projects.filter(project => regularProjectStatuses.includes(project.status) && (state.projectStatusFilter === 'all' || project.status === state.projectStatusFilter) && descendants.has(project.folderId)).length;
+  return state.projects.filter(project => matchesProjectStatus(project) && descendants.has(project.folderId)).length;
 }
 
 function folderCard(folder) {
@@ -888,13 +952,11 @@ function projectListControls(archived = false, projects = []) {
   const filter = state.projectTagFilter[key];
   const availableIds = new Set(projects.flatMap(project => project.tagIds || []));
   const availableTags = state.tags.filter(tag => availableIds.has(tag.id)).map(tag => ({ ...tag, viewProjectCount:projects.filter(project => (project.tagIds || []).includes(tag.id)).length })).sort((a,b) => a.name.localeCompare(b.name, 'de', { sensitivity:'base' }));
-  const foldersVisible = state.user.showProjectFolders !== false;
-  const folderToggle = !archived ? `<button class="project-tool-toggle project-folder-toggle" type="button" data-toggle-folders aria-pressed="${!foldersVisible}" aria-label="${foldersVisible ? 'Ordner ausblenden' : 'Ordner einblenden'}" title="${foldersVisible ? 'Ordner ausblenden' : 'Ordner einblenden'}"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3.5 6.5h6l2 2h9v9.5a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2V6.5Z"></path><path d="M3.5 9h17"></path></svg></button>` : '';
   return `<div class="project-list-controls">
     <div class="project-compact-control${searchOpen ? ' open has-value' : ''}" data-search-control><button class="project-tool-toggle" type="button" data-toggle-search aria-label="Suche öffnen" aria-expanded="${searchOpen}"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="10.5" cy="10.5" r="5.8"></circle><path d="m15 15 4.5 4.5"></path></svg></button><input id="project-search" class="project-search" type="search" value="${escapeHtml(search)}" placeholder="${archived ? 'Archiv durchsuchen' : 'Projekte durchsuchen'}" aria-label="${archived ? 'Archivierte Projekte durchsuchen' : 'Projekte durchsuchen'}" autocomplete="off"></div>
-    ${folderToggle}
     <div class="project-sort-control" data-sort-control><button class="project-tool-toggle" type="button" data-toggle-sort aria-label="Sortierung öffnen" aria-expanded="false"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M8 4v16M4.5 7.5 8 4l3.5 3.5M16 20V4m-3.5 12.5L16 20l3.5-3.5"></path></svg></button>${projectSortControls(archived ? state.archiveSort : state.projectSort, !archived)}</div>
     <div class="project-filter-control${filter.ids.length ? ' has-value' : ''}" data-filter-control><button class="project-tool-toggle" type="button" data-toggle-filter aria-label="Nach Tags filtern" aria-expanded="false"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 6h16l-6.2 7v5l-3.6 1.8V13L4 6Z"></path></svg>${filter.ids.length ? `<b>${filter.ids.length}</b>` : ''}</button><div class="tag-filter-panel" hidden><div class="tag-filter-head"><strong>Nach Tags filtern</strong>${filter.ids.length ? '<button type="button" data-clear-tag-filter>Zurücksetzen</button>' : ''}</div>${availableTags.length ? `<div class="tag-filter-options">${availableTags.map(tag => `<label><input type="checkbox" value="${escapeHtml(tag.id)}" ${filter.ids.includes(tag.id) ? 'checked' : ''}><span>${escapeHtml(tag.name)}</span><small>${tag.viewProjectCount}</small></label>`).join('')}</div><label class="tag-filter-mode">Verknüpfung<select data-tag-filter-mode><option value="all" ${filter.mode === 'all' ? 'selected' : ''}>Alle ausgewählten Tags</option><option value="any" ${filter.mode === 'any' ? 'selected' : ''}>Mindestens ein Tag</option></select></label>` : '<p class="tag-filter-empty">Für diese Projekte sind noch keine Tags vergeben.</p>'}</div></div>
+    ${!archived ? projectStatusFilterMarkup() : ''}
   </div>`;
 }
 
@@ -905,11 +967,12 @@ function selectedTagFiltersMarkup(archived) {
 }
 
 function applyProjectSearch(archived) {
+  if (!archived && $('[data-project-browser-columns]')) { renderProjectColumnContents(); return; }
   const key = archived ? 'archived' : 'active';
   const query = state.projectSearch[key].trim().toLocaleLowerCase('de');
   const filter = state.projectTagFilter[key];
   const filtering = Boolean(query || filter.ids.length);
-  const groupedByStatus = !archived && ((state.projectStatusFilter === 'all' && state.projectSort.field === 'status') || regularProjectStatuses.includes(state.projectStatusFilter));
+  const groupedByStatus = !archived && (state.projectSort.field === 'status' || selectedProjectStatuses().length === 1);
   let visible = 0;
   document.querySelectorAll('[data-project-card]').forEach(card => {
     const cardTags = new Set((card.dataset.projectTags || '').split(',').filter(Boolean));
@@ -944,29 +1007,25 @@ function bindProjectStatusGroups() {
   });
 }
 
-function bindProjectFolderGroup() {
-  const button = $('[data-toggle-project-folder-group]');
-  if (!button) return;
-  button.onclick = () => {
-    state.collapsedProjectFolders = !state.collapsedProjectFolders;
-    const expanded = !state.collapsedProjectFolders;
-    button.setAttribute('aria-expanded', String(expanded));
-    button.setAttribute('aria-label', `Ordner ${expanded ? 'einklappen' : 'ausklappen'}`);
-    button.title = expanded ? 'Einklappen' : 'Ausklappen';
-    const content = $('[data-project-folder-group]');
-    if (content) content.classList.toggle('hidden', state.collapsedProjectFolders);
-  };
-}
 
 function updateTagFilterUrl(archived) {
   const filter = state.projectTagFilter[archived ? 'archived' : 'active'];
   const base = archived ? '/#/archive' : '/#/projects';
   const params = new URLSearchParams();
   if (!archived && state.currentFolderId) params.set('folder', state.currentFolderId);
-  if (!archived && state.projectStatusFilter !== 'all') params.set('status', state.projectStatusFilter);
+  if (!archived) {
+    params.set('view', 'columns');
+    params.set('status', state.projectStatusFilter);
+    params.set('sort', `${state.projectSort.field}:${state.projectSort.direction}`);
+    if (projectSelectedId) params.set('project', projectSelectedId);
+    if (state.projectSearch.active) params.set('q', state.projectSearch.active);
+  }
   if (filter.ids.length) params.set('tags', filter.ids.join(','));
   if (filter.ids.length > 1 && filter.mode === 'any') params.set('match', 'any');
   history.replaceState(null, '', `${base}${params.size ? `?${params}` : ''}`);
+  if (!archived) {
+    updateProjectNavigationLink();
+  }
 }
 
 function bindProjectListControls(archived) {
@@ -976,7 +1035,6 @@ function bindProjectListControls(archived) {
   const searchToggle = $('[data-toggle-search]');
   const sortToggle = $('[data-toggle-sort]');
   const filterToggle = $('[data-toggle-filter]');
-  const folderToggle = $('[data-toggle-folders]');
   const setControlOpen = (control, toggle, open) => {
     control.classList.toggle('open', open);
     toggle.setAttribute('aria-expanded', String(open));
@@ -1008,16 +1066,6 @@ function bindProjectListControls(archived) {
     sortControl.querySelector('.project-sort-panel').hidden = true;
     sortToggle.setAttribute('aria-expanded', 'false');
   };
-  if (folderToggle) folderToggle.onclick = async () => {
-    const showProjectFolders = state.user.showProjectFolders === false;
-    folderToggle.disabled = true;
-    try {
-      const result = await api('/account/preferences', { method:'PATCH', body:JSON.stringify({ showProjectFolders }) });
-      Object.assign(state.user, result);
-      toast(showProjectFolders ? 'Ordner eingeblendet' : 'Ordner ausgeblendet');
-      await renderProjects();
-    } catch (error) { toast(error.message); folderToggle.disabled = false; }
-  };
   const refreshFilterSummary = () => {
     const count = state.projectTagFilter[archived ? 'archived' : 'active'].ids.length;
     let badge = filterToggle.querySelector('b');
@@ -1046,12 +1094,14 @@ function bindProjectListControls(archived) {
   sortControl.querySelectorAll('[name="project-sort"]').forEach(input => input.onchange = event => {
     const sort = archived ? state.archiveSort : state.projectSort;
     [sort.field, sort.direction] = event.target.value.split(':');
+    updateTagFilterUrl(archived);
     archived ? renderArchive() : renderProjects();
   });
   $('#project-search').oninput = event => {
     state.projectSearch[archived ? 'archived' : 'active'] = event.target.value;
     searchControl.classList.toggle('has-value', Boolean(event.target.value.trim()));
     applyProjectSearch(archived);
+    updateTagFilterUrl(archived);
   };
   $('#project-search').onkeydown = event => {
     if (event.key !== 'Escape') return;
@@ -2965,7 +3015,7 @@ function fitInventoryWorkspaces() {
       workspace.style.removeProperty('height');
       return;
     }
-    const bottomGap = workspace.classList.contains('storage-finder-edge-to-edge') ? 0 : main ? Number.parseFloat(getComputedStyle(main).paddingBottom) || 0 : 0;
+    const bottomGap = main ? Number.parseFloat(getComputedStyle(main).paddingBottom) || 0 : 0;
     const available = window.innerHeight - workspace.getBoundingClientRect().top - bottomGap;
     workspace.style.height = `${Math.max(260, available)}px`;
   });
@@ -3124,7 +3174,7 @@ function inventoryAuditEntryMarkup(entry, auditOpen) {
   const request = entry.requestPriority ? `<span class="inventory-audit-priority${entry.requestPriority === 'URGENT' ? ' urgent' : ''}">${entry.requestPriority === 'URGENT' ? 'Dringend vorgemerkt' : 'Vorgemerkt'}</span>` : '';
   const result = !pending ? `<span class="inventory-audit-entry-result result-${entry.result.toLowerCase()}">${escapeHtml(inventoryAuditResultLabels[entry.result] || entry.result)}</span>` : '';
   const quantity = collection ? `<label>Prüfergebnis<select name="result"><option value="OK"${entry.result === 'OK' ? ' selected' : ''}>Vorhanden und in Ordnung</option><option value="ATTENTION"${entry.result === 'ATTENTION' ? ' selected' : ''}>Vorhanden, aber Klärungsbedarf</option><option value="NOT_FOUND"${entry.result === 'NOT_FOUND' ? ' selected' : ''}>Nicht auffindbar</option><option value="SKIPPED"${entry.result === 'SKIPPED' ? ' selected' : ''}>Überspringen</option></select></label>` : `<label>Gezählter Bestand<div class="inventory-audit-count"><input name="countedQuantity" type="number" min="0" max="1000000000000" step="${String(entry.stockUnit).toLowerCase() === 'stück' ? '1' : 'any'}" value="${escapeHtml(entry.countedQuantity ?? entry.bookQuantity)}" required><span>${escapeHtml(entry.stockUnit)}</span></div></label><label class="checkbox-setting"><input name="correctStock" type="checkbox" checked><span>Abweichung direkt als Korrektur buchen</span></label>`;
-  const form = auditOpen ? `<form class="inventory-audit-check-form" data-audit-entry="${escapeHtml(entry.id)}">${quantity}<label>Prüfnotiz <span class="optional">optional</span><input name="note" maxlength="2000" value="${escapeHtml(entry.note || entry.requestNote || '')}"></label><div class="inventory-audit-check-actions">${!collection ? '<button class="button secondary compact" type="button" data-audit-special="NOT_FOUND">Nicht auffindbar</button><button class="button secondary compact" type="button" data-audit-special="SKIPPED">Überspringen</button>' : ''}<button class="button primary compact" type="submit">Prüfung speichern</button></div></form>` : '';
+  const form = auditOpen ? `<form class="inventory-audit-check-form" data-audit-entry="${escapeHtml(entry.id)}">${quantity}<label><span class="field-label-line">Prüfnotiz <span class="optional">optional</span></span><input name="note" maxlength="2000" value="${escapeHtml(entry.note || entry.requestNote || '')}"></label><div class="inventory-audit-check-actions">${!collection ? '<button class="button secondary compact" type="button" data-audit-special="NOT_FOUND">Nicht auffindbar</button><button class="button secondary compact" type="button" data-audit-special="SKIPPED">Überspringen</button>' : ''}<button class="button primary compact" type="submit">Prüfung speichern</button></div></form>` : '';
   return `<article class="inventory-audit-entry${pending ? ' pending' : ''}"><header><div>${request}<h3>${escapeHtml(entry.itemName)}</h3><p>${escapeHtml(entry.locationName)}</p></div><div>${result}<strong>${collection ? 'Lose Sammlung' : `${escapeHtml(formatInventoryQuantity(entry.bookQuantity))} ${escapeHtml(entry.stockUnit)} Buchbestand`}</strong></div></header>${form}${!auditOpen && entry.note ? `<p class="inventory-audit-entry-note">${escapeHtml(entry.note)}</p>` : ''}</article>`;
 }
 
@@ -3266,7 +3316,7 @@ function inventoryCategoryRow(category, selectedId = '') {
 function inventoryCategoryItemRow(item, categoryId, selectedId = '', bulkSelectable = false) {
   const checked = inventoryBulkItemIds.has(item.id);
   const checkbox = bulkSelectable && mayEditProjects() ? `<label class="storage-finder-bulk-check"><input type="checkbox" data-bulk-item-id="${escapeHtml(item.id)}" aria-label="${escapeHtml(item.name)} auswählen"${checked ? ' checked' : ''}><span></span></label>` : '';
-  return `<article class="storage-finder-row storage-finder-item-row${item.id === selectedId ? ' selected' : ''}${checked ? ' bulk-selected' : ''}" draggable="${mayEditProjects() ? 'true' : 'false'}" data-category-item-drag="${escapeHtml(item.id)}">${checkbox}<a class="storage-finder-link" href="${inventoryCategoryHref(categoryId, item.id)}" data-storage-parent-href="${inventoryCategoryHref(categoryId)}"${item.id === selectedId ? ' aria-current="page"' : ''}><span class="storage-finder-icon storage-finder-item-icon" aria-hidden="true">${iconSvg('tag')}</span><span class="storage-finder-copy"><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(item.stockUnit)}</small></span></a></article>`;
+  return `<article class="storage-finder-row storage-finder-item-row${item.id === selectedId ? ' selected' : ''}${checked ? ' bulk-selected' : ''}" draggable="${mayEditProjects() ? 'true' : 'false'}" data-category-item-drag="${escapeHtml(item.id)}">${checkbox}<a class="storage-finder-link" data-inventory-item-details-href="${inventoryItemHref(item.id, item.status === 'ARCHIVED', '')}" href="${inventoryCategoryHref(categoryId, item.id)}" data-storage-parent-href="${inventoryCategoryHref(categoryId)}"${item.id === selectedId ? ' aria-current="page"' : ''}><span class="storage-finder-icon storage-finder-item-icon" aria-hidden="true">${iconSvg('tag')}</span><span class="storage-finder-copy"><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(item.stockUnit)}</small></span></a></article>`;
 }
 
 function inventoryCategoryColumn(parent, children, items, selectedCategoryId = '', selectedItemId = '', current = false) {
@@ -3282,6 +3332,7 @@ function inventoryCategoryItemInspector(category, item, stockData) {
 }
 
 function bindInventoryCategoryActions() {
+  bindInventoryItemPreviewLinks();
   bindInventoryBulkActions();
   document.querySelectorAll('[data-category-create]').forEach(button => button.onclick = () => openInventoryCategoryDialog('', button.dataset.categoryCreate || null));
   document.querySelectorAll('[data-category-create-item]').forEach(button => button.onclick = () => {
@@ -3338,7 +3389,7 @@ async function renderInventoryCategories(categoryId = '', itemId = '') {
   const breadcrumbs = `<nav class="folder-breadcrumbs storage-breadcrumbs" aria-label="Kategoriepfad"><a href="${inventoryCategoryHref()}">Kategorien</a>${path.map(category => `<span>›</span><a href="${inventoryCategoryHref(category.id)}">${escapeHtml(category.name)}</a>`).join('')}${item ? `<span>›</span><a aria-current="page" href="${inventoryCategoryHref(categoryId, item.id)}">${escapeHtml(item.name)}</a>` : ''}</nav>`;
   const categoryAuditAction = mayEditProjects() && categoryId ? `<button class="button secondary compact" type="button" data-audit-create-category="${escapeHtml(categoryId)}">Kategorie inventarisieren</button>` : '';
   const head = standardPageHeader({ title:'Kategorien', description:'Artikel thematisch ordnen und aus mehreren Blickwinkeln wiederfinden.', icon:'folder', actions:mayEditProjects() ? `${categoryAuditAction}<button class="button primary compact" type="button" data-category-create="">Kategorie anlegen</button>` : '', className:'storage-finder-page-head' });
-  $('#main').innerHTML = `${head}${inventoryBulkToolbar('item')}<div class="storage-finder-frame storage-finder-edge-to-edge"><div class="storage-finder-shell${item ? ' has-item-selection' : ''}" data-storage-finder-shell><div class="storage-finder-columns">${columns.join('')}</div>${item ? inventoryCategoryItemInspector(detail.category, item, stockData) : ''}</div><footer class="storage-finder-statusbar">${breadcrumbs}</footer></div>`;
+  $('#main').innerHTML = `${head}${inventoryBulkToolbar('item')}<div class="storage-finder-frame"><div class="storage-finder-shell${item ? ' has-item-selection' : ''}" data-storage-finder-shell><div class="storage-finder-columns">${columns.join('')}</div>${item ? inventoryCategoryItemInspector(detail.category, item, stockData) : ''}</div><footer class="storage-finder-statusbar">${breadcrumbs}</footer></div>`;
   document.title = `${item?.name || detail?.category?.name || 'Kategorien'} · Lager · Logbuch`;
   document.querySelector('[data-audit-create-category]')?.addEventListener('click', event => openInventoryAuditCreateDialog({ categoryIds:[event.currentTarget.dataset.auditCreateCategory] }));
   bindInventoryCategoryActions();
@@ -3565,7 +3616,7 @@ function storageFinderItemEntry(entry, parentId, selectedItemId = '', includeArc
   const bulkCheck = bulkSelectable && mayEditProjects() && !archived ? `<label class="storage-finder-bulk-check"><input type="checkbox" data-bulk-stock-id="${escapeHtml(entry.id)}" data-bulk-stock-item="${escapeHtml(entry.itemId)}" aria-label="${escapeHtml(entry.itemName)} auswählen"${bulkChecked ? ' checked' : ''}><span></span></label>` : '';
   return `<article class="storage-finder-row storage-finder-item-row${selected ? ' selected' : ''}${bulkChecked ? ' bulk-selected' : ''}${archived ? ' archived' : ''}" data-storage-finder-item="${escapeHtml(entry.itemId)}"${draggable ? ` draggable="true" data-stock-drag-entry="${escapeHtml(entry.id)}" data-stock-drag-item="${escapeHtml(entry.itemId)}" data-stock-drag-source="${escapeHtml(parentId)}" data-stock-drag-source-name="${escapeHtml(entry.locationName)}" data-stock-drag-name="${escapeHtml(entry.itemName)}" data-stock-drag-quantity="${escapeHtml(entry.quantity)}" data-stock-drag-unit="${escapeHtml(entry.stockUnit)}" data-stock-drag-tracking="${escapeHtml(entry.trackingMode)}"` : ''}>
     ${bulkCheck}
-    <a class="storage-finder-link" href="${storageContextItemHref(parentId, entry.itemId, includeArchived)}"${selected ? ' aria-current="page"' : ''} data-storage-parent-href="${storageLocationHref(parentId, includeArchived)}"><span class="storage-finder-icon storage-finder-item-icon" aria-hidden="true">${iconSvg('tag')}</span><span class="storage-finder-copy"><strong>${escapeHtml(entry.itemName)}</strong><small>${detail}${archived ? ' · Archiviert' : ''}</small></span></a>
+    <a class="storage-finder-link" data-inventory-item-details-href="${inventoryItemHref(entry.itemId, entry.itemStatus === 'ARCHIVED', '')}" href="${storageContextItemHref(parentId, entry.itemId, includeArchived)}"${selected ? ' aria-current="page"' : ''} data-storage-parent-href="${storageLocationHref(parentId, includeArchived)}"><span class="storage-finder-icon storage-finder-item-icon" aria-hidden="true">${iconSvg('tag')}</span><span class="storage-finder-copy"><strong>${escapeHtml(entry.itemName)}</strong><small>${detail}${archived ? ' · Archiviert' : ''}</small></span></a>
   </article>`;
 }
 
@@ -3604,6 +3655,31 @@ function storageFinderItemInspector(location, item, localEntry, stockData, notes
   return `<aside class="storage-finder-detail storage-item-detail${archived ? ' archived' : ''}" data-storage-item-detail data-finder-item-inspector><header class="storage-finder-detail-header"><strong>${escapeHtml(item.name)}</strong><div class="storage-finder-column-actions">${directConsume}${inventoryItemDetailsButton(item, archived)}${menu}</div></header><div class="storage-finder-detail-body"><a class="storage-mobile-back" href="${storageLocationHref(location.id, includeArchived)}"><span aria-hidden="true">‹</span>Zurück zu ${escapeHtml(location.name)}</a>${inventoryItemOverview(item, summary, localOverview)}${inventoryItemNotesSection(item, notes, archived)}${otherLocations}</div></aside>`;
 }
 
+function bindInventoryItemPreviewLinks() {
+  let previewTimer;
+  document.querySelectorAll('[data-inventory-item-details-href]').forEach(link => {
+    const openDetails = event => {
+      event.preventDefault();
+      clearTimeout(previewTimer);
+      location.href = link.dataset.inventoryItemDetailsHref;
+    };
+    link.onclick = event => {
+      clearTimeout(previewTimer);
+      if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey || event.detail === 0) return;
+      if (event.detail > 1) { openDetails(event); return; }
+      event.preventDefault();
+      // Keep the clicked row in place long enough to receive the second click.
+      // Navigating immediately rebuilds the columns and scrolls the row away.
+      const origin = location.href;
+      previewTimer = setTimeout(() => {
+        if (link.isConnected && location.href === origin) location.href = link.href;
+      }, 400);
+    };
+    link.ondblclick = openDetails;
+    link.addEventListener('dragstart', () => clearTimeout(previewTimer));
+  });
+}
+
 function bindStorageFinderKeyboard() {
   document.querySelectorAll('.storage-finder-link').forEach(link => link.onkeydown = event => {
     if (!['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(event.key)) return;
@@ -3625,6 +3701,7 @@ function bindStorageFinderBlankNavigation(includeArchived = false) {
 }
 
 function bindStorageLocationActions() {
+  bindInventoryItemPreviewLinks();
   bindInventoryBulkActions();
   document.querySelectorAll('[data-storage-create-item]').forEach(button => button.onclick = () => {
     button.closest('details')?.removeAttribute('open');
@@ -3722,7 +3799,7 @@ async function renderInventory(locationId = '', includeArchived = false, itemId 
   const createAction = mayEditProjects() && !includeArchived ? '<button class="button primary compact" type="button" data-storage-create-single="">Lagerort anlegen</button>' : '';
   const auditAction = mayEditProjects() && current && !includeArchived ? `<button class="button secondary compact" type="button" data-audit-create-location="${escapeHtml(current.id)}">Lagerort inventarisieren</button><button class="button secondary compact" type="button" data-location-imports="${escapeHtml(current.id)}">Importe</button>` : '';
   const inventoryHead = standardPageHeader({ title:'Lager', description:headingCopy, icon:'warehouse', className:'storage-finder-page-head', actions:`${storageLocationViewControls()}${auditAction}${createAction}` });
-  $('#main').innerHTML = `${inventoryHead}${inventoryBulkToolbar('stock', current?.id || '')}<div class="storage-finder-frame storage-finder-edge-to-edge"><div class="storage-finder-shell${selectedItem ? ' has-item-selection' : ''}" data-storage-finder-shell><div class="storage-finder-columns">${columns.join('')}</div>${inspector}</div><footer class="storage-finder-statusbar">${breadcrumbs}</footer></div>`;
+  $('#main').innerHTML = `${inventoryHead}${inventoryBulkToolbar('stock', current?.id || '')}<div class="storage-finder-frame"><div class="storage-finder-shell${selectedItem ? ' has-item-selection' : ''}" data-storage-finder-shell><div class="storage-finder-columns">${columns.join('')}</div>${inspector}</div><footer class="storage-finder-statusbar">${breadcrumbs}</footer></div>`;
   document.title = selectedItem ? `${selectedItem.name} · ${current.name} · Lager · Logbuch` : current ? `${current.name} · Lager · Logbuch` : 'Lager · Logbuch';
   bindStorageLocationActions();
   bindStorageLocationViewControls(locationId, itemId, includeArchived);
@@ -3906,7 +3983,8 @@ async function openProjectShareDialog() {
   form.elements.folderId.value = scope.folderId;
   form.elements.name.value = scope.name;
   form.elements.expiresAt.value = '';
-  $('#project-share-dialog-copy').textContent = scope.copy;
+  $('#project-share-dialog-copy').textContent = `${scope.copy} Die Freigabe umfasst diesen Bereich unabhängig von der lokalen Suche und den Tagfiltern.${scope.scopeType !== 'STATUS' ? ' Der lokale Statusfilter wird ebenfalls nicht übernommen.' : ''}`;
+  form.querySelector('[type="submit"]').textContent = scope.scopeType === 'STATUS' ? 'Freigabelink erstellen' : 'Freigabelink für alle Status erstellen';
   $('#project-share-error').textContent = '';
   $('#project-share-list').innerHTML = '<div class="empty"><strong>Freigaben werden geladen …</strong></div>';
   dialog.showModal();
@@ -3916,36 +3994,7 @@ async function openProjectShareDialog() {
 async function renderProjects() {
   await loadProjectBrowser();
   if (state.currentFolderId && !folderById(state.currentFolderId)) state.currentFolderId = null;
-  const showFolders = state.user.showProjectFolders !== false;
-  const visibleFolderIds = showFolders ? null : descendantFolderIds(state.currentFolderId);
-  const projects = sortedProjects(state.projects.filter(project => {
-    if (!regularProjectStatuses.includes(project.status) || (state.projectStatusFilter !== 'all' && project.status !== state.projectStatusFilter)) return false;
-    if (showFolders) return (project.folderId || null) === state.currentFolderId;
-    if (state.currentFolderId) return visibleFolderIds.has(project.folderId);
-    return !project.folderId || visibleFolderIds.has(project.folderId);
-  }));
-  const folders = showFolders ? state.folders.filter(folder => folder.parentId === state.currentFolderId).sort((a,b) => a.name.localeCompare(b.name, 'de', { sensitivity:'base' })) : [];
-  const currentFolder = folderById(state.currentFolderId);
-  const title = { all:'Alle', idea:'Idee', active:'Aktiv', paused:'Pausiert', completed:'Abgeschlossen' }[state.projectStatusFilter] || 'Alle';
-  const dedicatedStatusSection = regularProjectStatuses.includes(state.projectStatusFilter);
-  const separateStatuses = dedicatedStatusSection || (state.projectStatusFilter === 'all' && state.projectSort.field === 'status');
-  const collapsibleFolders = dedicatedStatusSection || state.projectStatusFilter === 'all';
-  const folderGroup = collapsibleFolders && showFolders ? `<div class="project-group-head folder-group-head"><div class="project-status-divider project-list-divider folder-list-divider"><button class="project-divider-toggle" type="button" data-toggle-project-folder-group aria-expanded="${!state.collapsedProjectFolders}" aria-label="Ordner ${state.collapsedProjectFolders ? 'ausklappen' : 'einklappen'}" title="${state.collapsedProjectFolders ? 'Ausklappen' : 'Einklappen'}"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="m6 8 4 4 4-4"></path></svg><strong class="divider-label">Ordner <b>(${folders.length})</b></strong></button></div></div><div class="folder-grid${state.collapsedProjectFolders ? ' hidden' : ''}" data-project-folder-group>${folders.map(folderCard).join('')}</div>` : folders.length ? `<div class="folder-grid" data-project-folder-group>${folders.map(folderCard).join('')}</div>` : '';
-  const groupedProjects = projectCards(projects, false, !showFolders, separateStatuses);
-  const addButton = mayEditProjects() ? '<button class="button primary compact project-add-button project-browser-add-button" type="button" data-open-project-create aria-label="Projekt oder Ordner hinzufügen"><span aria-hidden="true">+</span><b>Hinzufügen</b></button>' : '';
-  const shareButton = state.user.admin ? `<button class="button secondary compact project-share-button" type="button" data-open-project-share>${publicShareIcon()}<b>Freigeben</b></button>` : '';
-  const projectHead = standardPageHeader({ title, description:currentFolder?.description || 'Projekte nach Status und Ordnern verwalten.', icon:'box', actions:`${projectListControls(false, projects)}${shareButton}${addButton}`, breadcrumbs:folderBreadcrumbs(state.currentFolderId), className:'project-browser-page-head' });
-  $('#main').innerHTML = `${projectHead}<section class="project-page-content project-browser-page-content"><div id="active-tag-filters">${selectedTagFiltersMarkup(false)}</div>
-    ${folderGroup || groupedProjects ? `<div class="project-grid project-list">${folderGroup}${groupedProjects}</div>${projects.length ? '<div id="project-no-results" class="empty hidden"><strong>Keine passenden Projekte gefunden.</strong>Versuche einen anderen Suchbegriff.</div>' : ''}` : `<div class="empty"><strong>${currentFolder ? 'Dieser Ordner enthält keine passenden Projekte.' : 'Noch keine Projekte vorhanden.'}</strong></div>`}</section>`;
-  bindMobileProjectControls();
-  bindNewProject();
-  bindFolderActions();
-  bindProjectListControls(false);
-  bindTagFilterSummary();
-  bindProjectFolderGroup();
-  bindProjectStatusGroups();
-  bindProjectActions();
-  document.querySelector('[data-open-project-share]')?.addEventListener('click', openProjectShareDialog);
+  return renderProjectColumns();
 }
 
 async function renderArchive() {
@@ -3993,6 +4042,12 @@ const settingsSections = [
   ['audit','Protokoll','Administrative und sicherheitsrelevante Änderungen am Logbuch nachvollziehen.']
 ];
 
+function settingsNavigation(active) {
+  const selected = active === 'audit' ? 'system' : active;
+  const sections = settingsSections.filter(([id]) => id !== 'audit' && (state.user?.admin || ['general','profile'].includes(id)));
+  return `<aside class="settings-navigation"><div class="settings-navigation-inner"><header class="settings-column-head"><strong>Bereiche</strong></header><nav class="settings-nav" aria-label="Einstellungsbereiche">${sections.map(([id, title]) => `<a class="settings-nav-link${id === selected ? ' active' : ''}" href="/#/settings/${id}" data-settings-route="${id}"${id === selected ? ' aria-current="page"' : ''}><span>${id === 'data' ? 'Backup' : escapeHtml(title)}</span>${id === 'system' ? `<i id="system-update-badge" class="update-nav-badge"${state.update?.available ? '' : ' hidden'}>Update</i>` : ''}</a>`).join('')}</nav></div></aside>`;
+}
+
 const settingRow = (title, description, status = 'Geplant') => `<div class="setting-row"><div><strong>${title}</strong><p>${description}</p></div><span class="setting-status">${status}</span></div>`;
 const settingLink = (title, description, href) => `<a class="setting-row setting-link" href="${href}"><div><strong>${title}</strong><p>${description}</p></div><span aria-hidden="true">→</span></a>`;
 const userRoleLabel = role => ({ admin:'Administrator', editor:'Bearbeiter', viewer:'Leser' }[role] || role);
@@ -4027,8 +4082,8 @@ function appearanceContent() {
   return `<div class="settings-group appearance-settings">
     <form id="appearance-form">
       <section class="appearance-section"><div class="settings-section-head"><h2>Name und Logo</h2><p>Diese Angaben verändern die sichtbare Marke oben im Menü. Intern bleibt die Anwendung weiterhin das Logbuch.</p></div><div class="appearance-layout">
-        <div class="appearance-fields"><label>Anzeigename<input name="displayName" value="${escapeHtml(appearance.displayName || 'Logbuch')}" minlength="2" maxlength="80" required><small>Zum Beispiel „Johannes Logbuch“, „Maker Logbuch“ oder „Meine Werkstatt“.</small></label><label>Untertitel <span class="optional">optional</span><input name="subtitle" value="${escapeHtml(appearance.subtitle || '')}" maxlength="120"><small>Eine kurze Ergänzung unter dem Anzeigenamen.</small></label><label>Eigenes Logo <span class="optional">optional</span><input name="logo" type="file" accept="image/jpeg,image/png,image/webp,image/gif"><small>JPEG, PNG, WebP oder GIF bis 8 MB. Ein breites Logo eignet sich für das Seitenmenü am besten.</small></label></div>
-        <div class="appearance-brand-card"><span>Vorschau</span><div class="appearance-brand-preview" data-appearance-brand-preview>${logoPreview}</div>${appearance.hasLogo ? '<button class="button secondary compact" type="button" data-remove-appearance-logo>Eigenes Logo entfernen</button>' : ''}</div>
+        <div class="appearance-fields"><label><span class="field-label-line">Anzeigename</span><input name="displayName" value="${escapeHtml(appearance.displayName || 'Logbuch')}" minlength="2" maxlength="80" required><small>Zum Beispiel „Johannes Logbuch“, „Maker Logbuch“ oder „Meine Werkstatt“.</small></label><label><span class="field-label-line">Untertitel <span class="optional">optional</span></span><input name="subtitle" value="${escapeHtml(appearance.subtitle || '')}" maxlength="120"><small>Eine kurze Ergänzung unter dem Anzeigenamen.</small></label><label><span class="field-label-line">Eigenes Logo <span class="optional">optional</span></span><input name="logo" type="file" accept="image/jpeg,image/png,image/webp,image/gif"><small>JPEG, PNG, WebP oder GIF bis 8 MB. Ein breites Logo eignet sich für das Seitenmenü am besten.</small></label></div>
+        <div class="appearance-brand-card"><span>Vorschau</span><div class="appearance-brand-preview" data-appearance-brand-preview>${logoPreview}</div>${appearance.hasLogo ? '<button class="button secondary compact" type="button" data-remove-appearance-logo>Eigenes Logo entfernen</button>' : ''}<input type="hidden" name="icon" value="${escapeHtml(appearance.icon || '')}"><div class="icon-picker" data-icon-picker="appearance"></div><p class="dialog-copy">Optional vor dem Namen und als Favicon. Ein Bildlogo hat im Menü Vorrang; das Symbol wird weiterhin als Favicon verwendet.</p><div class="appearance-favicon-preview"><img data-appearance-favicon-preview alt="Favicon-Vorschau" width="32" height="32"><span>Favicon</span></div></div>
       </div></section>
       <section class="appearance-section appearance-color-section"><div class="settings-section-head"><h2>Farbschema</h2><p>Wähle die Helligkeit der Oberfläche und eine Akzentfarbe. Warnungen, Fehler und Erfolge werden passend dazu harmonisiert und bleiben eindeutig erkennbar.</p></div>
         <fieldset class="appearance-theme-modes"><legend>Darstellungsmodus</legend>${[['light','Hell','Immer die helle Oberfläche verwenden.'],['dark','Dunkel','Immer die dunkle Oberfläche verwenden.'],['auto','Automatisch','Der Einstellung dieses Geräts folgen.']].map(([value,label,description]) => `<label><input type="radio" name="themeMode" value="${value}" ${themeMode === value ? 'checked' : ''}><span><strong>${label}</strong><small>${description}</small></span></label>`).join('')}</fieldset>
@@ -4205,10 +4260,9 @@ async function loadSystemStatus() {
 function updateUpdateBadge() {
   const settingsBadge = $('#update-badge');
   const systemBadge = $('#system-update-badge');
-  const menuOpen = $('#settings-toggle')?.getAttribute('aria-expanded') === 'true';
   const available = Boolean(state.update?.available);
-  if (settingsBadge) settingsBadge.hidden = !available || menuOpen;
-  if (systemBadge) systemBadge.hidden = !available || !menuOpen;
+  if (settingsBadge) settingsBadge.hidden = !available;
+  if (systemBadge) systemBadge.hidden = !available;
 }
 
 async function loadUpdateStatus(force = false) {
@@ -4252,12 +4306,15 @@ function bindAppearanceActions() {
   const colorInput = form.elements.accentColor;
   const picker = form.elements.accentPicker;
   const channels = ['red','green','blue'];
+  const updateFaviconPreview = () => {
+    $('[data-appearance-favicon-preview]', form).src = `data:image/svg+xml,${encodeURIComponent(LogbuchFavicon.svg(colorInput.value, null, state.iconLibrary?.icons?.[form.elements.icon.value]?.body || ''))}`;
+  };
   const updateBrandPreview = (logoUrl = null) => {
     if (logoUrl) {
       brandPreview.innerHTML = `<img src="${escapeHtml(logoUrl)}" alt="Logo-Vorschau" data-appearance-logo-preview>`;
       return;
     }
-    brandPreview.innerHTML = '<span class="appearance-preview-wordmark"><strong data-appearance-name-preview></strong><small data-appearance-subtitle-preview></small></span>';
+    brandPreview.innerHTML = `${form.elements.icon.value ? `<span class="brand-icon" aria-hidden="true">${iconSvg(form.elements.icon.value)}</span>` : ''}<span class="appearance-preview-wordmark"><strong data-appearance-name-preview></strong><small data-appearance-subtitle-preview></small></span>`;
     const name = $('[data-appearance-name-preview]', brandPreview);
     const subtitle = $('[data-appearance-subtitle-preview]', brandPreview);
     name.textContent = form.elements.displayName.value.trim() || 'Logbuch';
@@ -4273,6 +4330,7 @@ function bindAppearanceActions() {
   const applyPreviewColor = color => {
     applyAccentColor(color, brandPreview);
     applyAccentColor(color, samplePreview);
+    updateFaviconPreview();
   };
   const syncColor = (color, source = '') => {
     const normalized = normalizeHexColor(color);
@@ -4291,6 +4349,11 @@ function bindAppearanceActions() {
   const syncFromChannels = () => syncColor(rgbHex(channels.map(channel => Number(form.elements[channel].value))), 'rgb');
 
   form.elements.displayName.oninput = syncBrandText;
+  renderIconPicker('appearance');
+  form.elements.icon.onchange = () => {
+    updateBrandPreview(appearanceLogoPreviewUrl || (state.appearance.hasLogo ? state.appearance.logoUrl : null));
+    updateFaviconPreview();
+  };
   form.elements.subtitle.oninput = syncBrandText;
   picker.oninput = () => syncColor(picker.value, 'picker');
   colorInput.oninput = () => {
@@ -4317,14 +4380,16 @@ function bindAppearanceActions() {
     updateBrandPreview(appearanceLogoPreviewUrl);
   };
   $('[data-remove-appearance-logo]', form)?.addEventListener('click', async buttonEvent => {
-    if (!await confirmAction('Das eigene Logo entfernen und wieder den Anzeigenamen verwenden?', { title:'Eigenes Logo entfernen', confirmLabel:'Logo entfernen' })) return;
     const button = buttonEvent.currentTarget;
+    if (!await confirmAction('Das eigene Logo entfernen und wieder den Anzeigenamen verwenden?', { title:'Eigenes Logo entfernen', confirmLabel:'Logo entfernen' })) return;
     button.disabled = true;
     try {
       const appearance = await api('/settings/appearance/logo', { method:'DELETE', body:'{}' });
+      if (appearanceLogoPreviewUrl) URL.revokeObjectURL(appearanceLogoPreviewUrl);
+      appearanceLogoPreviewUrl = '';
       applyAppearance(appearance);
       toast('Eigenes Logo entfernt');
-      renderSettings();
+      await renderSettings();
     } catch (error) { toast(error.message); button.disabled = false; }
   });
   form.onsubmit = async event => {
@@ -4336,6 +4401,7 @@ function bindAppearanceActions() {
       let appearance = await api('/settings/appearance', { method:'PATCH', body:JSON.stringify({
         displayName:form.elements.displayName.value,
         subtitle:form.elements.subtitle.value,
+        icon:form.elements.icon.value,
         accentColor:normalizeHexColor(colorInput.value),
         themeMode:new FormData(form).get('themeMode'),
       }) });
@@ -4362,7 +4428,7 @@ async function renderSettings() {
   if (active === 'users' && state.user?.admin) await Promise.all([loadUsers(), loadProjects()]);
   if (active === 'tags' && state.user?.admin) await loadTags();
   if (active === 'data' && state.user?.admin) await Promise.all([loadUsers(), loadProjects(), loadTags(), loadFolders(), loadServerSettings(), loadStorageStats()]);
-  if (active === 'appearance' && state.user?.admin) await loadAppearance();
+  if (active === 'appearance' && state.user?.admin) await Promise.all([loadAppearance(), loadIconLibrary()]);
   if (active === 'profile') await loadProjects();
   if (active === 'security' && !state.user.mustChangePassword) await loadSessions();
   if (active === 'audit' && state.user?.admin) await loadAudit();
@@ -4370,8 +4436,15 @@ async function renderSettings() {
   if (active === 'system' && state.user?.admin) await loadSystemStatus();
   if (active === 'general') await loadIconLibrary();
   const headerAction = active === 'users' && state.user?.admin ? '<button class="button primary compact" data-new-user>+ Benutzer</button>' : active === 'tags' && state.user?.admin ? '<button class="button primary compact" data-new-tag>+ Tag</button>' : '';
-  const settingsHead = standardPageHeader({ title, description, icon:'settings', actions:headerAction, className:'settings-page-head' });
-  $('#main').innerHTML = `${settingsHead}<section class="project-page-content settings-page-content"><section class="settings-panel settings-panel-wide">${settingsContent(active)}</section></section>`;
+  const settingsHead = standardPageHeader({ title:'Einstellungen', description:'Logbuch und persönliche Einstellungen verwalten.', icon:'settings', className:'settings-page-head' });
+  $('#main').innerHTML = `${settingsHead}<section class="project-page-content settings-page-content"><div class="settings-workspace">${settingsNavigation(active)}<section class="settings-panel settings-panel-wide" aria-labelledby="settings-section-title"><header class="settings-column-head"><h2 id="settings-section-title">${escapeHtml(title)}</h2>${headerAction}</header><p class="settings-section-description">${escapeHtml(description)}</p>${settingsContent(active)}</section></div></section>`;
+  updateUpdateBadge();
+  const settingsNav = $('.settings-nav');
+  const selectedLink = $('[aria-current="page"]', settingsNav);
+  if (selectedLink && settingsNav.scrollWidth > settingsNav.clientWidth) {
+    const selectedRect = selectedLink.getBoundingClientRect();
+    settingsNav.scrollLeft += selectedRect.left - settingsNav.getBoundingClientRect().left - (settingsNav.clientWidth - selectedRect.width) / 2;
+  }
   if (active === 'users' && state.user?.admin) bindUserActions();
   if (active === 'tags' && state.user?.admin) bindTagActions();
   if (active === 'data' && state.user?.admin) bindDataActions();
@@ -4864,7 +4937,7 @@ async function renderProjectPrint(id) {
   const project = state.current;
   document.body.classList.add('project-print-mode');
   document.title = `${project.title} – Druckansicht – Logbuch`;
-  setProjectsMenu(true, project.status);
+  setProjectsMenu(false, currentProjectMenuStatus());
   $('#main').innerHTML = `<div class="project-print-shell"><div class="project-print-toolbar"><a class="button secondary compact" href="/#/projects/${encodeURIComponent(project.id)}">Zurück zum Projekt</a><div><span>DIN A4 · Hochformat</span><button class="button primary compact" type="button" data-print-now>${printIcon()} Drucken / als PDF speichern</button></div></div>${projectPrintMarkup(project)}</div>`;
   $('[data-print-now]').onclick = () => window.print();
 }
@@ -4877,7 +4950,7 @@ async function renderProjectExport(id) {
   const project = state.current;
   document.body.classList.add('project-print-mode', 'project-export-mode');
   document.title = `${project.title} – PDF-Export – Logbuch`;
-  setProjectsMenu(true, project.status);
+  setProjectsMenu(false, currentProjectMenuStatus());
   $('#main').innerHTML = `<div class="project-print-shell"><div class="project-print-toolbar"><a class="button secondary compact" href="/#/projects/${encodeURIComponent(project.id)}">Zurück zum Projekt</a><div><span>Farbiges DIN A4 · inklusive Bilder und Metadaten</span><button class="button primary compact" type="button" data-export-pdf>${exportIcon()} Als PDF speichern</button></div></div>${projectPrintMarkup(project, true)}</div>`;
   $('[data-export-pdf]').onclick = async buttonEvent => {
     const button = buttonEvent.currentTarget;
@@ -4915,7 +4988,7 @@ async function renderProject(id) {
   state.projectReservations = (reservationData.reservations || []).filter(reservation => reservation.status === 'ACTIVE');
   const p = state.current;
   if (p.status === 'trashed') { location.href = '/#/trash'; return; }
-  setProjectsMenu(true, p.status);
+  setProjectsMenu(false, currentProjectMenuStatus());
   const content = unifiedProjectView(p);
   const breadcrumbs = p.status === 'archived' ? '<nav class="folder-breadcrumbs" aria-label="Projektpfad"><a href="/#/archive">Archiv</a></nav>' : folderBreadcrumbs(p.folderId || null);
   const addButton = mayEditProjects() ? `<button class="button primary compact project-add-button" type="button" data-open-project-add aria-label="Projektinhalt hinzufügen"><span aria-hidden="true">+</span><b>Hinzufügen</b></button><button class="button secondary compact" type="button" data-reservation-create data-reservation-project="${escapeHtml(p.id)}">Lagermaterial zuordnen</button>` : '';
@@ -4983,36 +5056,29 @@ async function renderProject(id) {
   });
 }
 
-function setSettingsMenu(open) {
-  const toggle = $('#settings-toggle');
-  const subnav = $('#settings-subnav');
-  toggle.setAttribute('aria-expanded', String(open));
-  subnav.hidden = !open;
-  updateUpdateBadge();
-}
-
 function setProjectsMenu(open, activeStatus = '') {
-  const toggle = $('#projects-toggle');
+  const toggle = $('#projects-link');
   const subnav = $('#projects-subnav');
   const badge = $('#project-nav-count');
   toggle.setAttribute('aria-expanded', String(open));
-  toggle.setAttribute('aria-label', open ? 'Projekte' : 'Projektmenü aufklappen');
-  toggle.title = open ? 'Projekte' : 'Projektmenü aufklappen';
+  toggle.setAttribute('aria-label', 'Projekte');
+  toggle.title = 'Ordnerstruktur öffnen';
   subnav.hidden = !open;
-  badge.hidden = open;
-  document.querySelectorAll('[data-projects-route]').forEach(node => node.classList.toggle('active', open && node.dataset.projectsRoute === activeStatus));
+  badge.hidden = false;
+  document.querySelectorAll('[data-projects-route]').forEach(node => node.classList.toggle('active', node.dataset.projectsRoute === activeStatus));
+  updateProjectNavigationLink();
 }
 
 function setInventoryMenu(open, activeRoute = '') {
-  const toggle = $('#inventory-toggle');
+  const toggle = $('#inventory-link');
   const subnav = $('#inventory-subnav');
   const badge = $('#inventory-nav-count');
   toggle.setAttribute('aria-expanded', String(open));
-  toggle.setAttribute('aria-label', open ? 'Lager' : 'Lagermenü aufklappen');
-  toggle.title = open ? 'Lager' : 'Lagermenü aufklappen';
+  toggle.setAttribute('aria-label', 'Lager');
+  toggle.title = 'Lagerort-Übersicht öffnen';
   subnav.hidden = !open;
-  badge.hidden = open;
-  document.querySelectorAll('[data-inventory-route]').forEach(node => node.classList.toggle('active', open && node.dataset.inventoryRoute === activeRoute));
+  badge.hidden = false;
+  document.querySelectorAll('[data-inventory-route]').forEach(node => node.classList.toggle('active', node.dataset.inventoryRoute === activeRoute));
 }
 
 function currentInventoryMenuRoute() {
@@ -5029,29 +5095,25 @@ function currentProjectMenuStatus() {
   const hash = location.hash;
   if (hash.startsWith('#/archive')) return 'archived';
   if (hash.startsWith('#/trash')) return 'trashed';
-  if (!hash.startsWith('#/projects')) return '';
-  const query = hash.split('?')[1] || '';
-  const status = new URLSearchParams(query).get('status');
-  return regularProjectStatuses.includes(status) ? status : 'all';
+  return '';
 }
 
 function setNav(routeName, projectStatus = '') {
   document.querySelectorAll('[data-route]').forEach(node => node.classList.toggle('active', node.dataset.route === routeName));
   $('#global-search-form').classList.toggle('active', routeName === 'search');
+  $('#global-search-toggle').classList.toggle('active', routeName === 'search');
   if (routeName !== 'search') {
     $('#global-search-input').value = '';
     syncSidebarSearchClear();
   }
-  const settingsActive = routeName === 'settings';
   const projectsActive = routeName === 'projects';
   const inventoryActive = routeName === 'inventory';
-  setSettingsMenu(settingsActive);
-  setProjectsMenu(projectsActive, projectStatus);
-  setInventoryMenu(inventoryActive, inventoryActive ? currentInventoryMenuRoute() : '');
-  document.querySelectorAll('[data-settings-route]').forEach(node => node.classList.toggle('active', settingsActive && node.dataset.settingsRoute === state.activeSettings));
+  setProjectsMenu(false, projectsActive ? currentProjectMenuStatus() : '');
+  setInventoryMenu(false, inventoryActive ? currentInventoryMenuRoute() : '');
 }
 async function route() {
   if (!state.user) return;
+  closeHeaderNavigation();
   document.body.classList.remove('project-print-mode', 'project-export-mode');
   $('#mobile-header-actions').innerHTML = '';
   document.title = 'Logbuch';
@@ -5119,10 +5181,17 @@ async function route() {
     }
     else if (parts[0] === 'projects') {
       state.currentFolderId = routeQuery.get('folder') || null;
-      state.projectStatusFilter = regularProjectStatuses.includes(routeQuery.get('status')) ? routeQuery.get('status') : 'all';
+      // Legacy list/unfiled links and saved view preferences now open the folder structure.
+      projectSelectedId = routeQuery.get('project') || '';
+      state.projectSearch.active = routeQuery.get('q') || '';
+      state.projectSort = sortFromPreference(routeQuery.get('sort'), true, `${state.projectSort.field}:${state.projectSort.direction}`);
+      state.projectStatusFilter = projectStatusValue(projectNavigation.statusSelection(routeQuery.has('status') ? routeQuery.get('status') : state.user.projectStatuses));
       state.projectTagFilter.active.ids = (routeQuery.get('tags') || '').split(',').filter(Boolean);
       state.projectTagFilter.active.mode = routeQuery.get('match') === 'any' ? 'any' : 'all';
-      setNav('projects', state.projectStatusFilter); await renderProjects();
+      setNav('projects');
+      await loadProjectBrowser();
+      updateTagFilterUrl(false);
+      await renderProjects();
     }
     else if (parts[0] === 'archive') {
       state.projectTagFilter.archived.ids = (routeQuery.get('tags') || '').split(',').filter(Boolean);
@@ -5247,10 +5316,11 @@ function renderIconPicker(scope, query = '', open = false) {
   const input = form.elements.icon;
   const projectPicker = scope === 'project';
   const defaultPicker = scope === 'default-project';
+  const optionalPicker = scope === 'appearance';
   const fallback = scope === 'folder' || scope === 'inventory-category' ? 'folder' : scope === 'storage-location' ? 'archive' : defaultProjectIconName();
   const inherited = projectPicker && form.elements.iconInherited?.value === '1';
-  const selected = inherited ? defaultProjectIconName() : entityIconName({ icon:input.value }, fallback);
-  const pickerLabel = defaultPicker ? '' : '<label>Symbol</label>';
+  const selected = optionalPicker && !input.value ? '' : inherited ? defaultProjectIconName() : entityIconName({ icon:input.value }, fallback);
+  const pickerLabel = defaultPicker ? '' : optionalPicker ? '<label><span class="field-label-line">Symbol <span class="optional">optional</span></span></label>' : '<label>Symbol</label>';
   if (!state.iconLibrary) {
     picker.innerHTML = `${pickerLabel}<div class="icon-picker-loading">Symbolbibliothek wird geladen …</div>`;
     loadIconLibrary().then(() => renderIconPicker(scope, query, open)).catch(error => { picker.innerHTML = `${pickerLabel}<div class="icon-picker-loading">${escapeHtml(error.message)}</div>`; });
@@ -5259,8 +5329,8 @@ function renderIconPicker(scope, query = '', open = false) {
   const normalized = query.trim().toLocaleLowerCase('de');
   const matchingNames = Object.keys(state.iconLibrary.icons).filter(name => !normalized || name.includes(normalized));
   const names = normalized ? matchingNames.slice(0, 120) : matchingNames;
-  const defaultChoice = projectPicker ? `<button class="icon-picker-default${inherited ? ' selected' : ''}" type="button" data-use-default-icon><span class="entity-icon-preview">${iconSvg(defaultProjectIconName())}</span><span>Standardsymbol verwenden</span></button>` : '';
-  picker.innerHTML = `${pickerLabel}<button class="icon-picker-current" type="button" data-toggle-icon-picker aria-expanded="${open}"><span class="entity-icon-preview">${iconSvg(selected)}</span><span>${inherited ? `Standard · ${escapeHtml(selected.replaceAll('-', ' '))}` : escapeHtml(selected.replaceAll('-', ' '))}</span><span aria-hidden="true">⌄</span></button><div class="icon-picker-panel"${open ? '' : ' hidden'}>${defaultChoice}<input class="icon-picker-search" type="search" value="${escapeHtml(query)}" placeholder="Symbole durchsuchen" aria-label="Symbole durchsuchen" autocomplete="off"><div class="icon-picker-grid">${names.length ? names.map(name => `<button type="button" class="icon-picker-option${!inherited && name === selected ? ' selected' : ''}" data-select-icon="${escapeHtml(name)}" title="${escapeHtml(name.replaceAll('-', ' '))}" aria-label="${escapeHtml(name.replaceAll('-', ' '))}">${iconSvg(name)}</button>`).join('') : '<span class="icon-picker-empty">Kein passendes Symbol gefunden.</span>'}</div><small>${normalized && matchingNames.length > names.length ? `Die ersten ${names.length} von ${matchingNames.length} Treffern werden angezeigt. Suche genauer, um weitere Symbole zu finden.` : `${names.length} Symbole`}</small></div>`;
+  const defaultChoice = optionalPicker ? `<button class="icon-picker-default${!selected ? ' selected' : ''}" type="button" data-clear-icon>Kein Symbol</button>` : projectPicker ? `<button class="icon-picker-default${inherited ? ' selected' : ''}" type="button" data-use-default-icon><span class="entity-icon-preview">${iconSvg(defaultProjectIconName())}</span><span>Standardsymbol verwenden</span></button>` : '';
+  picker.innerHTML = `${pickerLabel}<button class="icon-picker-current" type="button" data-toggle-icon-picker aria-expanded="${open}"><span class="entity-icon-preview">${selected ? iconSvg(selected) : '—'}</span><span>${inherited ? `Standard · ${escapeHtml(selected.replaceAll('-', ' '))}` : escapeHtml(selected ? selected.replaceAll('-', ' ') : 'Kein Symbol')}</span><span aria-hidden="true">⌄</span></button><div class="icon-picker-panel"${open ? '' : ' hidden'}>${defaultChoice}<input class="icon-picker-search" type="search" value="${escapeHtml(query)}" placeholder="Symbole durchsuchen" aria-label="Symbole durchsuchen" autocomplete="off"><div class="icon-picker-grid">${names.length ? names.map(name => `<button type="button" class="icon-picker-option${!inherited && name === selected ? ' selected' : ''}" data-select-icon="${escapeHtml(name)}" title="${escapeHtml(name.replaceAll('-', ' '))}" aria-label="${escapeHtml(name.replaceAll('-', ' '))}">${iconSvg(name)}</button>`).join('') : '<span class="icon-picker-empty">Kein passendes Symbol gefunden.</span>'}</div><small>${normalized && matchingNames.length > names.length ? `Die ersten ${names.length} von ${matchingNames.length} Treffern werden angezeigt. Suche genauer, um weitere Symbole zu finden.` : `${names.length} Symbole`}</small></div>`;
   picker.querySelector('[data-toggle-icon-picker]').onclick = () => renderIconPicker(scope, '', !open);
   const search = picker.querySelector('.icon-picker-search');
   if (search) {
@@ -5285,8 +5355,15 @@ function renderIconPicker(scope, query = '', open = false) {
     if (projectPicker && form.elements.iconInherited) form.elements.iconInherited.value = '0';
     renderIconPicker(scope, '', false);
     picker.querySelector('[data-toggle-icon-picker]')?.focus();
-    if (defaultPicker) input.dispatchEvent(new Event('change', { bubbles:true }));
+    if (defaultPicker || optionalPicker) input.dispatchEvent(new Event('change', { bubbles:true }));
   });
+  const clearIcon = picker.querySelector('[data-clear-icon]');
+  if (clearIcon) clearIcon.onclick = () => {
+    input.value = '';
+    renderIconPicker(scope, '', false);
+    picker.querySelector('[data-toggle-icon-picker]')?.focus();
+    input.dispatchEvent(new Event('change', { bubbles:true }));
+  };
   const useDefault = picker.querySelector('[data-use-default-icon]');
   if (useDefault) useDefault.onclick = () => {
     form.elements.iconInherited.value = '1';
@@ -5351,7 +5428,7 @@ function openProjectDialog(project = null, { status = null } = {}) {
     }).catch(() => {});
   }
   $('#project-delete-zone').hidden = !project;
-  form.elements.folderId.innerHTML = folderSelectOptions(project?.folderId || state.currentFolderId || '');
+  form.elements.folderId.innerHTML = folderSelectOptions(project ? project.folderId || '' : state.currentFolderId || '');
   form.elements.createdAt.value = String(project?.createdAt || today()).slice(0, 10);
   form.elements.dueDate.value = String(project?.dueDate || '').slice(0, 10);
   form.elements.createdAt.classList.remove('input-invalid');
@@ -7382,6 +7459,7 @@ $('#logout').onclick = async () => { await api('/logout', { method:'POST' }); lo
 $('#global-search-form').onsubmit = event => {
   event.preventDefault();
   const query = $('#global-search-input').value.trim();
+  closeHeaderNavigation();
   location.href = `/#/search${query ? `?q=${encodeURIComponent(query)}` : ''}`;
 };
 
@@ -7875,40 +7953,7 @@ sidebarSearchClear.onclick = () => {
   syncSidebarSearchClear();
   sidebarSearchInput.focus();
 };
-$('#settings-toggle').onclick = () => {
-  if ($('#settings-toggle').getAttribute('aria-expanded') === 'true') return;
-  setProjectsMenu(false);
-  setInventoryMenu(false);
-  if (location.hash !== '#/settings/general') {
-    setSettingsMenu(true);
-    location.href = '/#/settings/general';
-    return;
-  }
-  setSettingsMenu(true);
-};
-$('#projects-toggle').onclick = async () => {
-  if ($('#projects-toggle').getAttribute('aria-expanded') === 'true') return;
-  setSettingsMenu(false);
-  setInventoryMenu(false);
-  if (location.hash !== '#/projects') {
-    setProjectsMenu(true);
-    location.href = '/#/projects';
-    return;
-  }
-  try { await loadProjects(); } catch (error) { toast(error.message); }
-  setProjectsMenu(true, currentProjectMenuStatus());
-};
-$('#inventory-toggle').onclick = () => {
-  if ($('#inventory-toggle').getAttribute('aria-expanded') === 'true') return;
-  setProjectsMenu(false);
-  setSettingsMenu(false);
-  if (!location.hash.startsWith('#/inventory')) {
-    setInventoryMenu(true, 'locations');
-    location.href = '/#/inventory';
-    return;
-  }
-  setInventoryMenu(true, currentInventoryMenuRoute());
-};
+bindHeaderNavigation();
 $('#inventory-label-form').elements.scope.onchange = refreshInventoryLabelDialog;
 $('#inventory-label-form').elements.size.onchange = renderInventoryLabelPreview;
 $('#inventory-label-form').elements.paper.onchange = renderInventoryLabelPreview;
@@ -7947,24 +7992,22 @@ $('#inventory-label-dialog').addEventListener('close', () => {
   inventoryLabelProfileDraftId = null;
   $('#inventory-label-profile-editor').hidden = true;
 });
-$('#menu-button').onclick = () => {
-  const open = $('.sidebar').classList.toggle('open');
-  $('#menu-button').setAttribute('aria-expanded', String(open));
-  $('#menu-button').setAttribute('aria-label', open ? 'Menü schließen' : 'Menü öffnen');
-};
 document.querySelectorAll('dialog button[value="cancel"]').forEach(button => button.addEventListener('click', event => {
   event.preventDefault();
   const dialog = button.closest('dialog');
   if (dialog.dataset.updating !== 'true') dialog.close();
 }));
 window.addEventListener('hashchange', () => {
-  $('.sidebar').classList.remove('open');
-  $('#menu-button').setAttribute('aria-expanded', 'false');
-  $('#menu-button').setAttribute('aria-label', 'Menü öffnen');
+  closeHeaderNavigation();
   route();
 });
 window.addEventListener('resize', fitInventoryWorkspaces);
 document.addEventListener('click', event => {
+  const statusControl = $('[data-status-control]');
+  if (statusControl && !statusControl.contains(event.target)) {
+    $('#project-status-panel').hidden = true;
+    $('[data-toggle-status]').setAttribute('aria-expanded', 'false');
+  }
   const removeAttachment = event.target.closest('[data-remove-dialog-attachment]');
   if (removeAttachment) removeDialogAttachment(removeAttachment);
   document.querySelectorAll('.action-menu[open]').forEach(menu => { if (!menu.contains(event.target)) menu.removeAttribute('open'); });

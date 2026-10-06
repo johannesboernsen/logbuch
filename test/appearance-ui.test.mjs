@@ -10,10 +10,20 @@ const [html, script, styles] = await Promise.all([
 ]);
 
 test('Erscheinungsbild ist eine eigene administrative Einstellung', () => {
-  assert.match(html, /href="\/#\/settings\/appearance" data-settings-route="appearance" data-admin-setting>Erscheinungsbild/);
+  assert.match(script, /const sections = settingsSections\.filter\([^\n]+state\.user\?\.admin/);
   assert.match(script, /\['appearance','Erscheinungsbild'/);
   assert.match(script, /if \(section === 'appearance'\) return appearanceContent\(\)/);
   assert.match(script, /api\('\/settings\/appearance'/);
+});
+
+test('Erscheinungsbild bietet den gemeinsamen Iconpicker mit leerer Auswahl und Favicon-Vorschau', () => {
+  assert.match(script, /data-icon-picker="appearance"/);
+  assert.match(script, /const optionalPicker = scope === 'appearance'/);
+  assert.match(script, /data-clear-icon>Kein Symbol/);
+  assert.match(script, /input\.value = '';[\s\S]*input\.dispatchEvent/);
+  assert.match(script, /icon:form\.elements\.icon\.value/);
+  assert.match(script, /data-appearance-favicon-preview/);
+  assert.match(script, /brandIcon\.hidden = !state\.appearance\.iconBody \|\| state\.appearance\.hasLogo/);
 });
 
 test('Akzentfarbe lässt sich per Farbfeld, Hex-Code und RGB-Reglern frei einstellen', () => {
@@ -46,7 +56,8 @@ test('Hell, Dunkel und Automatisch verwenden dasselbe semantische Farbsystem', (
 });
 
 test('Anzeigename, Untertitel und optionales Bildlogo werden in allen Markenflächen verwendet', () => {
-  assert.equal((html.match(/data-brand>/g) || []).length, 3);
+  // Login plus one shared desktop/mobile header, without a duplicate mobile logo.
+  assert.equal((html.match(/data-brand>/g) || []).length, 2);
   assert.match(html, /data-brand-name>Logbuch/);
   assert.match(html, /data-brand-subtitle hidden/);
   assert.match(html, /data-brand-logo alt="" hidden/);
