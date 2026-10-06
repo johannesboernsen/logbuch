@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { changelogRelease } from '../tools/changelog.mjs';
+import { changelogRelease, updateManifestRelease } from '../tools/changelog.mjs';
 
 const root = new URL('..', import.meta.url);
 const [changelog, readme, script, styles, workflow, releaseTool] = await Promise.all([
@@ -30,9 +30,23 @@ test('Releaseinformationen werden zuverlässig aus dem passenden Changelog-Absch
 
 test('Der Release-Prozess veröffentlicht dieselben Informationen im Manifest und auf GitHub', () => {
   assert.match(releaseTool, /changelogRelease/);
-  assert.match(releaseTool, /highlights:release\.highlights/);
+  assert.match(releaseTool, /updateManifestRelease/);
+  assert.match(releaseTool, /highlights:updateInformation\.highlights/);
   assert.match(releaseTool, /release-notes\.md/);
   assert.match(workflow, /--notes-file dist\/release-notes\.md/);
+});
+
+test('Update-Manifeste bleiben innerhalb der vom Logbuch akzeptierten Grenzen', () => {
+  const metadata = updateManifestRelease({
+    summary:'Kurze Zusammenfassung',
+    highlights:Array.from({ length:13 }, (_, index) => `Änderung ${index + 1}`),
+  });
+  assert.equal(metadata.highlights.length, 10);
+  assert.equal(metadata.highlights.at(-1), 'Änderung 10');
+  assert.throws(
+    () => updateManifestRelease({ summary:'Test', highlights:['x'.repeat(301)] }),
+    /zwischen 1 und 300 Zeichen/,
+  );
 });
 
 test('Die Systemeinstellungen zeigen Highlights und das ausführliche Changelog direkt am Update', () => {

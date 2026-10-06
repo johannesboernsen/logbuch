@@ -4,6 +4,16 @@ Hier werden die wichtigen Änderungen des Logbuchs festgehalten. Die Einträge s
 
 ## [Unveröffentlicht]
 
+Noch keine Änderungen.
+
+## [0.8.2] - 2026-10-06
+
+Die Update-Prüfung verarbeitet die kompakten Änderungsinformationen veröffentlichter Versionen wieder zuverlässig.
+
+### Wichtigste Änderungen
+
+- Der Release-Prozess begrenzt die kompakte Update-Zusammenfassung automatisch auf zehn Punkte und verhindert zu lange Einträge, bevor ein ungültiges Manifest veröffentlicht werden kann.
+
 ## [0.8.1] - 2026-10-06
 
 Das Logbuch unterstützt nun öffentliche Projektübersichten und ergänzt die Lagerverwaltung um Inventuren, gemeinsame Stapelaktionen sowie frei konfigurierbare QR-Etiketten.

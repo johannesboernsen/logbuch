@@ -19,3 +19,15 @@ export function changelogRelease(markdown, version) {
     markdown:`${markdownSection}\n`,
   };
 }
+
+export function updateManifestRelease(release) {
+  const summary = String(release?.summary || '').trim();
+  const highlights = Array.isArray(release?.highlights) ? release.highlights.slice(0, 10) : [];
+  if (!summary || summary.length > 1000) {
+    throw new Error('Die Zusammenfassung für das Update-Manifest muss zwischen 1 und 1000 Zeichen lang sein.');
+  }
+  if (!highlights.length || highlights.some(highlight => typeof highlight !== 'string' || !highlight.trim() || highlight.length > 300)) {
+    throw new Error('Die Änderungspunkte für das Update-Manifest müssen zwischen 1 und 300 Zeichen lang sein.');
+  }
+  return { summary, highlights };
+}
