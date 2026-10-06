@@ -36,10 +36,11 @@ final class ProjectShareStore
             'createdAt' => nowIso(),
             'updatedAt' => '',
         ];
-        $statement = $this->db->prepare('INSERT INTO project_public_shares (id, token, name, scope_type, project_status, folder_id, expires_at, active, created_by, created_at, updated_at) VALUES (:id, :token, :name, :scope, :status, :folder, :expires, 1, :actor, :created, \'\')');
+        $statement = $this->db->prepare('INSERT INTO project_public_shares (id, token, name, scope_type, project_status, project_statuses_json, folder_id, expires_at, active, created_by, created_at, updated_at) VALUES (:id, :token, :name, :scope, :status, :statuses, :folder, :expires, 1, :actor, :created, \'\')');
         $statement->execute([
             'id' => $share['id'], 'token' => $share['token'], 'name' => $share['name'],
             'scope' => $share['scopeType'], 'status' => $share['projectStatus'], 'folder' => $share['folderId'],
+            'statuses' => $share['projectStatuses'] === null ? null : json_encode($share['projectStatuses'], JSON_THROW_ON_ERROR),
             'expires' => $share['expiresAt'], 'actor' => $actor, 'created' => $share['createdAt'],
         ]);
         return $this->decorate($share);
@@ -58,6 +59,38 @@ final class ProjectShareStore
         $updatedAt = nowIso();
         $this->db->prepare('UPDATE project_public_shares SET active = 0, updated_at = :updated WHERE id = :id')->execute(['updated' => $updatedAt, 'id' => $id]);
         return $this->decorate([...$share, 'active' => false, 'updatedAt' => $updatedAt]);
+    }
+
+    public function update(string $id, array $input): array
+    {
+        $share = $this->byId($id);
+        // Editing a link never changes its folder or scope, nor regenerates its token.
+        $scope = $this->normalizeScope([
+            ...$share,
+            'projectStatus' => $input['projectStatus'] ?? $share['projectStatus'],
+            'projectStatuses' => array_key_exists('projectStatuses', $input) ? $input['projectStatuses'] : $share['projectStatuses'],
+        ]);
+        $name = trim((string) ($input['name'] ?? $share['name']));
+        if ($name === '' || mb_strlen($name) > 160) throw new HttpError(422, 'Die Bezeichnung muss 1–160 Zeichen lang sein.');
+        $expiresAt = trim((string) ($input['expiresAt'] ?? $share['expiresAt']));
+        if ($expiresAt !== '' && (!validDate($expiresAt) || ($expiresAt !== $share['expiresAt'] && $expiresAt < substr(nowIso(), 0, 10)))) {
+            throw new HttpError(422, 'Das Ablaufdatum muss heute oder später liegen.');
+        }
+        $active = $input['active'] ?? $share['active'];
+        if (!is_bool($active)) throw new HttpError(422, 'Der Freigabestatus ist ungültig.');
+        $updatedAt = nowIso();
+        $this->db->prepare('UPDATE project_public_shares SET name = :name, project_status = :status, project_statuses_json = :statuses, expires_at = :expires, active = :active, updated_at = :updated WHERE id = :id')->execute([
+            'name' => $name, 'status' => $scope['projectStatus'],
+            'statuses' => $scope['projectStatuses'] === null ? null : json_encode($scope['projectStatuses'], JSON_THROW_ON_ERROR),
+            'expires' => $expiresAt, 'active' => (int) $active, 'updated' => $updatedAt, 'id' => $id,
+        ]);
+        return $this->decorate([...$share, ...$scope, 'name' => $name, 'expiresAt' => $expiresAt, 'active' => $active, 'updatedAt' => $updatedAt]);
+    }
+
+    public function delete(string $id): void
+    {
+        $this->byId($id);
+        $this->db->prepare('DELETE FROM project_public_shares WHERE id = :id')->execute(['id' => $id]);
     }
 
     public function rotate(string $id): array
@@ -97,12 +130,14 @@ final class ProjectShareStore
         $scopeType = strtoupper(trim((string) ($input['scopeType'] ?? '')));
         $projectStatus = trim((string) ($input['projectStatus'] ?? ''));
         $folderId = trim((string) ($input['folderId'] ?? ''));
-        if ($scopeType === 'ALL') return ['scopeType' => 'ALL', 'projectStatus' => '', 'folderId' => null];
+        $statuses = self::validateProjectStatuses($input['projectStatuses'] ?? null);
+        if ($scopeType !== 'FOLDER' && $statuses !== null) throw new HttpError(422, 'Die Statusauswahl ist nur für Ordnerfreigaben verfügbar.');
+        if ($scopeType === 'ALL') return ['scopeType' => 'ALL', 'projectStatus' => '', 'projectStatuses' => null, 'folderId' => null];
         if ($scopeType === 'STATUS' && in_array($projectStatus, self::PUBLIC_STATUSES, true)) {
-            return ['scopeType' => 'STATUS', 'projectStatus' => $projectStatus, 'folderId' => null];
+            return ['scopeType' => 'STATUS', 'projectStatus' => $projectStatus, 'projectStatuses' => null, 'folderId' => null];
         }
         if ($scopeType === 'FOLDER' && $this->folders->exists($folderId)) {
-            return ['scopeType' => 'FOLDER', 'projectStatus' => '', 'folderId' => $folderId];
+            return ['scopeType' => 'FOLDER', 'projectStatus' => '', 'projectStatuses' => $statuses, 'folderId' => $folderId];
         }
         throw new HttpError(422, 'Der Freigabebereich ist ungültig.');
     }
@@ -117,6 +152,17 @@ final class ProjectShareStore
             return is_array($folder) ? 'Ordner: ' . $folder['name'] : 'Projektordner';
         }
         return 'Alle Projekte';
+    }
+
+    public static function validateProjectStatuses(mixed $statuses): ?array
+    {
+        if ($statuses === null) return null;
+        if (!is_array($statuses) || !array_is_list($statuses) || count($statuses) < 1 || count($statuses) > 4
+            || count(array_filter($statuses, 'is_string')) !== count($statuses)
+            || array_diff($statuses, self::PUBLIC_STATUSES) || count(array_unique($statuses)) !== count($statuses)) {
+            throw new HttpError(422, 'Bitte mindestens einen gültigen Projektstatus auswählen.');
+        }
+        return array_values(array_intersect(self::PUBLIC_STATUSES, $statuses));
     }
 
     private function decorate(array $share): array
@@ -137,6 +183,9 @@ final class ProjectShareStore
             $rootId = (string) $share['folderId'];
             $includedFolders = $this->descendantFolderIds($folders, $rootId);
             $projects = array_values(array_filter($projects, static fn(array $project): bool => isset($includedFolders[(string) ($project['folderId'] ?? '')])));
+            if ($share['projectStatuses'] !== null) {
+                $projects = array_values(array_filter($projects, static fn(array $project): bool => in_array($project['status'], $share['projectStatuses'], true)));
+            }
         }
 
         $neededFolderIds = [];
@@ -175,6 +224,10 @@ final class ProjectShareStore
         usort($publicFolders, static fn(array $left, array $right): int => strcasecmp($left['name'], $right['name']));
 
         $scopeLabel = $this->defaultName($share);
+        if ($share['scopeType'] === 'FOLDER') {
+            $labels = ['idea' => 'Idee', 'active' => 'Aktiv', 'paused' => 'Pausiert', 'completed' => 'Abgeschlossen'];
+            $scopeLabel .= ' · ' . ($share['projectStatuses'] === null ? 'Alle Status' : implode(', ', array_map(static fn(string $status): string => $labels[$status], $share['projectStatuses'])));
+        }
         $result = [
             'name' => $share['name'],
             'scopeLabel' => $scopeLabel,
@@ -213,6 +266,7 @@ final class ProjectShareStore
         return [
             'id' => (string) $row['id'], 'token' => (string) $row['token'], 'name' => (string) $row['name'],
             'scopeType' => (string) $row['scope_type'], 'projectStatus' => (string) $row['project_status'],
+            'projectStatuses' => ($row['project_statuses_json'] ?? null) === null ? null : self::validateProjectStatuses(json_decode($row['project_statuses_json'], true, 512, JSON_THROW_ON_ERROR)),
             'folderId' => $row['folder_id'] ?: null, 'expiresAt' => (string) $row['expires_at'],
             'active' => (bool) $row['active'], 'createdBy' => (string) $row['created_by'],
             'createdAt' => (string) $row['created_at'], 'updatedAt' => (string) $row['updated_at'],

@@ -3915,10 +3915,11 @@ async function renderGlobalSearch(routeQuery) {
   form.querySelectorAll('select').forEach(select => select.onchange = navigate);
 }
 
-function currentProjectShareScope() {
-  if (state.currentFolderId) {
-    const folder = folderById(state.currentFolderId);
-    return { scopeType:'FOLDER', projectStatus:'', folderId:state.currentFolderId, name:`Ordner: ${folder?.name || 'Projektordner'}`, copy:`Der Ordner „${folder?.name || 'Projektordner'}“ wird einschließlich seiner Unterordner und aller regulären Projektstatus freigegeben.` };
+function currentProjectShareScope(folderId = '') {
+  if (folderId) {
+    const folder = folderById(folderId);
+    if (!folder) throw new Error('Der Ordner ist nicht mehr verfügbar.');
+    return { scopeType:'FOLDER', projectStatus:'', folderId, name:`Ordner: ${folder.name}`, copy:`Der Ordner „${folder.name}“ wird einschließlich seiner Unterordner freigegeben. Welche Projektstatus sichtbar sind, legst du unten fest.` };
   }
   if (regularProjectStatuses.includes(state.projectStatusFilter)) {
     const labels = { idea:'Projektideen', active:'Aktive Projekte', paused:'Pausierte Projekte', completed:'Abgeschlossene Projekte' };
@@ -3937,35 +3938,56 @@ async function copyPublicShareUrl(url, button) {
   else window.prompt('Freigabelink kopieren:', url);
 }
 
-function renderProjectShareList(shares) {
-  const list = $('#project-share-list');
+function renderProjectShareList(shares, management = false) {
+  const list = $(management ? '#project-share-management-list' : '#project-share-list');
+  const refresh = management ? renderProjectShares : loadProjectShares;
   const activeCount = shares.filter(share => share.active && !share.expired).length;
-  $('#project-share-count').textContent = `${activeCount} aktiv`;
+  $(management ? '#project-share-management-count' : '#project-share-count').textContent = `${shares.length} Freigaben · ${activeCount} aktiv`;
   list.innerHTML = shares.length ? shares.map(share => {
     const usable = share.active && !share.expired;
     const stateLabel = !share.active ? 'Deaktiviert' : share.expired ? 'Abgelaufen' : 'Aktiv';
-    return `<article class="project-share-row${usable ? '' : ' inactive'}"><div class="project-share-row-main"><div><strong>${escapeHtml(share.name)}</strong><span class="project-share-state ${usable ? 'active' : ''}">${stateLabel}</span></div><p>${escapeHtml(share.scopeLabel)} · ${share.projectCount} ${share.projectCount === 1 ? 'Projekt' : 'Projekte'}${share.expiresAt ? ` · bis ${escapeHtml(formatDate(share.expiresAt))}` : ''}</p><small>${escapeHtml(share.url)}</small></div><div class="project-share-row-actions">${usable ? `<a class="button secondary compact" href="${escapeHtml(share.url)}" target="_blank" rel="noopener">Vorschau</a><button class="button secondary compact" type="button" data-project-share-copy="${escapeHtml(share.id)}">Kopieren</button><details class="action-menu"><summary aria-label="Freigabeaktionen">${iconSvg('ellipsis')}</summary><div class="action-menu-panel"><button class="menu-item" type="button" data-project-share-rotate="${escapeHtml(share.id)}">Neuen Link erzeugen</button><button class="menu-item danger" type="button" data-project-share-disable="${escapeHtml(share.id)}">Freigabe deaktivieren</button></div></details>` : ''}</div></article>`;
-  }).join('') : '<div class="empty"><strong>Noch keine öffentlichen Freigaben.</strong>Erstelle oben einen Link für die aktuell geöffnete Projektansicht.</div>';
-  document.querySelectorAll('[data-project-share-copy]').forEach(button => button.onclick = () => copyPublicShareUrl(shares.find(share => share.id === button.dataset.projectShareCopy)?.url || '', button));
-  document.querySelectorAll('[data-project-share-rotate]').forEach(button => button.onclick = async () => {
+    return `<article class="project-share-row${usable ? '' : ' inactive'}"><div class="project-share-row-main"><div><strong>${escapeHtml(share.name)}</strong><span class="project-share-state ${usable ? 'active' : ''}">${stateLabel}</span></div><p>${escapeHtml(share.scopeLabel)} · ${share.projectCount} ${share.projectCount === 1 ? 'Projekt' : 'Projekte'}${share.expiresAt ? ` · bis ${escapeHtml(formatDate(share.expiresAt))}` : ' · Ohne Ablaufdatum'}</p><small>${escapeHtml(share.url)}</small></div><div class="project-share-row-actions">${usable ? `<a class="button secondary compact" href="${escapeHtml(share.url)}" target="_blank" rel="noopener">Vorschau</a><button class="button secondary compact" type="button" data-project-share-copy="${escapeHtml(share.id)}">Kopieren</button>` : ''}<button class="button secondary compact" type="button" data-project-share-edit="${escapeHtml(share.id)}">Bearbeiten</button><button class="button danger-button compact" type="button" data-project-share-delete="${escapeHtml(share.id)}">Löschen</button>${usable ? `<details class="action-menu"><summary aria-label="Freigabeaktionen">${iconSvg('ellipsis')}</summary><div class="action-menu-panel"><button class="menu-item" type="button" data-project-share-rotate="${escapeHtml(share.id)}">Neuen Link erzeugen</button><button class="menu-item danger" type="button" data-project-share-disable="${escapeHtml(share.id)}">Freigabe deaktivieren</button></div></details>` : ''}</div></article>`;
+  }).join('') : '<div class="empty"><strong>Noch keine öffentlichen Freigaben.</strong>Neue Ordnerfreigaben erstellst du über „Freigeben …“ im Drei-Punkte-Menü eines Ordners.</div>';
+  list.querySelectorAll('[data-project-share-edit]').forEach(button => button.onclick = () => openProjectShareDialog('', shares.find(share => share.id === button.dataset.projectShareEdit)));
+  list.querySelectorAll('[data-project-share-copy]').forEach(button => button.onclick = () => copyPublicShareUrl(shares.find(share => share.id === button.dataset.projectShareCopy)?.url || '', button));
+  list.querySelectorAll('[data-project-share-delete]').forEach(button => button.onclick = async () => {
+    const share = shares.find(candidate => candidate.id === button.dataset.projectShareDelete);
+    if (!share || !await confirmAction(`Freigabe „${share.name}“ endgültig löschen? Der Link wird sofort ungültig. Projekte und Ordner bleiben erhalten.`, { title:'Freigabe löschen', confirmLabel:'Endgültig löschen' })) return;
+    button.disabled = true;
+    try { await api(`/project-shares/${encodeURIComponent(share.id)}/permanent`, { method:'DELETE' }); toast('Freigabe gelöscht'); await refresh(); }
+    catch (error) { toast(error.message); button.disabled = false; }
+  });
+  list.querySelectorAll('[data-project-share-rotate]').forEach(button => button.onclick = async () => {
     const share = shares.find(candidate => candidate.id === button.dataset.projectShareRotate);
     if (!share || !await confirmAction(`Für „${share.name}“ einen neuen Link erzeugen? Der bisherige Link funktioniert danach nicht mehr.`, { title:'Freigabelink erneuern', confirmLabel:'Neuen Link erzeugen' })) return;
-    try { const updated = await api(`/project-shares/${encodeURIComponent(share.id)}/rotate`, { method:'POST', body:'{}' }); await copyPublicShareUrl(updated.url); toast('Neuer Freigabelink erstellt und kopiert'); await loadProjectShares(); }
-    catch (error) { $('#project-share-error').textContent = error.message; }
+    try { const updated = await api(`/project-shares/${encodeURIComponent(share.id)}/rotate`, { method:'POST', body:'{}' }); await copyPublicShareUrl(updated.url); toast('Neuer Freigabelink erstellt und kopiert'); await refresh(); }
+    catch (error) { toast(error.message); }
   });
-  document.querySelectorAll('[data-project-share-disable]').forEach(button => button.onclick = async () => {
+  list.querySelectorAll('[data-project-share-disable]').forEach(button => button.onclick = async () => {
     const share = shares.find(candidate => candidate.id === button.dataset.projectShareDisable);
     if (!share || !await confirmAction(`Die öffentliche Freigabe „${share.name}“ deaktivieren? Der Link ist danach sofort nicht mehr erreichbar.`, { title:'Freigabe deaktivieren', confirmLabel:'Deaktivieren' })) return;
-    try { await api(`/project-shares/${encodeURIComponent(share.id)}`, { method:'DELETE' }); toast('Freigabe deaktiviert'); await loadProjectShares(); }
-    catch (error) { $('#project-share-error').textContent = error.message; }
+    try { await api(`/project-shares/${encodeURIComponent(share.id)}/deactivate`, { method:'POST', body:'{}' }); toast('Freigabe deaktiviert'); await refresh(); }
+    catch (error) { toast(error.message); }
   });
+}
+
+async function renderProjectShares() {
+  if (!state.user?.admin) {
+    $('#main').innerHTML = standardPageHeader({ title:'Freigaben', description:'Nur Administratoren können öffentliche Freigaben verwalten.', icon:'share-2' });
+    return;
+  }
+  const data = await api('/project-shares');
+  document.title = 'Freigaben · Projekte · Logbuch';
+  $('#main').innerHTML = `${standardPageHeader({ title:'Freigaben', description:'Öffentliche Projektübersichten verwalten. Änderungen gelten sofort für bestehende Links.', icon:'share-2' })}<section class="project-page-content project-share-management"><div class="project-share-list-head"><h2>Alle Freigaben</h2><span id="project-share-management-count"></span></div><div id="project-share-management-list" class="project-share-list"></div></section>`;
+  renderProjectShareList(data.shares || [], true);
 }
 
 async function loadProjectShares() {
   try {
     const data = await api('/project-shares');
     $('#project-share-base-url').textContent = `Die Links verwenden die öffentliche Webadresse ${data.baseUrl}. Ist sie nur im Heimnetz erreichbar, gilt das auch für diese Freigaben.`;
-    renderProjectShareList(data.shares || []);
+    const folderId = $('#project-share-form').elements.folderId.value;
+    renderProjectShareList((data.shares || []).filter(share => !folderId || (share.scopeType === 'FOLDER' && share.folderId === folderId)));
     return data;
   } catch (error) {
     $('#project-share-error').textContent = error.message;
@@ -3974,21 +3996,39 @@ async function loadProjectShares() {
   }
 }
 
-async function openProjectShareDialog() {
+async function openProjectShareDialog(folderId = '', share = null) {
   const dialog = $('#project-share-dialog');
   const form = $('#project-share-form');
-  const scope = currentProjectShareScope();
+  const scope = share || currentProjectShareScope(folderId);
+  form.elements.shareId.value = share?.id || '';
+  $('#project-share-dialog-title').textContent = share ? 'Freigabe bearbeiten' : 'Öffentliche Projektübersicht';
   form.elements.scopeType.value = scope.scopeType;
   form.elements.projectStatus.value = scope.projectStatus;
-  form.elements.folderId.value = scope.folderId;
+  form.elements.folderId.value = scope.folderId || '';
   form.elements.name.value = scope.name;
-  form.elements.expiresAt.value = '';
-  $('#project-share-dialog-copy').textContent = `${scope.copy} Die Freigabe umfasst diesen Bereich unabhängig von der lokalen Suche und den Tagfiltern.${scope.scopeType !== 'STATUS' ? ' Der lokale Statusfilter wird ebenfalls nicht übernommen.' : ''}`;
-  form.querySelector('[type="submit"]').textContent = scope.scopeType === 'STATUS' ? 'Freigabelink erstellen' : 'Freigabelink für alle Status erstellen';
+  form.elements.expiresAt.value = share?.expiresAt || '';
+  updateDatePresentation(form.elements.expiresAt);
+  form.elements.active.checked = share?.active ?? true;
+  $('#project-share-active-field').hidden = !share;
+  $('#project-share-single-status-field').hidden = !share || scope.scopeType !== 'STATUS';
+  form.elements.singleStatus.value = scope.projectStatus || 'active';
+  $('#project-share-dialog-copy').textContent = share
+    ? `${share.scopeLabel}. Der bestehende Link bleibt erhalten. Änderungen an Sichtbarkeit und Ablaufdatum gelten sofort; deaktivierte Links werden durch Aktivieren wieder erreichbar.`
+    : `${scope.copy} Die lokale Suche und die Ansichtsfilter beeinflussen die Freigabe nicht.`;
+  const statusFields = $('#project-share-status-fields');
+  statusFields.hidden = scope.scopeType !== 'FOLDER';
+  form.elements.statusMode.value = share?.projectStatuses ? 'selected' : 'all';
+  const statusOptions = $('#project-share-status-options');
+  statusOptions.hidden = form.elements.statusMode.value !== 'selected';
+  statusOptions.querySelectorAll('input').forEach(input => { input.checked = !share?.projectStatuses || share.projectStatuses.includes(input.value); });
+  form.elements.statusMode.onchange = () => { statusOptions.hidden = form.elements.statusMode.value !== 'selected'; };
+  form.querySelector('[type="submit"]').textContent = share ? 'Änderungen speichern' : 'Freigabelink erstellen';
   $('#project-share-error').textContent = '';
   $('#project-share-list').innerHTML = '<div class="empty"><strong>Freigaben werden geladen …</strong></div>';
-  dialog.showModal();
-  await loadProjectShares();
+  $('.project-share-list-section', form).hidden = Boolean(share);
+  $('#project-share-base-url').hidden = Boolean(share);
+  if (!dialog.open) dialog.showModal();
+  if (!share) await loadProjectShares();
 }
 
 async function renderProjects() {
@@ -5065,6 +5105,7 @@ function setProjectsMenu(open, activeStatus = '') {
   toggle.title = 'Ordnerstruktur öffnen';
   subnav.hidden = !open;
   badge.hidden = false;
+  $('#project-shares-link').hidden = !state.user?.admin;
   document.querySelectorAll('[data-projects-route]').forEach(node => node.classList.toggle('active', node.dataset.projectsRoute === activeStatus));
   updateProjectNavigationLink();
 }
@@ -5093,6 +5134,7 @@ function currentInventoryMenuRoute() {
 
 function currentProjectMenuStatus() {
   const hash = location.hash;
+  if (hash.startsWith('#/project-shares')) return 'shares';
   if (hash.startsWith('#/archive')) return 'archived';
   if (hash.startsWith('#/trash')) return 'trashed';
   return '';
@@ -5126,7 +5168,8 @@ async function route() {
   const directEntry = directProject && pathParts[2] === 'e' && pathParts[3];
   const parts = hashParts.length ? hashParts : directProject ? ['projects', pathParts[1]] : [];
   try {
-    if (parts[0] === 'todos') { setNav('todos'); await renderTodos(); }
+    if (parts[0] === 'project-shares') { setNav('projects'); await renderProjectShares(); }
+    else if (parts[0] === 'todos') { setNav('todos'); await renderTodos(); }
     else if (parts[0] === 'inventory') {
       setNav('inventory');
       if (parts[1] === 'replenishment') {
@@ -7230,11 +7273,24 @@ $('#project-share-form').addEventListener('submit', async event => {
   event.preventDefault();
   const form = event.currentTarget;
   if (!form.reportValidity()) return;
+  const projectStatuses = form.elements.scopeType.value === 'FOLDER' && form.elements.statusMode.value === 'selected'
+    ? [...form.querySelectorAll('[name="projectStatuses"]:checked')].map(input => input.value) : null;
+  if (projectStatuses && !projectStatuses.length) {
+    $('#project-share-error').textContent = 'Bitte mindestens einen Projektstatus auswählen.';
+    return;
+  }
   const submit = form.querySelector('button[type="submit"]');
   submit.disabled = true;
   $('#project-share-error').textContent = '';
   try {
-    const share = await api('/project-shares', { method:'POST', body:JSON.stringify({ scopeType:form.elements.scopeType.value, projectStatus:form.elements.projectStatus.value, folderId:form.elements.folderId.value || null, name:form.elements.name.value, expiresAt:form.elements.expiresAt.value || '' }) });
+    const shareId = form.elements.shareId.value;
+    const share = await api(shareId ? `/project-shares/${encodeURIComponent(shareId)}` : '/project-shares', { method:shareId ? 'PATCH' : 'POST', body:JSON.stringify({ scopeType:form.elements.scopeType.value, projectStatus:shareId ? form.elements.singleStatus.value : form.elements.projectStatus.value, projectStatuses, folderId:form.elements.folderId.value || null, name:form.elements.name.value, expiresAt:form.elements.expiresAt.value || '', ...(shareId ? { active:form.elements.active.checked } : {}) }) });
+    if (shareId) {
+      $('#project-share-dialog').close();
+      toast('Freigabe aktualisiert – der Link bleibt unverändert');
+      if (location.hash === '#/project-shares') await renderProjectShares();
+      return;
+    }
     await copyPublicShareUrl(share.url);
     toast('Freigabelink erstellt und kopiert');
     form.elements.expiresAt.value = '';

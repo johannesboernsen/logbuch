@@ -97,6 +97,10 @@ test('Vollbackup sichert und ersetzt Projekte, Erinnerungen und das gesamte Lage
   const itemNote = await jsonRequest('/api/inventory-items/demo-item-schrauben-m4x30/notes', { method:'POST', body:JSON.stringify({ content:'Nur mit passender M-Kontur-Pressbacke verwenden.' }) });
   assert.equal(itemNote.response.status, 201);
 
+  const shareFolder = (await jsonRequest('/api/folders')).data.folders[0];
+  const share = await jsonRequest('/api/project-shares', { method:'POST', body:JSON.stringify({ scopeType:'FOLDER', folderId:shareFolder.id, projectStatuses:['idea', 'active'] }) });
+  assert.equal(share.response.status, 201, JSON.stringify(share.data));
+
   const exported = await fetch(`${baseUrl}/api/backup/full`, { headers:{ Cookie:cookie } });
   assert.equal(exported.status, 200, serverErrors.slice(-4000));
   assert.match(exported.headers.get('content-type') || '', /application\/x-tar/);
@@ -106,6 +110,7 @@ test('Vollbackup sichert und ersetzt Projekte, Erinnerungen und das gesamte Lage
   const manifest = JSON.parse(new TextDecoder().decode(files.get('manifest.json')));
   assert.equal(manifest.format, 'logbuch-full');
   assert.equal(manifest.version, 1);
+  assert.deepEqual(JSON.parse(manifest.tables.project_public_shares[0].project_statuses_json), ['idea', 'active']);
   assert.equal(manifest.projects.length, 11);
   assert.equal(manifest.tables.todos.some(todo => todo.title === 'Backup-Erinnerung'), true);
   assert.equal(manifest.tables.storage_locations.length, 15);
@@ -129,6 +134,11 @@ test('Vollbackup sichert und ersetzt Projekte, Erinnerungen und das gesamte Lage
   assert.equal(rejected.response.status, 422, `${JSON.stringify(rejected.data)}\n${serverErrors.slice(-4000)}`);
   assert.equal((await jsonRequest('/api/me')).response.status, 200, 'Die Sitzung muss nach dem zurückgerollten Import erhalten bleiben.');
   assert.equal((await jsonRequest('/api/projects')).data.projects.length, 11, 'Projekte müssen nach dem zurückgerollten Import erhalten bleiben.');
+
+  const invalidShareManifest = structuredClone(manifest);
+  invalidShareManifest.tables.project_public_shares[0].project_statuses_json = '[]';
+  const invalidShareArchive = await backupArchives.create([...files].map(([path, data]) => [path, path === 'manifest.json' ? JSON.stringify(invalidShareManifest) : data]));
+  assert.equal((await uploadBackup(invalidShareArchive)).response.status, 422);
 
   const cleared = await jsonRequest('/api/system/content', { method:'DELETE', body:'{}' });
   assert.equal(cleared.response.status, 200);
@@ -163,4 +173,19 @@ test('Vollbackup sichert und ersetzt Projekte, Erinnerungen und das gesamte Lage
   assert.deepEqual(Buffer.from(await restoredLogo.arrayBuffer()), logoBytes);
   assert.equal((await jsonRequest('/api/stock-transactions?itemId=demo-item-schrauben-m4x30')).data.transactions.length, 3);
   assert.equal((await jsonRequest('/api/audit')).data.events.some(event => event.action === 'data.full_backup_restored'), true);
+  const restoredShare = (await jsonRequest('/api/project-shares')).data.shares.find(candidate => candidate.id === share.data.id);
+  assert.deepEqual(restoredShare.projectStatuses, ['idea', 'active']);
+  assert.equal(restoredShare.token, share.data.token);
+
+  // Backups from 0.9.0 have no status selection: preserve their existing all-status behavior.
+  const legacyManifest = structuredClone(manifest);
+  legacyManifest.schemaVersion = 22;
+  legacyManifest.tables.project_public_shares.forEach(row => { delete row.project_statuses_json; });
+  const legacyArchive = await backupArchives.create([...files].map(([path, data]) => [path, path === 'manifest.json' ? JSON.stringify(legacyManifest) : data]));
+  const legacyRestore = await uploadBackup(legacyArchive);
+  assert.equal(legacyRestore.response.status, 200, JSON.stringify(legacyRestore.data));
+  cookie = ''; csrf = ''; await login();
+  const legacyShare = (await jsonRequest('/api/project-shares')).data.shares.find(candidate => candidate.id === share.data.id);
+  assert.equal(legacyShare.projectStatuses, null);
+  assert.equal(legacyShare.token, share.data.token);
 });

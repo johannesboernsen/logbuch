@@ -43,7 +43,7 @@ test('Artikel besitzen mehrere bearbeitbare Notizen in Artikel- und Lageransicht
   assert.match(script, /data-inventory-item-note-delete/);
   assert.match(script, /storageFinderItemInspector\(location, item, localEntry, stockData, notes, includeArchived\)/);
   assert.match(script, /api\(`\/inventory-items\/\$\{encodeURIComponent\(current\.id\)\}\/notes`\)/);
-  assert.match(styles, /\.inventory-item-note \{[^}]*border:1px solid var\(--line\);[^}]*border-radius:12px;/);
+  assert.match(styles, /\.inventory-item-note \{[^}]*border:1px solid var\(--line\);[^}]*border-radius:var\(--radius-panel\);/);
 });
 
 test('Artikelliste unterstützt Suche und Detaildarstellung; Archive liegen im Lagermenü', () => {
@@ -139,7 +139,7 @@ test('Detailabschnitte verwenden gemeinsame Flächen und Projektlisten-Trenner',
   assert.match(script, /function inventoryDetailSummary/);
   assert.match(script, /<div class="inventory-detail-section-body">/);
   assert.match(styles, /\.inventory-detail-section \{[^}]*border:0;[^}]*background:transparent;/);
-  assert.match(styles, /\.inventory-detail-section-body \{[^}]*border:1px solid var\(--line\);[^}]*border-radius:14px;[^}]*background:var\(--surface\);/);
+  assert.match(styles, /\.inventory-detail-section-body \{[^}]*border:1px solid var\(--line\);[^}]*border-radius:var\(--radius-panel\);[^}]*background:var\(--surface\);/);
   assert.match(styles, /\.inventory-detail-section > summary::before,[^{]+\{[^}]*height:1px;[^}]*background:var\(--line\);/);
   assert.match(styles, /\.inventory-detail-section \.inventory-stock-entry \{[^}]*border-bottom:1px solid var\(--line\);/);
   assert.match(styles, /\.inventory-detail-section \.inventory-reservation \{[^}]*border-bottom:1px solid var\(--line\);/);

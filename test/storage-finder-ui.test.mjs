@@ -56,7 +56,7 @@ test('Der Lagerrahmen passt inklusive Statusleiste und Außenabstand in die Fens
 test('Lager und Projekte nutzen den gemeinsamen abgerundeten Rahmen mit Außenabstand', async () => {
   const projects = await readFile(new URL('public/project-browser.js', root), 'utf8');
   assert.doesNotMatch(script + projects + styles, /storage-finder-edge-to-edge/);
-  assert.match(styles, /\.storage-finder-frame \{[^}]*border:1px solid var\(--line\);[^}]*border-radius:18px;[^}]*box-shadow:/);
+  assert.match(styles, /\.storage-finder-frame \{[^}]*border:1px solid var\(--line\);[^}]*border-radius:var\(--radius-frame\);[^}]*box-shadow:/);
   assert.match(projects, /class="storage-finder-frame project-browser-frame"/);
   assert.match(styles, /\.project-browser-frame \{ margin-top:22px; \}/);
   assert.match(script, /const bottomGap = main \? Number.parseFloat\(getComputedStyle\(main\).paddingBottom\)/);

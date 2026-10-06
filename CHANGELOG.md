@@ -4,6 +4,22 @@ Hier werden die wichtigen Änderungen des Logbuchs festgehalten. Die Einträge s
 
 ## [Unveröffentlicht]
 
+## [0.9.1] - 2026-10-06
+
+Öffentliche Projektfreigaben lassen sich zentral verwalten und nach Projektstatus einschränken. Die Freigabeansicht ist kompakter; gemeinsame, kleinere Eckenradien vereinheitlichen die Oberfläche.
+
+### Wichtigste Änderungen
+
+- Unter „Projekte → Freigaben“ lassen sich alle öffentlichen Freigaben zentral ansehen, bei gleichbleibendem Link bearbeiten, deaktivieren oder endgültig löschen. Name, Ablaufdatum und Statusauswahl sind änderbar; abgelaufene und deaktivierte Freigaben bleiben verwaltbar.
+- Ordnerfreigaben sind über „Freigeben …“ im Drei-Punkte-Menü des jeweiligen Ordners erreichbar. Pro Link können alle regulären Projektstatus oder mehrere ausgewählte Status freigegeben werden; die Auswahl gilt auch für Unterordner und neue Projekte. Bestehende Links bleiben unverändert.
+- Öffentliche Freigabeseiten verzichten auf technische Hinweise und Projektzähler. Der kompakte Titel vereint Ordnernamen und anklickbaren Pfad; ein Ablaufhinweis erscheint nur bei gesetztem Enddatum.
+- Ein Sortiersymbol in der Titelzeile öffnet die Sortieroptionen. Ordner bleiben vor den Projekten und werden separat alphabetisch auf- oder absteigend sortiert.
+- Logbuch, öffentliche Freigaben und Installation verwenden zentrale, reduzierte Eckenradien: 9 px für große Rahmen und Dialoge, 7 px für Inhaltsboxen, 6 px für Menüs und Standardfelder sowie 4 px für kompakte Bedienelemente. Runde Anzeigen und Druckmaße bleiben unverändert.
+
+### Technik und Kompatibilität
+
+- Datenbankschema 23 ergänzt die Statusauswahl von Ordnerfreigaben. Vollbackups sichern diese Auswahl; ältere Backups und bestehende Freigaben ohne Statusfilter bleiben kompatibel.
+
 ## [0.9.0] - 2026-10-06
 
 Eine neue horizontale Navigation und die Projekt-Spaltenansicht vereinheitlichen die Bedienung. Erscheinungsbild, Einstellungen und Lageransichten wurden weiter verfeinert.

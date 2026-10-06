@@ -65,7 +65,7 @@ test('Additive Lagermigrationen bleiben nach einer zurückgesetzten Schemaversio
     echo json_encode(['version' => (int) $reopenedPdo->query("SELECT value FROM meta WHERE key = 'schema_version'")->fetchColumn(), 'sortOrderCount' => count(array_filter($columns, fn($column) => $column === 'sort_order')), 'iconCount' => count(array_filter($columns, fn($column) => $column === 'icon')), 'hasType' => in_array('type', $columns, true)]);
   `);
   assert.equal(stderr, '');
-  assert.deepEqual(JSON.parse(stdout), { version:22, sortOrderCount:1, iconCount:1, hasType:false });
+  assert.deepEqual(JSON.parse(stdout), { version:23, sortOrderCount:1, iconCount:1, hasType:false });
 });
 
 test('DB verhindert negative und doppelte physische Bestände', async () => {

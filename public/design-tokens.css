@@ -1,0 +1,11 @@
+/* Shared geometry for the app, public shares and installer.
+ * Use semantic roles, not local pixel values. Preserve square joins (0),
+ * circular/pill shapes, decorative icons and physical print dimensions.
+ */
+:root {
+  --radius-frame:9px;
+  --radius-panel:7px;
+  --radius-menu:6px;
+  --radius-control:6px;
+  --radius-compact:4px;
+}

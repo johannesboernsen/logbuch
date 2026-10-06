@@ -20,7 +20,7 @@ final class Application
         'tags' => ['id', 'name', 'normalized_name', 'active', 'created_at'],
         'settings' => ['key', 'value'],
         'folders' => ['id', 'parent_id', 'name', 'description', 'priority', 'flagged', 'icon', 'tag_ids_json', 'created_by', 'created_at', 'updated_at'],
-        'project_public_shares' => ['id', 'token', 'name', 'scope_type', 'project_status', 'folder_id', 'expires_at', 'active', 'created_by', 'created_at', 'updated_at'],
+        'project_public_shares' => ['id', 'token', 'name', 'scope_type', 'project_status', 'project_statuses_json', 'folder_id', 'expires_at', 'active', 'created_by', 'created_at', 'updated_at'],
         'todos' => ['id', 'user_id', 'title', 'parent_id', 'completed_at', 'cleared_at', 'repeat_interval', 'repeat_unit', 'repeat_due_at', 'repeat_waiting_at', 'sort_order', 'created_at', 'updated_at'],
         'storage_locations' => ['id', 'parent_id', 'name', 'description', 'status', 'created_at', 'updated_at', 'sort_order', 'icon'],
         'inventory_categories' => ['id', 'parent_id', 'name', 'description', 'icon', 'sort_order', 'created_at', 'updated_at'],
@@ -192,11 +192,26 @@ final class Application
                 $this->audit($user['id'], 'project_share.rotated', (string) $share['id']);
                 $this->json(200, [...$share, 'url' => $this->projectShareUrl((string) $share['token'])]);
             }
-            if (preg_match('#^/api/project-shares/([^/]+)$#', $path, $match) && $method === 'DELETE') {
+            if ((preg_match('#^/api/project-shares/([^/]+)/deactivate$#', $path, $match) && $method === 'POST')
+                || (preg_match('#^/api/project-shares/([^/]+)$#', $path, $match) && $method === 'DELETE')) {
                 $this->requireAdmin($user);
                 $share = $this->projectShares->deactivate(rawurldecode($match[1]));
                 $this->audit($user['id'], 'project_share.deactivated', (string) $share['id']);
                 $this->json(200, $share);
+            }
+            if (preg_match('#^/api/project-shares/([^/]+)(/permanent)?$#', $path, $match)) {
+                $this->requireAdmin($user);
+                $id = rawurldecode($match[1]);
+                if ($method === 'PATCH' && empty($match[2])) {
+                    $share = $this->projectShares->update($id, $input);
+                    $this->audit($user['id'], 'project_share.updated', $id);
+                    $this->json(200, [...$share, 'url' => $this->projectShareUrl((string) $share['token'])]);
+                }
+                if ($method === 'DELETE' && !empty($match[2])) {
+                    $this->projectShares->delete($id);
+                    $this->audit($user['id'], 'project_share.deleted', $id);
+                    $this->json(200, ['deleted' => true]);
+                }
             }
             if ($path === '/api/system' && $method === 'GET') {
                 $this->json(200, $this->systemStatus());
@@ -2304,7 +2319,13 @@ final class Application
                 if (!is_array($row)) throw new HttpError(422, 'Die Tabelle „' . $table . '“ im Vollbackup ist ungültig.');
                 foreach ($columns as $column) {
                     if ($schemaVersion < 19 && $table === 'inventory_items' && $column === 'tracking_mode') continue;
+                    if ($schemaVersion < 23 && $table === 'project_public_shares' && $column === 'project_statuses_json') continue;
                     if (!array_key_exists($column, $row)) throw new HttpError(422, 'In der Tabelle „' . $table . '“ fehlt „' . $column . '“.');
+                }
+                if ($table === 'project_public_shares' && $schemaVersion >= 23 && $row['project_statuses_json'] !== null) {
+                    $statuses = is_string($row['project_statuses_json']) ? json_decode($row['project_statuses_json'], true) : null;
+                    if (!is_array($statuses) || $row['scope_type'] !== 'FOLDER') throw new HttpError(422, 'Ungültige Statusauswahl einer Ordnerfreigabe im Vollbackup.');
+                    ProjectShareStore::validateProjectStatuses($statuses);
                 }
             }
         }
@@ -2375,6 +2396,9 @@ final class Application
         $tables['inventory_import_batches'] ??= [];
         $tables['inventory_import_batch_items'] ??= [];
         $tables['project_public_shares'] ??= [];
+        if ((int) ($manifest['schemaVersion'] ?? 0) < 23) {
+            $tables['project_public_shares'] = array_map(static fn(array $row): array => [...$row, 'project_statuses_json' => null], $tables['project_public_shares']);
+        }
         if ((int) ($manifest['schemaVersion'] ?? 0) < 19) {
             $tables['inventory_items'] = array_map(static fn(array $row): array => ['tracking_mode' => 'QUANTITY', ...$row], $tables['inventory_items']);
         }

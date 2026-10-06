@@ -7,7 +7,8 @@
   <meta name="color-scheme" content="light dark">
   <title>Logbuch</title>
   <link rel="icon" href="/favicon.svg?v=20261006-2" type="image/svg+xml">
-  <link rel="stylesheet" href="/styles.css?v=20261006-020">
+  <link rel="stylesheet" href="/design-tokens.css?v=20261006-002">
+  <link rel="stylesheet" href="/styles.css?v=20261006-023">
 </head>
 <body>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
@@ -41,6 +42,7 @@
         <div class="projects-menu">
           <a id="projects-link" aria-expanded="false" aria-controls="projects-subnav" class="nav-item" href="/#/projects?view=columns" data-route="projects" aria-label="Projekte" title="Ordnerstruktur öffnen"><span data-project-nav-icon aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M12 3 20 7.5v9L12 21l-8-4.5v-9L12 3Z"></path><path d="m4 7.5 8 4.5 8-4.5M12 12v9"></path></svg></span><b>Projekte</b><i id="project-nav-count" class="todo-nav-count" title="Anzahl der aktiven Projekte" aria-label="Anzahl der aktiven Projekte">0</i></a>
           <div id="projects-subnav" class="settings-subnav projects-subnav" hidden>
+            <a href="/#/project-shares" data-projects-route="shares" id="project-shares-link" hidden><span>Freigaben</span></a>
             <a href="/#/archive" data-projects-route="archived"><span>Archiv</span><small class="project-nav-count" data-project-count="archived">0</small></a>
             <a href="/#/trash" data-projects-route="trashed"><span>Papierkorb</span><small class="project-nav-count" data-project-count="trashed">0</small></a>
           </div>
@@ -472,11 +474,24 @@
 
   <dialog id="project-share-dialog" class="project-share-dialog">
     <form id="project-share-form" method="dialog" novalidate>
+      <input type="hidden" name="shareId">
       <input type="hidden" name="scopeType">
       <input type="hidden" name="projectStatus">
       <input type="hidden" name="folderId">
-      <div class="dialog-head"><div><h2>Öffentliche Projektübersicht</h2><p id="project-share-dialog-copy" class="dialog-copy"></p></div><button class="icon-button" type="button" value="cancel" aria-label="Schließen">×</button></div>
+      <div class="dialog-head"><div><h2 id="project-share-dialog-title">Öffentliche Projektübersicht</h2><p id="project-share-dialog-copy" class="dialog-copy"></p></div><button class="icon-button" type="button" value="cancel" aria-label="Schließen">×</button></div>
       <section class="project-share-explanation"><strong>Ohne Anmeldung sichtbar</strong><p>Veröffentlicht werden ausschließlich Projektname, Beschreibung, Status, Fälligkeit und die benötigte Ordnerstruktur. Projektinhalte und Dateien bleiben geschützt.</p></section>
+      <fieldset id="project-share-status-fields" class="project-share-status-fields" hidden><legend>Sichtbare Projekte</legend>
+        <label>Projektstatus<select name="statusMode"><option value="all">Alle Projekte des Ordners</option><option value="selected">Nur ausgewählte Status</option></select></label>
+        <div id="project-share-status-options" hidden>
+          <label class="checkbox-line"><input type="checkbox" name="projectStatuses" value="idea" checked>Ideen</label>
+          <label class="checkbox-line"><input type="checkbox" name="projectStatuses" value="active" checked>Aktive Projekte</label>
+          <label class="checkbox-line"><input type="checkbox" name="projectStatuses" value="paused" checked>Pausierte Projekte</label>
+          <label class="checkbox-line"><input type="checkbox" name="projectStatuses" value="completed" checked>Abgeschlossene Projekte</label>
+        </div>
+        <p class="field-hint">Gilt auch für Unterordner und künftig hinzugefügte Projekte. Archiv und Papierkorb bleiben ausgeschlossen. Bestehende Freigabelinks behalten ihre bisherige Auswahl.</p>
+      </fieldset>
+      <label id="project-share-single-status-field" hidden>Projektstatus<select name="singleStatus"><option value="idea">Ideen</option><option value="active">Aktive Projekte</option><option value="paused">Pausierte Projekte</option><option value="completed">Abgeschlossene Projekte</option></select></label>
+      <label id="project-share-active-field" class="checkbox-line" hidden><input type="checkbox" name="active">Freigabe aktiv – der Link ist ohne Anmeldung erreichbar</label>
       <div class="project-share-create-fields"><label><span class="field-label-line">Bezeichnung</span><input name="name" maxlength="160" required></label><label><span class="field-label-line">Ablaufdatum <span class="optional">optional</span></span><input name="expiresAt" type="date" data-calendar-only></label></div>
       <p id="project-share-base-url" class="field-hint"></p>
       <p id="project-share-error" class="form-error"></p>
@@ -563,9 +578,9 @@
   </dialog>
 
   <script src="/project-navigation.js?v=20261006-002" defer></script>
-  <script src="/project-browser.js?v=20261006-006" defer></script>
+  <script src="/project-browser.js?v=20261006-007" defer></script>
   <script src="/header-navigation.js?v=20261006-005" defer></script>
   <script src="/favicon.js?v=20261006-003" defer></script>
-  <script src="/app.js?v=20261006-017" defer></script>
+  <script src="/app.js?v=20261006-019" defer></script>
 </body>
 </html>

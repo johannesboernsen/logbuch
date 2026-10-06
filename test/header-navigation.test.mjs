@@ -50,8 +50,8 @@ test('Projekte öffnet direkt die Ordnerstruktur und bietet Archiv und Papierkor
   assert.match(html, /<a id="projects-link"[^>]+href="\/#\/projects\?view=columns"/);
   assert.doesNotMatch(html, /id="projects-toggle"|id="inventory-toggle"/);
   const menu = html.split('id="projects-subnav"')[1].split('</div>')[0];
-  assert.deepEqual([...menu.matchAll(/data-projects-route="([^"]+)"/g)].map(match => match[1]), ['archived', 'trashed']);
-  assert.equal((menu.match(/<a /g) || []).length, 2);
+  assert.deepEqual([...menu.matchAll(/data-projects-route="([^"]+)"/g)].map(match => match[1]), ['shares', 'archived', 'trashed']);
+  assert.equal((menu.match(/<a /g) || []).length, 3);
   assert.doesNotMatch(html + app + browser, /data-pin-project-folder|project-folder-shortcuts|renderProjectFolderShortcuts/);
   assert.match(app, /link.href = projectBrowserHref\(null, '', 'columns'\)/);
 });

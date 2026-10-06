@@ -35,7 +35,8 @@ function projectColumnCreateControl(folderId) {
 
 function projectFolderMenu(folder) {
   if (!folder || !mayEditProjects()) return '';
-  return contextActionMenu(`Aktionen für ${folder.name}`, `<button class="menu-item" type="button" data-edit-folder="${escapeHtml(folder.id)}">Ordner bearbeiten</button><button class="menu-item" type="button" data-project-move="folder:${escapeHtml(folder.id)}">Verschieben …</button>`, { className:'storage-finder-column-menu' });
+  const sharing = state.user.admin ? `<button class="menu-item" type="button" data-folder-share="${escapeHtml(folder.id)}">Freigeben …</button>` : '';
+  return contextActionMenu(`Aktionen für ${folder.name}`, `<button class="menu-item" type="button" data-edit-folder="${escapeHtml(folder.id)}">Ordner bearbeiten</button><button class="menu-item" type="button" data-project-move="folder:${escapeHtml(folder.id)}">Verschieben …</button>${sharing}`, { className:'storage-finder-column-menu' });
 }
 
 function projectColumnRow(project) {
@@ -115,13 +116,13 @@ function selectProjectPreview(project, link) {
 }
 
 async function renderProjectColumns() {
-  const head = standardPageHeader({ title:'Projekte', description:'Ordner und Projekte organisieren.', icon:'box', actions:`${projectListControls(false, state.projects.filter(matchesProjectStatus))}${state.user.admin ? '<button class="button secondary compact" type="button" data-open-project-share>Freigeben</button>' : ''}`, className:'project-browser-page-head', toolbar:projectBrowserToolbar() });
+  const head = standardPageHeader({ title:'Projekte', description:'Ordner und Projekte organisieren.', icon:'box', actions:`${projectListControls(false, state.projects.filter(matchesProjectStatus))}${state.user.admin && !state.currentFolderId ? '<button class="button secondary compact" type="button" data-open-project-share>Freigeben</button>' : ''}`, className:'project-browser-page-head', toolbar:projectBrowserToolbar() });
   $('#main').innerHTML = `${head}<div class="storage-finder-frame project-browser-frame"><div class="storage-finder-shell" data-storage-finder-shell data-project-browser-columns></div><footer class="storage-finder-statusbar"></footer></div>`;
   bindProjectListControls(false);
   bindTagFilterSummary();
   bindProjectStatusFilter();
   updateProjectNavigationLink();
-  $('[data-open-project-share]')?.addEventListener('click', openProjectShareDialog);
+  $('[data-open-project-share]')?.addEventListener('click', () => openProjectShareDialog());
   document.title = 'Projekte · Logbuch';
 }
 
@@ -175,6 +176,10 @@ function openProjectMoveDialog(entity) {
 }
 
 function bindProjectBrowserActions() {
+  document.querySelectorAll('[data-folder-share]').forEach(button => button.onclick = () => {
+    button.closest('details')?.removeAttribute('open');
+    openProjectShareDialog(button.dataset.folderShare);
+  });
   bindFolderActions();
   bindProjectActions();
   bindProjectMoveButtons();

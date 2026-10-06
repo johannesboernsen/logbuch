@@ -246,6 +246,10 @@ final class Database
                     $sql = 'CREATE INDEX IF NOT EXISTS inventory_items_tracking_status_name ON inventory_items(tracking_mode, status, name)';
                 }
             }
+            if ($version === 23) {
+                $shareColumns = array_column($this->pdo->query('PRAGMA table_info(project_public_shares)')->fetchAll(), 'name');
+                if (in_array('project_statuses_json', $shareColumns, true)) $sql = 'SELECT 1';
+            }
             $this->pdo->beginTransaction();
             try {
                 $this->pdo->exec($sql);

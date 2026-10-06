@@ -94,27 +94,30 @@ function projectSortControl(sort) {
     ['title:desc','Projektname · Z–A'],
     ['status:asc','Status · Idee bis Abgeschlossen'],
   ];
-  return `<label class="public-sort"><span>Sortieren nach</span><select data-project-sort>${options.map(([value, label]) => `<option value="${value}"${value === sort ? ' selected' : ''}>${label}</option>`).join('')}</select></label>`;
+  return `<details class="public-sort"><summary aria-label="Projekte sortieren" title="Projekte sortieren"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h12M3 12h8M3 18h4M18 5v14m-3-3 3 3 3-3"/></svg></summary><div class="public-sort-options" role="group" aria-label="Sortierung">${options.map(([value, label]) => `<button type="button" data-project-sort="${value}" aria-pressed="${value === sort}">${label}</button>`).join('')}</div></details>`;
 }
 
 function render(data) {
+  const name = data.rootFolderKey ? data.name.replace(/^Ordner:\s*/, '') : data.name;
   const folderKey = currentFolderKey(data);
-  const folders = data.folders.filter(folder => folder.parentKey === folderKey).sort((a,b) => a.name.localeCompare(b.name, 'de'));
   const sort = selectedProjectSort();
+  const folderDirection = sort === 'title:desc' ? -1 : 1;
+  const folders = data.folders.filter(folder => folder.parentKey === folderKey).sort((a,b) => folderDirection * a.name.localeCompare(b.name, 'de', { sensitivity:'base', numeric:true }));
   const projects = sortedProjects(data.projects.filter(project => project.folderKey === folderKey), sort);
   const chain = folderChain(data, folderKey);
   const rootLink = data.rootFolderKey || null;
-  const crumbs = `<nav class="public-breadcrumbs" aria-label="Ordnerpfad"><a href="${folderLink(rootLink)}">${escapeHtml(data.name)}</a>${chain.filter(folder => folder.key !== data.rootFolderKey).map(folder => `<span>›</span><a href="${folderLink(folder.key)}">${escapeHtml(folder.name)}</a>`).join('')}</nav>`;
+  const heading = folderKey === rootLink ? `<h1>${escapeHtml(name)}</h1>` : `<nav class="public-title-path" aria-label="Ordnerpfad"><h1><a href="${folderLink(rootLink)}">${escapeHtml(name)}</a>${chain.filter(folder => folder.key !== rootLink).map(folder => ` <span class="public-title-separator" aria-hidden="true">›</span> ${folder.key === folderKey ? `<span aria-current="page">${escapeHtml(folder.name)}</span>` : `<a href="${folderLink(folder.key)}">${escapeHtml(folder.name)}</a>`}`).join('')}</h1></nav>`;
   const folderCards = folders.map(folder => `<a class="public-folder-card" href="${folderLink(folder.key)}"><span class="public-folder-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M3.5 6.5h6l2 2h9v9.5a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2V6.5Z"></path><path d="M3.5 9h17"></path></svg></span><span><strong>${escapeHtml(folder.name)}</strong><small>${escapeHtml(folder.description || 'Ordner öffnen')}</small></span><b aria-hidden="true">›</b></a>`).join('');
-  const expiry = data.expiresAt ? `<span>Freigabe gültig bis ${escapeHtml(formatDate(data.expiresAt))}</span>` : '<span>Freigabe ohne Ablaufdatum</span>';
-  main.innerHTML = `<section class="public-share-intro"><div><span class="public-kicker">${escapeHtml(data.scopeLabel)}</span><h1>${escapeHtml(data.name)}</h1><p>${data.projects.length} ${data.projects.length === 1 ? 'Projekt' : 'Projekte'} in dieser freigegebenen Übersicht</p></div>${expiry}</section>${crumbs}<section class="public-content">${folderCards ? `<div class="public-folders">${folderCards}</div>` : ''}${projects.length ? `<section class="public-project-section"><div class="public-project-toolbar"><strong>${projects.length} ${projects.length === 1 ? 'Projekt' : 'Projekte'}</strong>${projectSortControl(sort)}</div><div class="public-project-list"><div class="public-project-list-head" aria-hidden="true"><span>Projekt</span><span>Status</span><span>Fälligkeit</span></div>${projects.map(projectRow).join('')}</div></section>` : !folders.length ? '<div class="public-empty"><strong>Hier sind keine Projekte enthalten.</strong><p>Die freigegebene Übersicht wird automatisch aktualisiert.</p></div>' : ''}</section>`;
-  document.querySelector('[data-project-sort]')?.addEventListener('change', event => {
+  const expiry = data.expiresAt ? `<span>Freigabe gültig bis ${escapeHtml(formatDate(data.expiresAt))}</span>` : '';
+  main.innerHTML = `<section class="public-share-intro"><div class="public-share-title">${heading}${expiry}</div>${folders.length || projects.length ? `<div class="public-project-toolbar">${projectSortControl(sort)}</div>` : ''}</section><section class="public-content">${folderCards ? `<div class="public-folders">${folderCards}</div>` : ''}${projects.length ? `<section class="public-project-section"><div class="public-project-list"><div class="public-project-list-head" aria-hidden="true"><span>Projekt</span><span>Status</span><span>Fälligkeit</span></div>${projects.map(projectRow).join('')}</div></section>` : !folders.length ? '<div class="public-empty"><strong>Hier sind keine Projekte enthalten.</strong><p>Die freigegebene Übersicht wird automatisch aktualisiert.</p></div>' : ''}</section>`;
+  document.querySelectorAll('[data-project-sort]').forEach(button => button.addEventListener('click', event => {
     const url = new URL(location.href);
-    url.searchParams.set('sort', event.currentTarget.value);
+    url.searchParams.set('sort', event.currentTarget.dataset.projectSort);
     history.replaceState(null, '', `${url.pathname}${url.search}`);
     render(data);
-  });
-  document.title = `${data.name} · Projektübersicht`;
+    document.querySelector('.public-sort summary')?.focus();
+  }));
+  document.title = `${name} · Projektübersicht`;
 }
 
 async function load() {
@@ -131,4 +134,15 @@ async function load() {
 }
 
 window.addEventListener('popstate', load);
+window.addEventListener('click', event => {
+  const menu = document.querySelector('.public-sort[open]');
+  if (menu && !menu.contains(event.target)) menu.open = false;
+});
+window.addEventListener('keydown', event => {
+  const menu = document.querySelector('.public-sort[open]');
+  if (event.key === 'Escape' && menu) {
+    menu.open = false;
+    menu.querySelector('summary').focus();
+  }
+});
 load();
