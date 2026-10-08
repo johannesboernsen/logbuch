@@ -743,10 +743,7 @@ test('Große Projektarchive werden serverseitig importiert', async () => {
     ['manifest.json', JSON.stringify({ format:'logbuch-projects', version:1, exportedAt:'2026-08-23T20:00:00Z', tags:[], folders:[], serverSettings:null, projects:[project] })],
     [`projects/${importedProjectId}/attachments/${fileId}/original.bin`, imageBytes],
   ]);
-  const payload = new FormData();
-  payload.append('archive', archive, 'server-import.tar');
-  payload.append('conflict', 'skip');
-  const response = await fetch(`${baseUrl}/api/import/projects-archive`, { method:'POST', headers:{ Cookie:cookie, 'X-Logbuch-CSRF':csrf, Accept:'application/json' }, body:payload });
+  const response = await fetch(`${baseUrl}/archive-upload.php?kind=projects&conflict=skip`, { method:'POST', headers:{ Cookie:cookie, 'X-Logbuch-CSRF':csrf, 'Content-Type':'application/x-tar', Accept:'application/json' }, body:archive });
   const result = await response.json();
   assert.equal(response.status, 200, `${JSON.stringify(result)}\n${serverErrors.slice(-4000)}`);
   assert.deepEqual(result, { imported:1, skipped:0, filesImported:1 });

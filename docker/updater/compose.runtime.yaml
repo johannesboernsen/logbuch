@@ -19,6 +19,7 @@ services:
     restart: unless-stopped
     volumes:
       - logbuch-data:/var/lib/logbuch
+      - logbuch-updater-state:/var/lib/logbuch-private
       - /var/run/docker.sock:/var/run/docker.sock
     environment:
       TZ: ${LOGBUCH_TIMEZONE}
@@ -33,3 +34,6 @@ volumes:
   logbuch-data:
     external: true
     name: logbuch-data
+  logbuch-updater-state:
+    external: true
+    name: logbuch-updater-state

@@ -378,7 +378,7 @@ test('Einzelne Projekte lassen sich als Rohdaten und farbiges PDF exportieren', 
   assert.match(ui, /\/api\/backup\/projects\/\$\{encodeURIComponent\(project\.id\)\}/);
   assert.match(ui, /href="\/api\/backup\/projects"/);
   assert.match(ui, /loadUsers\(\), loadProjects\(\), loadTags\(\), loadFolders\(\), loadServerSettings\(\), loadStorageStats\(\)/);
-  assert.match(ui, /api\('\/import\/projects-archive'/);
+  assert.match(ui, /archive-upload\.php\?kind=projects/);
   assert.match(ui, /projects\/\$\{encodeURIComponent\(project\.id\)\}\/export/);
   assert.match(ui, /renderProjectExport/);
   assert.match(ui, /projectPrintMarkup\(project, true\)/);
@@ -386,7 +386,7 @@ test('Einzelne Projekte lassen sich als Rohdaten und farbiges PDF exportieren', 
   assert.match(ui, /file\.description/);
   assert.match(ui, /attachmentEntity\(file\.association\.collection/);
   assert.match(ui, /Projekt- oder Backup-Archiv/);
-  assert.match(ui, /payload\.append\('archive', selectedProjects/);
+  assert.match(ui, /body:selectedProjects/);
   assert.match(css, /\.project-export-mode \.project-print-header img \{ filter:none; \}/);
   assert.match(css, /\.project-export-mode \.project-print-section-head \{ border-bottom-color:var\(--brand-red\); \}/);
   assert.match(css, /\.project-export-image/);
@@ -409,7 +409,7 @@ test('Projektdateien sind zentral und an allen Inhaltsarten verfügbar', async (
   assert.match(css, /\.file-grid/);
   assert.match(css, /\.entity-attachments/);
   assert.match(css, /\.attachment-add \{[^}]+height:26px;[^}]+color:var\(--muted\);[^}]+background:transparent;/);
-  assert.match(dockerfile, /upload_max_filesize=4G/);
+  assert.match(dockerfile, /upload_max_filesize=64M/);
   assert.match(ui, /function attachmentThumbnailUrl/);
   assert.match(ui, /loading="lazy" decoding="async"/);
   assert.match(ui, /visibleProjectFiles:50/);

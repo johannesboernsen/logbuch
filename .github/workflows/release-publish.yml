@@ -1,0 +1,208 @@
+name: Publish signed release
+
+on:
+  workflow_run:
+    workflows: [Release candidate]
+    types: [completed]
+
+permissions: {}
+
+jobs:
+  verify_ref:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+    outputs:
+      version: ${{ steps.check.outputs.version }}
+      tag: ${{ steps.check.outputs.tag }}
+      commit: ${{ steps.check.outputs.commit }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: logbuch-tag-candidate
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: candidate
+      - id: check
+        env:
+          EXPECTED_COMMIT: ${{ github.event.workflow_run.head_sha }}
+        run: node tools/verify-release-ref.mjs candidate/release-candidate.json "$EXPECTED_COMMIT"
+
+  build_images:
+    needs: verify_ref
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      app_digest: ${{ steps.app_image.outputs.digest }}
+      updater_digest: ${{ steps.updater_image.outputs.digest }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.verify_ref.outputs.commit }}
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: app_image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: ghcr.io/${{ github.repository }}:${{ needs.verify_ref.outputs.version }}
+      - id: updater_image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/updater/Dockerfile
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: ghcr.io/${{ github.repository }}-updater:${{ needs.verify_ref.outputs.version }}
+
+  prepare:
+    needs: [verify_ref, build_images]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.verify_ref.outputs.commit }}
+          persist-credentials: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - name: Release-Dateien erstellen
+        env:
+          LOGBUCH_RELEASE_REPOSITORY: ${{ github.repository }}
+        run: |
+          node tools/build-release.mjs \
+            "${{ needs.verify_ref.outputs.version }}" \
+            "ghcr.io/${GITHUB_REPOSITORY,,}" \
+            "${{ needs.build_images.outputs.app_digest }}" \
+            "ghcr.io/${GITHUB_REPOSITORY,,}-updater" \
+            "${{ needs.build_images.outputs.updater_digest }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: logbuch-release-candidate
+          path: |
+            dist/logbuch-web-${{ needs.verify_ref.outputs.version }}.tar
+            dist/update-manifest.json
+            dist/release-notes.md
+            dist/checksums.txt
+          if-no-files-found: error
+
+  verify_artifact:
+    needs: [verify_ref, prepare]
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+    outputs:
+      version: ${{ steps.check.outputs.version }}
+      tag: ${{ steps.check.outputs.tag }}
+      image: ${{ steps.check.outputs.image }}
+      app_digest: ${{ steps.check.outputs.app_digest }}
+      updater_image: ${{ steps.check.outputs.updater_image }}
+      updater_digest: ${{ steps.check.outputs.updater_digest }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: logbuch-release-candidate
+          path: candidate
+      - id: check
+        run: node tools/verify-release-candidate.mjs candidate "${{ needs.verify_ref.outputs.commit }}" "$GITHUB_REPOSITORY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: logbuch-release-verified
+          path: candidate/
+          if-no-files-found: error
+
+  sign:
+    needs: verify_artifact
+    runs-on: ubuntu-latest
+    environment: update-signing
+    permissions:
+      actions: read
+    steps:
+      - name: Geschützte Signierumgebung prüfen
+        env:
+          SIGNING_ENV_READY: ${{ vars.UPDATE_SIGNING_ENV_READY }}
+        run: test "$SIGNING_ENV_READY" = 'yes'
+      - uses: actions/download-artifact@v4
+        with:
+          name: logbuch-release-verified
+          path: candidate
+      - name: Manifest ohne Repository-Checkout signieren
+        env:
+          UPDATE_SIGNING_PRIVATE_KEY: ${{ secrets.UPDATE_SIGNING_PRIVATE_KEY }}
+        run: |
+          set -eu
+          test -n "$UPDATE_SIGNING_PRIVATE_KEY"
+          umask 077
+          trap 'rm -f "$RUNNER_TEMP/update-private.pem" "$RUNNER_TEMP/update-manifest.sig.bin"' EXIT
+          printf '%s' "$UPDATE_SIGNING_PRIVATE_KEY" > "$RUNNER_TEMP/update-private.pem"
+          openssl dgst -sha256 -sign "$RUNNER_TEMP/update-private.pem" -out "$RUNNER_TEMP/update-manifest.sig.bin" candidate/update-manifest.json
+          base64 -w0 "$RUNNER_TEMP/update-manifest.sig.bin" > update-manifest.sig
+      - uses: actions/upload-artifact@v4
+        with:
+          name: logbuch-release-signature
+          path: update-manifest.sig
+          if-no-files-found: error
+
+  publish:
+    needs: [verify_artifact, sign]
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: write
+      packages: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: logbuch-release-verified
+          path: candidate
+      - uses: actions/download-artifact@v4
+        with:
+          name: logbuch-release-signature
+          path: signature
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Stabile Image-Tags setzen
+        run: |
+          docker buildx imagetools create -t "${{ needs.verify_artifact.outputs.image }}:stable" "${{ needs.verify_artifact.outputs.image }}@${{ needs.verify_artifact.outputs.app_digest }}"
+          docker buildx imagetools create -t "${{ needs.verify_artifact.outputs.updater_image }}:stable" "${{ needs.verify_artifact.outputs.updater_image }}@${{ needs.verify_artifact.outputs.updater_digest }}"
+      - name: GitHub Release veröffentlichen
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${{ needs.verify_artifact.outputs.tag }}" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Logbuch ${{ needs.verify_artifact.outputs.version }}" \
+            --notes-file candidate/release-notes.md \
+            "candidate/logbuch-web-${{ needs.verify_artifact.outputs.version }}.tar" \
+            candidate/update-manifest.json signature/update-manifest.sig candidate/checksums.txt

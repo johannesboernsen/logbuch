@@ -35,26 +35,19 @@ final class Auth
     public function login(string $id, string $password, string $ip, string $userAgent): array
     {
         $identity = hash('sha256', mb_strtolower(trim($id)) . '|' . $ip);
-        $attempt = $this->db->prepare('SELECT attempts, blocked_until FROM login_attempts WHERE identity = :identity');
-        $attempt->execute(['identity' => $identity]);
-        $limit = $attempt->fetch();
-        if ($limit && (int) $limit['blocked_until'] > time()) {
-            throw new HttpError(429, 'Zu viele Anmeldeversuche. Bitte später erneut versuchen.');
-        }
+        $origin = 'origin:' . hash('sha256', $ip);
+        $this->reserveLoginAttempt([$identity => 5, $origin => 20]);
 
         $statement = $this->db->prepare('SELECT * FROM users WHERE id = :id');
         $statement->execute(['id' => trim($id)]);
         $user = $statement->fetch();
         if (!$user || !(bool) $user['active'] || !password_verify($password, $user['password_hash'])) {
-            $attempts = ((int) ($limit['attempts'] ?? 0)) + 1;
-            $blockedUntil = $attempts >= 5 ? time() + min(900, 15 * (2 ** min(6, $attempts - 5))) : 0;
-            $upsert = $this->db->prepare('INSERT INTO login_attempts (identity, attempts, blocked_until, updated_at) VALUES (:identity, :attempts, :blocked, :updated) ON CONFLICT(identity) DO UPDATE SET attempts = excluded.attempts, blocked_until = excluded.blocked_until, updated_at = excluded.updated_at');
-            $upsert->execute(['identity' => $identity, 'attempts' => $attempts, 'blocked' => $blockedUntil, 'updated' => time()]);
             usleep(250000);
             throw new HttpError(401, 'Benutzername oder Passwort ist falsch.');
         }
 
         $this->db->prepare('DELETE FROM login_attempts WHERE identity = :identity')->execute(['identity' => $identity]);
+        $this->db->prepare('DELETE FROM login_attempts WHERE identity = :identity')->execute(['identity' => $origin]);
         if (password_needs_rehash($user['password_hash'], PASSWORD_ARGON2ID)) {
             $this->db->prepare('UPDATE users SET password_hash = :hash WHERE id = :id')->execute(['hash' => password_hash($password, PASSWORD_ARGON2ID), 'id' => $user['id']]);
         }
@@ -80,6 +73,43 @@ final class Auth
         $_COOKIE['logbuch_session'] = $token;
         $user['session_id'] = $sessionId;
         return $this->publicUser($user);
+    }
+
+    private function reserveLoginAttempt(array $limits): void
+    {
+        $transactionActive = false;
+        try {
+            $this->db->exec('BEGIN IMMEDIATE');
+            $transactionActive = true;
+            $now = (int) $this->db->query("SELECT CAST(strftime('%s','now') AS INTEGER)")->fetchColumn();
+            $select = $this->db->prepare('SELECT blocked_until, updated_at FROM login_attempts WHERE identity = :identity');
+            foreach ($limits as $identity => $threshold) {
+                $select->execute(['identity' => $identity]);
+                $row = $select->fetch();
+                if ($row && (int) $row['updated_at'] >= $now - 900 && (int) $row['blocked_until'] > $now) {
+                    throw new HttpError(429, 'Zu viele Anmeldeversuche. Bitte später erneut versuchen.');
+                }
+            }
+            $upsert = $this->db->prepare('INSERT INTO login_attempts (identity, attempts, blocked_until, updated_at) VALUES (:identity, 1, 0, :now) ON CONFLICT(identity) DO UPDATE SET attempts = CASE WHEN login_attempts.updated_at < :stale THEN 1 ELSE login_attempts.attempts + 1 END, blocked_until = 0, updated_at = :updated');
+            $block = $this->db->prepare("UPDATE login_attempts SET blocked_until = CASE WHEN attempts >= :threshold THEN CAST(strftime('%s','now') AS INTEGER) + MIN(900, 15 * (1 << MIN(6, attempts - :threshold_again))) ELSE 0 END WHERE identity = :identity");
+            foreach ($limits as $identity => $threshold) {
+                $upsert->execute(['identity' => $identity, 'now' => $now, 'stale' => $now - 900, 'updated' => $now]);
+                $block->execute(['identity' => $identity, 'threshold' => $threshold, 'threshold_again' => $threshold]);
+            }
+            $this->db->exec('COMMIT');
+            $transactionActive = false;
+        } catch (\Throwable $error) {
+            if ($transactionActive) {
+                try {
+                    $this->db->exec('ROLLBACK');
+                } catch (\Throwable) {
+                }
+            }
+            if ($error instanceof \PDOException && str_contains(strtolower($error->getMessage()), 'database is locked')) {
+                throw new HttpError(429, 'Zu viele gleichzeitige Anmeldeversuche. Bitte später erneut versuchen.');
+            }
+            throw $error;
+        }
     }
 
     public function current(bool $touch = true): ?array

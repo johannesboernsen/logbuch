@@ -8,11 +8,11 @@ RUN apt-get update \
     && docker-php-ext-configure gd --with-jpeg --with-webp \
     && docker-php-ext-install -j2 gd \
     && rm -rf /var/lib/apt/lists/* \
-    && a2enmod headers rewrite \
+    && a2enmod headers rewrite reqtimeout \
     && printf 'ServerName localhost\n' > /etc/apache2/conf-available/servername.conf \
     && a2enconf servername
 
-RUN printf 'upload_max_filesize=4G\npost_max_size=4G\nmax_file_uploads=10\nmax_input_time=3600\nmax_execution_time=3600\n' > /usr/local/etc/php/conf.d/logbuch-uploads.ini
+RUN printf 'upload_max_filesize=64M\npost_max_size=64M\nmax_file_uploads=10\nmax_input_time=120\nmax_execution_time=3600\n' > /usr/local/etc/php/conf.d/logbuch-uploads.ini
 
 ENV APACHE_DOCUMENT_ROOT=/var/www/html/public \
     LOGBUCH_PLATFORM=docker \

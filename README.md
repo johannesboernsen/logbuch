@@ -38,7 +38,7 @@ cp .env.example .env
 docker compose up -d
 ```
 
-Compose legt automatisch die beiden Container `logbuch` und `logbuch-updater` an. In der Oberfläche ist davon nichts weiter zu sehen. Danach das Logbuch unter `http://<NAS-IP>:8080` öffnen und den Einrichtungsassistenten abschließen. Port und Zeitzone können in `.env` angepasst werden. Alle dauerhaften Daten liegen im Docker-Volume `logbuch-data`; neue Container löschen sie daher nicht.
+Compose legt automatisch die beiden Container `logbuch` und `logbuch-updater` an. In der Oberfläche ist davon nichts weiter zu sehen. Danach das Logbuch unter `http://<NAS-IP>:8080` öffnen und den Einrichtungsassistenten abschließen. Port und Zeitzone können in `.env` angepasst werden. Dauerhafte Anwendungsdaten liegen im Docker-Volume `logbuch-data`; der private Updatezustand liegt in `logbuch-updater-state`. Neue Container löschen diese Volumes nicht.
 
 Eine ausführliche NAS-unabhängige Anleitung steht in [docs/INSTALL-DOCKER.md](docs/INSTALL-DOCKER.md).
 

@@ -38,6 +38,13 @@ if ((!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') || strtolower((st
 try {
     $application = new Application(logbuch_storage_path());
     $path = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/';
+    if ($path === '/archive-upload.php') {
+        $kind = (string) ($_GET['kind'] ?? '');
+        if (!in_array($kind, ['projects', 'full'], true)) {
+            throw new HttpError(404, 'Unbekannter Archiv-Import.');
+        }
+        $application->handle(strtoupper($_SERVER['REQUEST_METHOD'] ?? 'GET'), '/api/import/' . $kind . '-archive-raw');
+    }
     if (str_starts_with($path, '/api/')) {
         $application->handle(strtoupper($_SERVER['REQUEST_METHOD'] ?? 'GET'), $path);
     }

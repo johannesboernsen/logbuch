@@ -4,12 +4,13 @@ import { readFile } from 'node:fs/promises';
 import { changelogRelease, updateManifestRelease } from '../tools/changelog.mjs';
 
 const root = new URL('..', import.meta.url);
-const [changelog, readme, script, styles, workflow, releaseTool] = await Promise.all([
+const [changelog, readme, script, styles, workflow, publishWorkflow, releaseTool] = await Promise.all([
   readFile(new URL('CHANGELOG.md', root), 'utf8'),
   readFile(new URL('README.md', root), 'utf8'),
   readFile(new URL('public/app.js', root), 'utf8'),
   readFile(new URL('public/styles.css', root), 'utf8'),
   readFile(new URL('.github/workflows/release.yml', root), 'utf8'),
+  readFile(new URL('.github/workflows/release-publish.yml', root), 'utf8'),
   readFile(new URL('tools/build-release.mjs', root), 'utf8'),
 ]);
 
@@ -33,7 +34,8 @@ test('Der Release-Prozess veröffentlicht dieselben Informationen im Manifest un
   assert.match(releaseTool, /updateManifestRelease/);
   assert.match(releaseTool, /highlights:updateInformation\.highlights/);
   assert.match(releaseTool, /release-notes\.md/);
-  assert.match(workflow, /--notes-file dist\/release-notes\.md/);
+  assert.match(workflow, /logbuch-tag-candidate/);
+  assert.match(publishWorkflow, /--notes-file candidate\/release-notes\.md/);
 });
 
 test('Update-Manifeste bleiben innerhalb der vom Logbuch akzeptierten Grenzen', () => {

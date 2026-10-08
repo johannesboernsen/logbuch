@@ -123,6 +123,14 @@ final class Application
     public function handle(string $method, string $path): never
     {
         try {
+            if ($method === 'POST' && in_array($path, ['/api/import/projects-archive-raw', '/api/import/full-archive-raw'], true)) {
+                if (!$this->installed()) throw new HttpError(503, 'Das Logbuch muss zuerst eingerichtet werden.');
+                $user = $this->auth->requireUser(false, false, true);
+                $this->verifyCsrf();
+                $this->requireAdmin($user);
+                if ($user['mustChangePassword']) throw new HttpError(428, 'Passwortänderung erforderlich.');
+                $this->json(200, $this->importRawArchive($user, $path));
+            }
             $contentType = strtolower((string) ($_SERVER['CONTENT_TYPE'] ?? ''));
             $input = str_starts_with($contentType, 'multipart/form-data') ? $_POST : $this->jsonBody();
             if ($path === '/api/install/status' && $method === 'GET') {
@@ -2184,7 +2192,56 @@ final class Application
         }
     }
 
-    private function importProjectArchive(array $actor, array $upload, string $conflict): array
+    private function importRawArchive(array $actor, string $path): array
+    {
+        if (strtolower(trim((string) ($_SERVER['CONTENT_TYPE'] ?? ''))) !== 'application/x-tar') {
+            throw new HttpError(415, 'Der Archiv-Import erwartet application/x-tar.');
+        }
+        $length = filter_var($_SERVER['CONTENT_LENGTH'] ?? null, FILTER_VALIDATE_INT);
+        if (!is_int($length) || $length < 1 || $length > 4 * 1024 ** 3) {
+            throw new HttpError(413, 'Das Backup-Archiv ist leer oder größer als 4 GB.');
+        }
+        $temporaryDirectory = $this->storagePath . '/tmp';
+        if (!is_dir($temporaryDirectory) && !mkdir($temporaryDirectory, 0770, true) && !is_dir($temporaryDirectory)) {
+            throw new HttpError(507, 'Temporäres Import-Verzeichnis konnte nicht angelegt werden.');
+        }
+        $lock = fopen($temporaryDirectory . '/archive-upload.lock', 'c');
+        if ($lock === false) throw new HttpError(507, 'Der Archiv-Import konnte nicht gesperrt werden.');
+        if (!flock($lock, LOCK_EX | LOCK_NB)) {
+            fclose($lock);
+            throw new HttpError(429, 'Es läuft bereits ein Archiv-Import.');
+        }
+        $source = tempnam($temporaryDirectory, 'incoming-');
+        if ($source === false) {
+            flock($lock, LOCK_UN);
+            fclose($lock);
+            throw new HttpError(507, 'Temporäre Import-Datei konnte nicht angelegt werden.');
+        }
+        try {
+            $input = fopen('php://input', 'rb');
+            $output = fopen($source, 'wb');
+            if ($input === false || $output === false) throw new HttpError(507, 'Das Backup-Archiv konnte nicht gelesen werden.');
+            try {
+                $copied = stream_copy_to_stream($input, $output, $length + 1);
+            } finally {
+                fclose($input);
+                fclose($output);
+            }
+            if ($copied !== $length) throw new HttpError(400, 'Das Backup-Archiv wurde unvollständig übertragen.');
+            $upload = ['error' => UPLOAD_ERR_OK, 'tmp_name' => $source, 'size' => $copied];
+            if ($path === '/api/import/projects-archive-raw') {
+                $conflict = (string) ($_GET['conflict'] ?? 'skip');
+                return $this->importProjectArchive($actor, $upload, $conflict, true);
+            }
+            return $this->importFullArchive($actor, $upload, true);
+        } finally {
+            @unlink($source);
+            flock($lock, LOCK_UN);
+            fclose($lock);
+        }
+    }
+
+    private function importProjectArchive(array $actor, array $upload, string $conflict, bool $raw = false): array
     {
         if (!class_exists(\PharData::class)) throw new HttpError(500, 'Die TAR-Unterstützung ist auf diesem Server nicht verfügbar.');
         if (!in_array($conflict, ['skip', 'replace'], true)) throw new HttpError(422, 'Ungültige Konfliktbehandlung.');
@@ -2192,14 +2249,14 @@ final class Application
         if (in_array($error, [UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE], true)) throw new HttpError(413, 'Das Backup-Archiv ist zu groß.');
         $source = (string) ($upload['tmp_name'] ?? '');
         $size = (int) ($upload['size'] ?? 0);
-        if ($error !== UPLOAD_ERR_OK || $size < 1 || $size > 4 * 1024 ** 3 || !is_uploaded_file($source)) throw new HttpError(422, 'Das Backup-Archiv konnte nicht hochgeladen werden.');
+        if ($error !== UPLOAD_ERR_OK || $size < 1 || $size > 4 * 1024 ** 3 || ($raw ? !is_file($source) : !is_uploaded_file($source))) throw new HttpError(422, 'Das Backup-Archiv konnte nicht hochgeladen werden.');
         $temporaryDirectory = $this->storagePath . '/tmp';
         if (!is_dir($temporaryDirectory) && !mkdir($temporaryDirectory, 0770, true) && !is_dir($temporaryDirectory)) throw new HttpError(507, 'Temporäres Import-Verzeichnis konnte nicht angelegt werden.');
         $base = tempnam($temporaryDirectory, 'import-');
         if ($base === false) throw new HttpError(507, 'Temporäre Import-Datei konnte nicht angelegt werden.');
         @unlink($base);
         $archivePath = $base . '.tar';
-        if (!move_uploaded_file($source, $archivePath)) throw new HttpError(507, 'Das Backup-Archiv konnte nicht für den Import vorbereitet werden.');
+        if (!($raw ? rename($source, $archivePath) : move_uploaded_file($source, $archivePath))) throw new HttpError(507, 'Das Backup-Archiv konnte nicht für den Import vorbereitet werden.');
         try {
             try {
                 $archive = new \PharData($archivePath);
@@ -2261,14 +2318,14 @@ final class Application
         }
     }
 
-    private function importFullArchive(array $actor, array $upload): array
+    private function importFullArchive(array $actor, array $upload, bool $raw = false): array
     {
         if (!class_exists(\PharData::class)) throw new HttpError(500, 'Die TAR-Unterstützung ist auf diesem Server nicht verfügbar.');
         $error = (int) ($upload['error'] ?? UPLOAD_ERR_NO_FILE);
         if (in_array($error, [UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE], true)) throw new HttpError(413, 'Das Vollbackup ist zu groß.');
         $source = (string) ($upload['tmp_name'] ?? '');
         $size = (int) ($upload['size'] ?? 0);
-        if ($error !== UPLOAD_ERR_OK || $size < 1 || $size > 4 * 1024 ** 3 || !is_uploaded_file($source)) throw new HttpError(422, 'Das Vollbackup konnte nicht hochgeladen werden.');
+        if ($error !== UPLOAD_ERR_OK || $size < 1 || $size > 4 * 1024 ** 3 || ($raw ? !is_file($source) : !is_uploaded_file($source))) throw new HttpError(422, 'Das Vollbackup konnte nicht hochgeladen werden.');
 
         $temporaryDirectory = $this->storagePath . '/tmp';
         if (!is_dir($temporaryDirectory) && !mkdir($temporaryDirectory, 0770, true) && !is_dir($temporaryDirectory)) throw new HttpError(507, 'Temporäres Import-Verzeichnis konnte nicht angelegt werden.');
@@ -2276,7 +2333,7 @@ final class Application
         if ($base === false) throw new HttpError(507, 'Temporäre Import-Datei konnte nicht angelegt werden.');
         @unlink($base);
         $archivePath = $base . '.tar';
-        if (!move_uploaded_file($source, $archivePath)) throw new HttpError(507, 'Das Vollbackup konnte nicht für den Import vorbereitet werden.');
+        if (!($raw ? rename($source, $archivePath) : move_uploaded_file($source, $archivePath))) throw new HttpError(507, 'Das Vollbackup konnte nicht für den Import vorbereitet werden.');
 
         try {
             try {
