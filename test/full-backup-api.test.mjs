@@ -1,7 +1,7 @@
 import test, { after, before } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -38,12 +38,10 @@ async function login() {
 }
 
 async function uploadBackup(blob, filename = 'vollbackup.tar') {
-  const form = new FormData();
-  form.append('archive', blob, filename);
-  const response = await fetch(`${baseUrl}/api/import/full-archive`, {
+  const response = await fetch(`${baseUrl}/archive-upload.php?kind=full`, {
     method:'POST',
-    headers:{ Cookie:cookie, 'X-Logbuch-CSRF':csrf, Accept:'application/json' },
-    body:form,
+    headers:{ Cookie:cookie, 'X-Logbuch-CSRF':csrf, 'Content-Type':'application/x-tar', Accept:'application/json' },
+    body:blob,
   });
   const text = await response.text();
   return { response, data:text ? JSON.parse(text) : null };
@@ -77,6 +75,11 @@ test('Vollbackup sichert und ersetzt Projekte, Erinnerungen und das gesamte Lage
     body:JSON.stringify({ siteName:'Vollbackup Test', timezone:'Europe/Berlin', adminUser:'admin', adminPassword:'ein-langes-Testpasswort', demoData:true }),
   });
   assert.equal(installed.response.status, 201, `${JSON.stringify(installed.data)}\n${serverErrors.slice(-4000)}`);
+  const unauthenticatedUpload = await fetch(`${baseUrl}/archive-upload.php?kind=full`, {
+    method:'POST', headers:{ 'Content-Type':'application/x-tar' }, body:Buffer.alloc(1024 * 1024),
+  });
+  assert.equal(unauthenticatedUpload.status, 401);
+  assert.deepEqual((await readdir(join(storage, 'tmp')).catch(() => [])).filter(name => name.startsWith('incoming-')), []);
   await login();
 
   const itemImageBytes = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64');

@@ -18,7 +18,9 @@ Das ist die gesamte Ersteinrichtung. Compose legt automatisch zwei Container an:
 - `logbuch` stellt ausschließlich die Webanwendung bereit und besitzt keinen Docker-Socket.
 - `logbuch-updater` läuft ohne eigenen Port im Hintergrund und verarbeitet bestätigte Updates.
 
-Beide verwenden das benannte Volume `logbuch-data`. Darin liegen Datenbank, Projekte, Anhänge und Updatezustand. Dieses Volume muss in die NAS-Backups aufgenommen werden. `docker compose down` oder ein neu gebauter Container löschen es nicht; nur `docker compose down --volumes` würde es ausdrücklich entfernen.
+Beide verwenden das benannte Volume `logbuch-data`. Darin liegen Datenbank, Projekte, Anhänge und die Update-Anforderungen und Ergebnisse. Der Updater speichert Image-Auswahl, Wiederherstellungsdaten und Sperren getrennt im Volume `logbuch-updater-state`; die Webanwendung kann dieses Volume nicht öffnen. Beide Volumes müssen in die NAS-Backups aufgenommen werden. `docker compose down` oder ein neu gebauter Container löscht sie nicht; `docker compose down --volumes` würde sie ausdrücklich entfernen.
+
+Gewöhnliche Anfragen und Datei-Uploads sind am Webserver auf 64 MiB begrenzt. Projekt- und Vollbackup-Archive bis 4 GiB werden über einen eigenen Importweg als TAR-Rohdaten übertragen. Der Server prüft Anmeldung, CSRF-Token und Admin-Rechte, bevor PHP den Archivinhalt liest; gleichzeitig ist nur ein Archiv-Import erlaubt. Das temporäre Verzeichnis für gewöhnliche Uploads ist auf 128 MiB begrenzt. Ein vorgeschalteter Reverse Proxy muss für den Archiv-Import dieselben Größenlimits passend übernehmen.
 
 ## Updates
 

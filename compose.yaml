@@ -9,6 +9,8 @@ services:
       - "${LOGBUCH_BIND_ADDRESS:-0.0.0.0}:${LOGBUCH_PORT:-8080}:80"
     volumes:
       - logbuch-data:/var/www/html/storage
+    tmpfs:
+      - /tmp:size=134217728,mode=1777
     environment:
       TZ: ${LOGBUCH_TIMEZONE:-Europe/Berlin}
       LOGBUCH_PLATFORM: docker
@@ -22,6 +24,7 @@ services:
         condition: service_healthy
     volumes:
       - logbuch-data:/var/lib/logbuch
+      - logbuch-updater-state:/var/lib/logbuch-private
       - /var/run/docker.sock:/var/run/docker.sock
     environment:
       TZ: ${LOGBUCH_TIMEZONE:-Europe/Berlin}
@@ -35,3 +38,5 @@ services:
 volumes:
   logbuch-data:
     name: logbuch-data
+  logbuch-updater-state:
+    name: logbuch-updater-state

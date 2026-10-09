@@ -4625,10 +4625,13 @@ function bindDataActions() {
     if (replace && !await confirmAction('Vorhandene Projekte mit gleicher ID werden vollständig ersetzt. Fortfahren?', { title:'Projekte ersetzen', confirmLabel:'Importieren' })) return;
     projectImport.disabled = true; projectImport.textContent = 'Import läuft …';
     try {
-      const payload = new FormData();
-      payload.append('archive', selectedProjects, selectedProjects.name);
-      payload.append('conflict', replace ? 'replace' : 'skip');
-      const result = await api('/import/projects-archive', { method:'POST', body:payload });
+      const response = await fetch(`/archive-upload.php?kind=projects&conflict=${replace ? 'replace' : 'skip'}`, {
+        method:'POST',
+        headers:{ 'Content-Type':'application/x-tar', 'X-Logbuch-CSRF':state.user.csrfToken },
+        body:selectedProjects,
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || 'Der Projektimport ist fehlgeschlagen.');
       toast(`${result.imported || 0} Projekte importiert${result.skipped ? `, ${result.skipped} übersprungen` : ''} · ${result.filesImported || 0} Dateien`);
       await Promise.all([loadProjects(), loadUsers(), loadTags(), loadFolders(), loadStorageStats()]); renderSettings();
     } catch (error) { toast(`Import abgebrochen: ${error.message}`); projectImport.disabled = false; projectImport.textContent = 'Projektarchiv importieren'; }
@@ -4650,9 +4653,15 @@ function bindDataActions() {
     if (!selectedFull || !await confirmAction('Das Vollbackup ersetzt alle aktuellen Projekte, Erinnerungen, Benutzer- und Lagerdaten. Alle angemeldeten Geräte werden danach abgemeldet. Wirklich fortfahren?', { title:'Vollbackup wiederherstellen', confirmLabel:'Alles ersetzen' })) return;
     fullImport.disabled = true; fullImport.textContent = 'Wiederherstellung läuft …';
     try {
-      const payload = new FormData();
-      payload.append('archive', selectedFull, selectedFull.name);
-      await api('/import/full-archive', { method:'POST', body:payload });
+      const response = await fetch('/archive-upload.php?kind=full', {
+        method:'POST',
+        headers:{ 'Content-Type':'application/x-tar', 'X-Logbuch-CSRF':state.user.csrfToken },
+        body:selectedFull,
+      });
+      if (!response.ok) {
+        const result = await response.json().catch(() => ({}));
+        throw new Error(result.error || 'Der Vollbackup-Import ist fehlgeschlagen.');
+      }
       alert('Das Vollbackup wurde wiederhergestellt. Bitte melde dich erneut an.');
       location.href = '/';
       location.reload();

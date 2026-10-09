@@ -1,27 +1,30 @@
 import { execFile } from 'node:child_process';
 import { constants, promises as fs } from 'node:fs';
 import { promisify } from 'node:util';
-import { verify as verifySignature } from 'node:crypto';
+import { createHash, randomUUID, verify as verifySignature } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 
 const exec = promisify(execFile);
 const dataPath = process.env.LOGBUCH_UPDATE_DATA_PATH || '/var/lib/logbuch/updates';
+const privatePath = '/var/lib/logbuch-private/updates';
 const composeFile = process.env.LOGBUCH_UPDATE_COMPOSE_FILE || '/opt/logbuch/compose.yaml';
 const publicKeyPath = process.env.LOGBUCH_UPDATE_PUBLIC_KEY_PATH || '/etc/logbuch/update-public-key.pem';
 const appContainer = process.env.LOGBUCH_APP_CONTAINER || 'logbuch';
 const updaterContainer = process.env.LOGBUCH_UPDATER_CONTAINER || 'logbuch-updater';
 const handoffContainer = process.env.LOGBUCH_HANDOFF_CONTAINER || 'logbuch-updater-handoff';
 const volumeName = process.env.LOGBUCH_DATA_VOLUME || 'logbuch-data';
+const privateVolumeName = 'logbuch-updater-state';
 
 const requestPath = `${dataPath}/docker-request.json`;
 const statePath = `${dataPath}/state.json`;
 const resultPath = `${dataPath}/docker-result.json`;
-const heartbeatPath = `${dataPath}/updater-heartbeat`;
-const baseEnvPath = `${dataPath}/base.env`;
-const appEnvPath = `${dataPath}/image.env`;
-const updaterEnvPath = `${dataPath}/updater-image.env`;
-const updaterPreviousEnvPath = `${dataPath}/updater-image.previous.env`;
-const lockPath = `${dataPath}/updater.lock`;
+const heartbeatPath = `${privatePath}/updater-heartbeat`;
+const baseEnvPath = `${privatePath}/base.env`;
+const appEnvPath = `${privatePath}/image.env`;
+const updaterEnvPath = `${privatePath}/updater-image.env`;
+const updaterPreviousEnvPath = `${privatePath}/updater-image.previous.env`;
+const lockPath = `${privatePath}/updater.lock`;
+const acceptedPath = `${privatePath}/accepted-release.json`;
 const sharedUid = Number.parseInt(process.env.LOGBUCH_SHARED_UID || '33', 10);
 const sharedGid = Number.parseInt(process.env.LOGBUCH_SHARED_GID || '33', 10);
 
@@ -90,6 +93,66 @@ export function verifyUpdateRequest(request, publicKey, expectedImage, expectedU
   return manifest;
 }
 
+export function compareVersions(left, right) {
+  if (!VERSION_PATTERN.test(left) || !VERSION_PATTERN.test(right)) {
+    throw new Error('Ungültige Versionsangabe für den Update-Vergleich.');
+  }
+  const leftSeparator = left.indexOf('-');
+  const rightSeparator = right.indexOf('-');
+  const leftCore = leftSeparator < 0 ? left : left.slice(0, leftSeparator);
+  const rightCore = rightSeparator < 0 ? right : right.slice(0, rightSeparator);
+  const leftPre = leftSeparator < 0 ? undefined : left.slice(leftSeparator + 1);
+  const rightPre = rightSeparator < 0 ? undefined : right.slice(rightSeparator + 1);
+  const leftNumbers = leftCore.split('.').map(BigInt);
+  const rightNumbers = rightCore.split('.').map(BigInt);
+  for (let index = 0; index < 3; index++) {
+    if (leftNumbers[index] !== rightNumbers[index]) return leftNumbers[index] > rightNumbers[index] ? 1 : -1;
+  }
+  if (leftPre === undefined || rightPre === undefined) {
+    return leftPre === rightPre ? 0 : leftPre === undefined ? 1 : -1;
+  }
+  const leftParts = leftPre.split('.');
+  const rightParts = rightPre.split('.');
+  for (let index = 0; index < Math.min(leftParts.length, rightParts.length); index++) {
+    const a = leftParts[index];
+    const b = rightParts[index];
+    if (a === b) continue;
+    const aNumber = /^\d+$/.test(a);
+    const bNumber = /^\d+$/.test(b);
+    if (aNumber && bNumber) return BigInt(a) > BigInt(b) ? 1 : -1;
+    if (aNumber !== bNumber) return aNumber ? -1 : 1;
+    return a > b ? 1 : -1;
+  }
+  return Math.sign(leftParts.length - rightParts.length);
+}
+
+export async function reserveUpdate(manifest, manifestRaw, runningVersion, stateFile) {
+  const version = requiredString(manifest?.version, 'Version');
+  const digest = createHash('sha256').update(manifestRaw).digest('hex');
+  let accepted;
+  try {
+    accepted = JSON.parse(await fs.readFile(stateFile, 'utf8'));
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
+  }
+  if (accepted !== undefined &&
+      (!accepted || !VERSION_PATTERN.test(accepted.version) || !/^[a-f0-9]{64}$/.test(accepted.manifestDigest))) {
+    throw new Error('Der private Update-Verlauf ist ungültig.');
+  }
+  if (compareVersions(version, runningVersion) <= 0 ||
+      (accepted && compareVersions(version, accepted.version) <= 0)) {
+    throw new Error('Die signierte Version wurde bereits verarbeitet oder ist nicht neuer als die installierte Version.');
+  }
+  await atomicWrite(stateFile, `${JSON.stringify({ version, manifestDigest: digest })}\n`);
+}
+
+async function runningAppVersion() {
+  const { stdout } = await run('docker', ['exec', appContainer, 'cat', '/var/www/html/VERSION']);
+  const version = stdout.trim();
+  if (!VERSION_PATTERN.test(version)) throw new Error('Die installierte App-Version konnte nicht geprüft werden.');
+  return version;
+}
+
 async function exists(path) {
   try {
     await fs.access(path, constants.F_OK);
@@ -99,15 +162,30 @@ async function exists(path) {
   }
 }
 
-async function atomicWrite(path, content) {
-  const temporary = `${path}.tmp-${process.pid}`;
-  await fs.writeFile(temporary, content, { mode: 0o660 });
-  await fs.chown(temporary, sharedUid, sharedGid);
-  await fs.rename(temporary, path);
+async function atomicWrite(path, content, shared = false) {
+  const temporary = `${path}.tmp-${randomUUID()}`;
+  if (shared) {
+    process.setegid(sharedGid);
+    process.seteuid(sharedUid);
+  }
+  try {
+    const file = await fs.open(temporary, 'wx', shared ? 0o660 : 0o600);
+    try {
+      await file.writeFile(content);
+    } finally {
+      await file.close();
+    }
+    await fs.rename(temporary, path);
+  } finally {
+    if (shared) {
+      process.seteuid(0);
+      process.setegid(0);
+    }
+  }
 }
 
 async function writeJson(path, value) {
-  await atomicWrite(path, `${JSON.stringify(value)}\n`);
+  await atomicWrite(path, `${JSON.stringify(value)}\n`, true);
 }
 
 async function run(command, args, options = {}) {
@@ -131,7 +209,21 @@ function composeArgs(...args) {
 }
 
 async function compose(...args) {
+  const expectedApp = await readImageSelection(appEnvPath, 'LOGBUCH_IMAGE');
+  const expectedUpdater = await readImageSelection(updaterEnvPath, 'LOGBUCH_UPDATER_IMAGE');
+  const { stdout } = await run('docker', composeArgs('config', '--format', 'json'));
+  const services = JSON.parse(stdout).services;
+  if (services?.logbuch?.image !== expectedApp || services?.['logbuch-updater']?.image !== expectedUpdater) {
+    throw new Error('Die wirksame Compose-Konfiguration enthält unerwartete Images.');
+  }
   return run('docker', composeArgs(...args));
+}
+
+export async function readImageSelection(path, key) {
+  const content = await fs.readFile(path, 'utf8');
+  const match = new RegExp(`^${key}=([a-z0-9]+(?:[._/-][a-z0-9]+)*(?::[A-Za-z0-9_.-]+|@sha256:[a-f0-9]{64}))\\n$`).exec(content);
+  if (!match) throw new Error(`Ungültige Image-Auswahl in ${path}.`);
+  return match[1];
 }
 
 async function inspectedImage(container, fallback) {
@@ -166,9 +258,9 @@ async function initialize(configuration) {
   if (!Number.isInteger(sharedUid) || sharedUid < 1 || !Number.isInteger(sharedGid) || sharedGid < 1) {
     throw new Error('Die UID oder GID für den gemeinsamen Datenspeicher ist ungültig.');
   }
-  await fs.mkdir(dataPath, { recursive: true, mode: 0o770 });
-  await fs.chown(dataPath, sharedUid, sharedGid);
-  await fs.chmod(dataPath, 0o770);
+  await fs.mkdir(privatePath, { recursive: true, mode: 0o700 });
+  await fs.chown(privatePath, 0, 0);
+  await fs.chmod(privatePath, 0o700);
   await atomicWrite(baseEnvPath,
     `LOGBUCH_BIND_ADDRESS=${configuration.bindAddress}\n` +
     `LOGBUCH_PORT=${configuration.port}\n` +
@@ -184,6 +276,8 @@ async function initialize(configuration) {
     const image = await inspectedImage(updaterContainer, `${configuration.updaterImage}:stable`);
     await atomicWrite(updaterEnvPath, `LOGBUCH_UPDATER_IMAGE=${image}\n`);
   }
+  await readImageSelection(appEnvPath, 'LOGBUCH_IMAGE');
+  await readImageSelection(updaterEnvPath, 'LOGBUCH_UPDATER_IMAGE');
 }
 
 async function setState(status, version, message, extra = {}) {
@@ -213,7 +307,7 @@ async function startUpdaterHandoff(manifest) {
   const target = `${manifest.docker.updater.image}@${manifest.docker.updater.digest}`;
   const previousEnv = await fs.readFile(updaterEnvPath, 'utf8');
   if (previousEnv.trim() === `LOGBUCH_UPDATER_IMAGE=${target}`) return;
-  const currentImage = await inspectedImage(updaterContainer, previousEnv.trim().replace(/^LOGBUCH_UPDATER_IMAGE=/, ''));
+  const previousImage = await readImageSelection(updaterEnvPath, 'LOGBUCH_UPDATER_IMAGE');
   await run('docker', ['pull', target]);
   await atomicWrite(updaterPreviousEnvPath, previousEnv);
   await atomicWrite(updaterEnvPath, `LOGBUCH_UPDATER_IMAGE=${target}\n`);
@@ -227,8 +321,9 @@ async function startUpdaterHandoff(manifest) {
       'run', '-d', '--rm', '--name', handoffContainer,
       '-v', '/var/run/docker.sock:/var/run/docker.sock',
       '-v', `${volumeName}:/var/lib/logbuch`,
+      '-v', `${privateVolumeName}:/var/lib/logbuch-private`,
       '--entrypoint', '/usr/local/bin/logbuch-updater-handoff',
-      currentImage,
+      target, target, previousImage,
     ]);
   } catch (error) {
     await atomicWrite(updaterEnvPath, previousEnv);
@@ -250,6 +345,7 @@ async function processRequest(configuration) {
     const publicKey = await fs.readFile(publicKeyPath);
     const manifest = verifyUpdateRequest(request, publicKey, configuration.image, configuration.updaterImage);
     const version = manifest.version;
+    await reserveUpdate(manifest, Buffer.from(request.manifest, 'base64'), await runningAppVersion(), acceptedPath);
     await setState('installing', version, 'Das Docker-Update wird installiert.');
     const previousEnv = await fs.readFile(appEnvPath, 'utf8');
     await updateApplication(manifest, previousEnv);

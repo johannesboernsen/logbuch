@@ -1,17 +1,17 @@
-name: Release
+name: Release candidate
 
 on:
   push:
     tags:
       - 'v*.*.*'
 
-permissions:
-  contents: write
-  packages: write
+permissions: {}
 
 jobs:
-  release:
+  candidate:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v5
       - uses: shivammathur/setup-php@v2
@@ -26,78 +26,11 @@ jobs:
       - run: npm test
       - run: find app public tools -name '*.php' -print0 | xargs -0 -n1 php -l
       - name: Version prüfen
-        env:
-          UPDATE_SIGNING_PRIVATE_KEY: ${{ secrets.UPDATE_SIGNING_PRIVATE_KEY }}
-        run: |
-          test "v$(tr -d '\n' < VERSION)" = "$GITHUB_REF_NAME"
-          test -n "$UPDATE_SIGNING_PRIVATE_KEY"
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/login-action@v3
+        run: test "v$(tr -d '\n' < VERSION)" = "$GITHUB_REF_NAME"
+      - name: Tag-Kandidat sichern
+        run: node -e 'require("fs").writeFileSync("release-candidate.json", JSON.stringify({tag:process.env.GITHUB_REF_NAME, commit:process.env.GITHUB_SHA}) + "\n")'
+      - uses: actions/upload-artifact@v4
         with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - id: meta
-        name: Image-Metadaten
-        run: |
-          image="ghcr.io/${GITHUB_REPOSITORY,,}"
-          version="${GITHUB_REF_NAME#v}"
-          echo "image=$image" >> "$GITHUB_OUTPUT"
-          echo "updater_image=${image}-updater" >> "$GITHUB_OUTPUT"
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-      - id: app_image
-        name: Logbuch-Image bauen
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          push: true
-          platforms: linux/amd64,linux/arm64
-          tags: |
-            ${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.version }}
-            ${{ steps.meta.outputs.image }}:stable
-      - id: updater_image
-        name: AIO-Updater-Image bauen
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: docker/updater/Dockerfile
-          push: true
-          platforms: linux/amd64,linux/arm64
-          tags: |
-            ${{ steps.meta.outputs.updater_image }}:${{ steps.meta.outputs.version }}
-            ${{ steps.meta.outputs.updater_image }}:stable
-      - name: Release-Paket bauen und signieren
-        env:
-          UPDATE_SIGNING_PRIVATE_KEY: ${{ secrets.UPDATE_SIGNING_PRIVATE_KEY }}
-          LOGBUCH_RELEASE_REPOSITORY: ${{ github.repository }}
-        run: |
-          node tools/build-release.mjs \
-            "${{ steps.meta.outputs.version }}" \
-            "${{ steps.meta.outputs.image }}" \
-            "${{ steps.app_image.outputs.digest }}" \
-            "${{ steps.meta.outputs.updater_image }}" \
-            "${{ steps.updater_image.outputs.digest }}"
-          printf '%s' "$UPDATE_SIGNING_PRIVATE_KEY" > "$RUNNER_TEMP/update-private.pem"
-          openssl dgst -sha256 -sign "$RUNNER_TEMP/update-private.pem" -out "$RUNNER_TEMP/update-manifest.sig.bin" dist/update-manifest.json
-          base64 -w0 "$RUNNER_TEMP/update-manifest.sig.bin" > dist/update-manifest.sig
-      - name: Signierte Release-Dateien sichern
-        uses: actions/upload-artifact@v4
-        with:
-          name: logbuch-release-${{ steps.meta.outputs.version }}
-          path: |
-            dist/logbuch-web-${{ steps.meta.outputs.version }}.tar
-            dist/update-manifest.json
-            dist/update-manifest.sig
-            dist/release-notes.md
-            dist/checksums.txt
+          name: logbuch-tag-candidate
+          path: release-candidate.json
           if-no-files-found: error
-      - name: GitHub Release veröffentlichen
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh release create "$GITHUB_REF_NAME" \
-            --repo "$GITHUB_REPOSITORY" \
-            --title "Logbuch ${{ steps.meta.outputs.version }}" \
-            --notes-file dist/release-notes.md \
-            "dist/logbuch-web-${{ steps.meta.outputs.version }}.tar" \
-            dist/update-manifest.json dist/update-manifest.sig dist/checksums.txt

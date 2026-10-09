@@ -4,6 +4,18 @@ Hier werden die wichtigen Änderungen des Logbuchs festgehalten. Die Einträge s
 
 ## [Unveröffentlicht]
 
+## [0.9.2] - 2026-10-09
+
+Dieses Sicherheitsupdate schützt die Anmeldung, große Dateiimporte und den Update-Prozess. Wegen des Wechsels des Update-Signierschlüssels muss eine bestehende Webhosting-Installation einmal manuell auf 0.9.2 aktualisiert werden; danach funktionieren signierte Updates wieder in der Anwendung.
+
+### Wichtigste Änderungen
+
+- Fehlgeschlagene Anmeldungen werden auch bei gleichzeitigen Versuchen zuverlässig gezählt und begrenzt.
+- Große Archivimporte werden erst nach Anmeldung und Administratorprüfung angenommen. Gewöhnliche Anfragen haben ein kleineres Größenlimit.
+- Der Docker-Updater verwirft wiederholte und ältere signierte Releases und speichert seinen Versionsstand außerhalb des gemeinsam beschreibbaren Volumes.
+- Release-Tags erhalten keinen Signierschlüssel mehr. Das Manifest wird erst nach Prüfung durch den geschützten Veröffentlichungsworkflow signiert.
+- Der bisherige Update-Signierschlüssel wurde ersetzt. Bestehende Webhosting-Installationen benötigen einmalig das manuelle Update nach `docs/INSTALL-WEBHOSTING.md`.
+
 ## [0.9.1] - 2026-10-06
 
 Öffentliche Projektfreigaben lassen sich zentral verwalten und nach Projektstatus einschränken. Die Freigabeansicht ist kompakter; gemeinsame, kleinere Eckenradien vereinheitlichen die Oberfläche.

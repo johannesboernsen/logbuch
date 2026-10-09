@@ -10,6 +10,6 @@ COPY config/update-public-key.pem /etc/logbuch/update-public-key.pem
 RUN chmod 0555 /usr/local/bin/logbuch-updater-handoff
 
 HEALTHCHECK --interval=20s --timeout=5s --start-period=15s --retries=3 \
-  CMD test -f /var/lib/logbuch/updates/updater-heartbeat && test -n "$(find /var/lib/logbuch/updates/updater-heartbeat -mmin -2 -print -quit)"
+  CMD test -f /var/lib/logbuch-private/updates/updater-heartbeat && test -n "$(find /var/lib/logbuch-private/updates/updater-heartbeat -mmin -2 -print -quit)"
 
 ENTRYPOINT ["node", "/usr/local/bin/logbuch-updater.mjs"]

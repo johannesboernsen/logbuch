@@ -15,7 +15,7 @@ test('Backup-Oberfläche bietet Vollbackup und kennzeichnet seine Reichweite', a
   assert.match(js, /das gesamte Lager mit Kategorien, Lagerorten, Artikeln, Beständen, Reservierungen und Historie/);
   assert.match(js, /id="full-backup-file"/);
   assert.match(js, /data-import-full/);
-  assert.match(js, /api\('\/import\/full-archive'/);
+  assert.match(js, /archive-upload\.php\?kind=full/);
   assert.match(js, /Alle angemeldeten Geräte/);
   assert.match(css, /\.full-backup-card\s*\{[^}]*grid-column:1\s*\/\s*-1/);
   assert.match(html, /app\.js\?v=\d{8}-\d+/);
